@@ -75,6 +75,9 @@ shows up as a numeric failure, not as "it looked weird".
   subject's right cheek) to catch left/right and mirroring regressions.
 - Framing cases: model fit, head fit, zoom/offset extremes; assert the avatar stays inside the
   viewport and the decal stays attached.
+- Head-region cases: `cut` and `node` modes at ±30° yaw and ±20° pitch/roll; assert the body does not
+  move, the neck blends without a gap, and the decal stays attached.
+- Blank state: no face, missing mouth, and tracker timeout each produce a fully blank frame.
 - One barrel-distorted source, to quantify the accepted lens error.
 - Comparison: per-pixel with a perceptual metric (SSIM ≥ 0.995, plus a max-delta guard on the decal
   bounding box) rather than exact equality, because GPU rasterisation differs across vendors.
@@ -83,6 +86,31 @@ shows up as a numeric failure, not as "it looked weird".
 
 Golden tests catch the class of bug that is invisible in code review: a shader uniform bound to the
 wrong space, alpha premultiplied twice, colour space regression.
+
+---
+
+## Output invariant
+
+The rule is tested, not trusted: no camera pixel may reach the output except through the decal mask.
+
+- Feed a high-contrast synthetic camera pattern (a face, a checkerboard, and a green screen) and a
+  model whose region masks are known. Diff the output against the same scene with a black camera
+  texture; every changed pixel must lie inside the union of the region masks, within one pixel of the
+  feather.
+- Set `features_valid = false` by dropping the mouth landmarks and assert the output is fully blank
+  within 150 ms, with no frame containing the avatar or the camera.
+- Force a tracker timeout and assert the same.
+- Run the check on window output, Spout/Syphon/PipeWire, and the virtual camera. The gate lives in
+  the output manager, so a transport that reintroduces a frame is a blocking bug.
+
+## Matte tests
+
+- Synthetic green and blue screens: the key succeeds and the decal edge has no coloured fringe.
+- No-green background: the software matte reduces background leakage; assert the region edge stays
+  below an agreed background-pixel share.
+- Matte unavailable: fall back to the region mask and log `TRK-009` once.
+- Spill: a green-lit cheek does not turn green after keying.
+- Performance: the matte adds no more than 2 ms at 1080p on Reference.
 
 ---
 
@@ -206,7 +234,11 @@ Quality is subjective; the checklist makes it comparable.
 14. **Suspend and lock**: sleep/wake, lock/unlock, minimise/restore; capture stops on lock and resumes.
 15. **OBS onboarding**: plugin absent → setup card; window capture fallback works.
 16. **Windows 10 smoke** (if hardware is available): capture, preview, OBS output; no native camera.
-17. **Existing model**: import a downloaded glTF, auto-place, check the model-check panel and rotation centre.
+17. **Existing model**: import a downloaded glTF, auto-place, check the model-check panel and head region.
+18. **Head region**: cut and node modes; the body stays still at ±30° yaw, the neck does not gap.
+19. **Blank output**: cover the mouth, look away, unplug the camera; output blanks and never shows a frozen face.
+20. **Matte**: green screen and no green screen; no fringe; software fallback logs `TRK-009`.
+21. **No passthrough**: screen-record the output while the preview shows the camera overlay; no camera pixels appear in the output.
 
 Results are recorded per build; a failing item is a release blocker unless explicitly waived with a
 written reason.

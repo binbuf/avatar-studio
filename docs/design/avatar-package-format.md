@@ -55,15 +55,16 @@ enough; everything that turns it into an avatar is calibration stored next to it
 | UVs on the face | Unused. The decal samples the camera |
 | Named nodes, meshes or materials | Not needed. `face_submesh` is an optional optimisation, not a naming convention |
 | A specific origin or pivot | Derived from the calibrated face plane when omitted (see `model.pivot`) |
+| A separate head mesh or node | Optional. A one-piece mesh uses a neck cut; a node avoids the blend |
 | Specific units or forward axis | Converted on import (`model.units`, `model.forward`, `model.up`) |
 | A separate face mesh, LODs, or a particular topology | Optional |
 
 ### What the editor calibrates
 
 Everything below is per avatar, stored in the package, and set by direct manipulation
-([`editor-ux.md`](editor-ux.md#face-calibration)): units and axes, rotation centre, face surface
-(plane or cylinder, origin, normal, up, scale), eye and mouth regions, prop anchors, and framing.
-None of it is authored in Blender.
+([`editor-ux.md`](editor-ux.md#face-calibration)): units and axes, rotation centre, head region
+(node or neck cut), face surface (plane or cylinder, origin, normal, up, scale), eye and mouth
+regions, prop anchors, and framing. None of it is authored in Blender.
 
 ### Known limits
 
@@ -73,7 +74,7 @@ None of it is authored in Blender.
 | Painted eyes and mouth | Supported. The regions composite over the painted face; only features larger than a region peek out |
 | Protruding glasses, fringe, or hands | Geometry in front of the face occludes the decal in `surface` mode, which is the intended behaviour |
 | Skinned character in a T-pose | Renders in bind pose; rig and animation are ignored. Export a head-and-shoulders model |
-| Visible shoulders or torso | The whole model rotates about the rotation centre, so shoulders rotate with the head. Crop with `fit = "head"` or export a bust |
+| Visible shoulders or torso | Fine: only the head region rotates. A one-piece mesh needs a neck cut, which can stretch the neck at large angles |
 | Alpha-blended hair | Sorts with the decal; prefer opaque or alpha-tested hair |
 | Unlit or custom-shader materials | glTF PBR is the supported path. Unlit materials render but do not receive the key light |
 
@@ -89,7 +90,8 @@ format. It creates one:
    (or `model.gltf` with its relative resources). Loose buffers and textures move inside the
    package; nothing is read from outside it afterwards.
 3. Generate `avatar.json` with a new UUIDv4, the filename as `name`, glTF conventions for units and
-   axes (`m`, `Y` up, `−Z` forward), an auto-placed face surface, and empty regions.
+   axes (`m`, `Y` up, `−Z` forward), an auto-placed face surface, an auto-detected head region (a
+   `head` node, or a derived neck cut), and empty regions.
 4. Write `assets.json` with `source: "imported"` and `author: "unknown"`; the user can fill these in
    before sharing.
 5. Run the model check, then open face calibration. The package is written on save; an abandoned
@@ -150,7 +152,12 @@ Rules:
     "up": "Y",
     "pivot": null,
     "scale": 1.0,
-    "face_submesh": null
+    "face_submesh": null,
+    "head_region": {
+      "mode": "cut",
+      "node": null,
+      "cut": { "origin": [0.0, -0.02, 0.0], "normal": [0.0, 1.0, 0.0], "falloff": 0.04 }
+    }
   },
   "face": {
     "mode": "surface",
@@ -242,9 +249,27 @@ Rules:
 | `path` | string | Package-relative `.glb` |
 | `units` | `"m"` \| `"cm"` \| `"mm"` | Units the model was authored in; converted to metres on load |
 | `forward` / `up` | string | Authored axes; the importer rotates to −Z/Y |
-| `pivot` | `[x,y,z]` \| null | Rotation centre in model space. When `null` (the default), it is derived from the face surface as `origin − normal × 0.75 × scale`, roughly the head's centre of rotation. The editor's rotation-centre handle overrides it |
+| `pivot` | `[x,y,z]` \| null | Rotation centre for `cut` mode. When `null` (the default), it is derived from the face surface as `origin − normal × 0.75 × scale`, roughly the head's centre of rotation. A `node` rotates about its own origin; the editor's handle overrides `cut` |
 | `scale` | number | Uniform scale applied after unit conversion |
 | `face_submesh` | string \| null | Optional mesh name; restricts the decal pass to it |
+| `head_region` | object \| null | Which geometry rotates with the head; see below. Omitted means auto-detect |
+
+**`model.head_region`** — head rotation is applied here, not to the whole model
+([ADR-0009](adr/0009-head-region-rotation.md), [`face-compositing.md`](face-compositing.md#rotation-scope)).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `mode` | `"node"` \| `"cut"` | Rotate a node subtree, or deform above a neck plane |
+| `node` | string \| null | Node name for `mode: "node"`. Must be an ancestor of the face surface origin |
+| `cut.origin` | `[x,y,z]` | A point on the neck plane, in rest model space |
+| `cut.normal` | `[x,y,z]` | Unit vector toward the top of the head |
+| `cut.falloff` | number > 0 | Distance below the plane over which rotation blends to zero |
+
+`mode: "cut"` is the default for a one-piece mesh: vertices above the plane rotate, the neck blends,
+and the body stays still. The editor's head-region gizmo sets the plane and falloff. When the object
+is omitted, the importer uses a single node named `head` if it exists, otherwise it derives a cut
+plane from the face surface and raises `RIG-006`. Invalid geometry (plane above the face origin, node
+that does not contain the face) is `AVT-117`.
 
 **`face`**
 
@@ -490,6 +515,7 @@ unknown-field policy.
 | `output.framing` valid: `zoom > 0`, `margin` 0–0.5, known `fit` | `AVT-113` |
 | Background type/path valid, inside `backgrounds/`, within decode limits | `AVT-114` |
 | Appearance preset known; key-light and material-override values in range | `AVT-115` |
+| `head_region` valid: cut plane below the face origin, falloff > 0, node contains the face | `AVT-117` |
 
 Errors are reported with the JSON path (`face.regions[1].size`) and a suggestion, because the
 alternative is a support ticket.

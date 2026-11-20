@@ -259,6 +259,7 @@ never embeds either.
   "profile_id": "6a1e2f4c-…",
   "camera": { "device_id": "…", "width": 1280, "height": 720, "fps": 60 },
   "tracking": { "smoothing": 0.5, "mirror_preview": true },
+  "matte": { "mode": "auto", "key": [0.0, 1.0, 0.0], "similarity": 0.4, "softness": 0.1 },
   "framing": { "fit": "model", "zoom": 1.0, "offset": [0.0, 0.0], "margin": 0.1 },
   "output": {
     "resolution": [1920, 1080],
@@ -273,8 +274,19 @@ never embeds either.
 
 - `settings.json` holds global defaults (active profile, theme, UI scale, diagnostics opt-in, update
   check) and the last active show.
-- A Show overrides package defaults for camera, framing, output, and quality. Avatar geometry and
-  face calibration never move into a Show.
+- A Show overrides package defaults for camera, framing, output, quality, and matte. Avatar geometry
+  and face calibration never move into a Show.
+- `matte` is per machine because it depends on the room: `auto` detects a green or blue screen and
+  otherwise uses the software mask; `chroma`, `software` and `off` are explicit overrides. It affects
+  the decal alpha only, never the output background
+  ([`face-compositing.md`](face-compositing.md#face-matte)).
+
+| Matte field | Meaning |
+|---|---|
+| `mode` | `auto`, `chroma`, `software`, `off` |
+| `key` | sRGB key colour for `chroma`; ignored by `auto` |
+| `similarity` | 0–1 chroma tolerance |
+| `softness` | 0–1 edge falloff |
 - A Show's `background.path` may reference a user file; a package's background must stay inside
   `backgrounds/`. Both use the same decode limits.
 - Switching a Show is only allowed while stopped. Outfit changes inside a Show are live.

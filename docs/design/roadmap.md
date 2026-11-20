@@ -57,8 +57,9 @@ crisis.
 **Deliverables**
 
 - GLB import at runtime; one hard-coded avatar.
-- Face frame estimation (homography), pose application, `flat` decal mode.
-- Rotation-only framing (model/head fit, zoom, offset) and the asymmetric-marker mirroring test.
+- Face frame estimation (homography), head-region rotation (cut mode), `flat` decal mode.
+- Framing (model/head fit, zoom, offset) and the asymmetric-marker mirroring test.
+- Output gate: the avatar or a blank frame, with the no-passthrough test.
 - Timestamp-paired camera ring.
 - 60 fps render into a `SubViewport`, preview window, window-capture output.
 - Synthetic face source, the first golden-image test, and the first diagnostic codes.
@@ -68,7 +69,9 @@ crisis.
 | Criterion | Threshold |
 |---|---|
 | Face stays attached at ±20° yaw | Blind review of 3 clips, 5 reviewers, no "sliding" reports |
+| Head-region rotation | The body does not move across ±30° yaw; the neck does not gap |
 | Framing stable | Avatar stays inside the viewport across ±30° yaw, ±20° pitch/roll; no drift |
+| Blank on loss | Blank within 150 ms; no camera pixels in the output |
 | 1080p60 sustained | p99 frame time ≤ 16.6 ms on Reference |
 | Frame pacing | p99 interval ≤ 16.6 ms on 60/120/144 Hz displays, no bursts |
 | App-side latency | p50 ≤ 70 ms |
@@ -85,7 +88,10 @@ crisis.
 **Deliverables**
 
 - `surface` and `shaded surface` modes; region anchors; colour matching.
-- Full editor: face calibration gizmo, blink test, yaw sweep, framing, props, anchors, appearance.
+- Full editor: face calibration gizmo, head-region gizmo (cut/node), blink test, yaw sweep, framing,
+  props, anchors, appearance.
+- Face matte: chroma detection and software segmentation, with the fallback path.
+- Blank-state UX: preview says why, output blanks, no frozen face.
 - `.avatar` package load/save/validate/migrate; named FaceProfiles; managed library; outfits; shows.
 - Four environment presets with key-light control; three quality presets.
 - Three CC0 example avatars (flat, spherical, high-curvature) with provenance manifests.
@@ -103,6 +109,7 @@ crisis.
 | Framing | No clipping or drift across model/head fit and zoom extremes |
 | Library | 20 imports, duplicate id, delete; originals untouched |
 | Existing-model corpus | 10 typical downloaded GLBs import; 8 calibrate within 10 minutes without re-export |
+| Matte | No coloured fringe on green or blue; the software path adds ≤ 2 ms and degrades gracefully |
 | Package round-trip | 100 fixture packages load, save, reload identically |
 | No regression | All M1 criteria still met |
 
@@ -132,6 +139,7 @@ This is the milestone where the product either exists or does not. Schedule buff
 | Alpha correct in OBS on all three platforms | No black halo or bright fringe on the test card |
 | Dropped frames | 0 over 10 minutes at 1080p60 |
 | Latency added by transport | ≤ 4 ms |
+| No passthrough | The output gate holds on every transport; a forced loss yields a blank frame |
 | Idle cost with no consumer | GPU readback count = 0 |
 
 **Retires:** "can we deliver frames without a second render", "is CPU readback fast enough".
@@ -220,6 +228,9 @@ Each is owned by a milestone and has a decision point. None may drift past its m
 | Q13 | Is 60 Hz output pacing stable on 120/144 Hz displays? | M1 | Timer-paced output; accept preview tearing |
 | Q14 | Does the managed library stay responsive at 100+ avatars? | M2 | Rebuildable index plus lazy thumbnails |
 | Q15 | How much Windows 10 parity do we actually get without CI? | M5 | Best-effort policy; community reports |
+| Q16 | Does the neck-cut deformation hold at ±30° on one-piece models, or does it need a mesh split? | M1 | Encourage a separate head node; add a split helper |
+| Q17 | Is the software matte good enough without a green screen? | M2 | Recommend a green screen; keep chroma as the quality path |
+| Q18 | Does blanking on feature loss flicker in normal use? | M2 | Widen the hold or add per-feature hysteresis |
 
 ---
 
@@ -229,6 +240,9 @@ Each is owned by a milestone and has a decision point. None may drift past its m
 |---|---|---|
 | Tracker not viable | M0 numbers miss by > 2× | C-ABI seam, ONNX fallback planned |
 | Face quality plateau | M2 blind review fails twice | Surface+shading modes, per-model calibration, modelling guide |
+| Neck-cut artifact | Visible stretch or gap at ±30° on one-piece models | Tune the falloff band; encourage a separate head node; Q16 |
+| Matte flicker or fringe | Green edge or a pulsing silhouette | Temporal smoothing, chroma path, region-mask fallback; Q17 |
+| Blanking looks broken | Users read a blank frame as a crash | Preview states the reason; 150 ms hold; panic button; Q18 |
 | Perf on low-end GPUs | M3 gates fail on Minimum | Quality presets, 720p output, reduced tracking rate |
 | macOS approval friction | > 30% of beta users fail to install | In-app guided flow, detection + repair, docs |
 | Windows installer friction | > 20% abandon at admin prompt | Portable build without virtual camera; OBS fallback |

@@ -194,7 +194,7 @@ of a camera.
 
 | Failure | Behaviour |
 |---|---|
-| Device disappears | Stop, emit `device_lost`, hold last frame, poll for return every 2 s |
+| Device disappears | Stop, emit `device_lost`, drop the frame ring, poll for return every 2 s |
 | Device reappears | Reopen with previous config, renegotiate, emit `device_restored` |
 | Open fails (busy) | `device_busy`, list likely owners, offer retry |
 | Format rejected | Step down the preference list, log the actual negotiated mode, inform the UI |

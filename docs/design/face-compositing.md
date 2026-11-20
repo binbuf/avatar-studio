@@ -32,7 +32,7 @@ modes exist to make (2) cheap to avoid; the shader exists to make (3) tunable.
 |---|---|---|
 | **Image** | normalised `[0,1]²` | Camera frame, origin top-left, +v down. Assumed undistorted in 1.0 (lens distortion is accepted, see [below](#lens-distortion)); no mirroring applied. |
 | **Camera** | metres | Right-handed, −Z forward, matching the tracker's pose output. |
-| **Head** | metres | The avatar's root space after pose application. Origin at the rotation centre (`model.pivot`, or derived from the face plane). |
+| **Head** | metres | Rest model space: the avatar before the head rotation is applied. The rotation centre is `model.pivot`, or derived from the face plane. Calibration and the decal live here, so a turning head cannot slide the face. |
 | **Canonical face** | unitless `(u,v)` | The face plane. Origin at the midpoint between the eye centres. `+u` toward the **subject's right eye**, `+v` toward the forehead. **Inter-ocular distance = 1.0.** `z` is the plane normal, unused for planar projection. |
 
 `_l` and `_r` are always the **subject's** left and right, never the viewer's. In an unmirrored
@@ -104,20 +104,57 @@ the clamp prevents a bad frame from throwing the patch across the face.
 
 ---
 
-## Framing and placement
+## Head motion and placement
 
-1.0 is **rotation-only**. The tracker's pose translation is measured, filtered and carried in
-`FaceRigOutput`, but it does not move the avatar. The avatar rotates about its pivot and stays fixed
-in the output frame. This is a product decision: a stream overlay that drifts when the user leans is
-worse than one that is stable, and it removes a follow-camera from the design.
+### Rotation scope
 
-The fixed presentation transform is:
+1.0 is **rotation-only**, and the rotation applies to the **head region**, not the whole avatar. The
+head turns; the shoulders and torso stay put. A bust whose shoulders swing with a nod reads as a
+puppet, and a fixed body keeps the overlay stable when the user leans
+([ADR-0009](adr/0009-head-region-rotation.md)).
+
+The head region is authored per avatar (`model.head_region`) and picked in the editor:
+
+| Mode | When | How it deforms |
+|---|---|---|
+| `node` | The GLB already has a separate head node or subtree | The node is rotated; the seam is the model's own |
+| `cut` | A single mesh, the normal case for a downloaded character | Vertices above a neck plane rotate; a falloff band blends to zero below it |
+
+For `cut`, the weight of a rest-space vertex is:
 
 ```
-view_from_head = T(offset) · R_y(180°) · T(−c)
+d    = dot(p_rest − cut.origin, cut.normal)
+w    = smoothstep(0, cut.falloff, d)
+R_w  = slerp(identity, R_head, w)
+p'   = pivot + R_w · (p_rest − pivot)
 ```
 
-- `c` is the centre of the fitted volume in head space.
+`cut.origin` and `cut.normal` are in rest model space. `cut.normal` points toward the top of the
+head and the plane sits at the neck, so the head, ears and hair rotate and the neck blends. The pivot
+is `model.pivot`, or the derived rotation centre; a `node` rotates about its own origin. Vertices
+below the band are unchanged.
+
+Both the model pass and the decal pass evaluate the same deformation. The decal pass carries the
+**rest position** as a varying, so the fragment shader projects the undeformed surface point and the
+face cannot slide relative to the head. Normals are rotated by `R_w` and renormalised.
+
+If `model.head_region` is absent, the importer uses a node named `head` when exactly one exists;
+otherwise it derives a cut plane from the face surface and raises `RIG-006` so the user confirms it.
+An invalid region (cut plane above the face origin, or a node that is not an ancestor of the face) is
+a validation error, `AVT-117`.
+
+### Presentation
+
+The avatar as a whole is placed by a fixed transform. Head rotation is applied first, in rest model
+space, so the body never moves:
+
+```
+view_from_model = T(offset) · R_y(180°) · T(−c)
+```
+
+- `c` is the centre of the fitted volume in rest model space. The fit uses the model AABB expanded by
+  the head's swept range (±45° about the pivot), so the head cannot clip or separate at the rotation
+  limits.
 - The 180° yaw exists because the model's authored forward is −Z while the viewer camera looks down
   −Z from +Z. The model faces the camera after the rotation; the head pose is applied in head space
   before it. The rotation is not a mirror: the model's right side stays on the viewer's left, matching
@@ -214,14 +251,14 @@ a face reflected in a held prop), which is not planned.
 Per fragment of the decal pass:
 
 ```
-p_head   = (head_from_world · p_world).xyz          // model surface point, head space
-(u, v)   = face_surface_project(p_head)             // head space → canonical face plane
-mask     = region_mask(u, v, anchor)                // feathered ellipse/rounded rect
-img_uv   = H · (u, v, 1)                            // canonical → camera image
-rgb      = sample_camera_linear(img_uv)             // YUV→RGB, sRGB→linear
-facing   = smoothstep(0.10, 0.35, dot(N, V))        // fade at grazing angles
+p_rest   = v_rest_pos                                // rest model space, from the vertex pass
+(u, v)   = face_surface_project(p_rest)              // rest space → canonical face plane
+mask     = region_mask(u, v, anchor)                 // feathered ellipse/rounded rect
+img_uv   = H · (u, v, 1)                             // canonical → camera image
+rgb      = sample_camera_linear(img_uv)              // YUV→RGB, sRGB→linear
+facing   = smoothstep(0.10, 0.35, dot(N, V))         // fade at grazing angles
 ALBEDO   = rgb * colour_gain + colour_lift
-ALPHA    = mask * facing * opacity
+ALPHA    = mask * facing * opacity * matte
 ```
 
 Two details that matter:
@@ -240,8 +277,8 @@ frame; the fragment is discarded rather than smeared.
 ```glsl
 // app/shaders/face_decal.gdshader (spatial, unshaded, blend_mix)
 uniform sampler2D camera_tex : filter_linear, repeat_disable;
+uniform sampler2D matte_tex;         // chroma or segmentation matte, 1x or 2x downscaled
 uniform mat3  canonical_to_image;
-uniform mat4  head_from_world;
 uniform vec4  region_uv;        // centre (x, y) + full size (w, h) in canonical space
 uniform vec2  region_anchor;    // filtered centroid offset
 uniform float region_rot;       // radians, from rotation_deg
@@ -250,12 +287,13 @@ uniform vec3  colour_gain;
 uniform vec3  colour_lift;
 uniform float lighting_influence;
 
-varying vec3 world_pos;
-varying vec3 world_normal;
+varying vec3 rest_pos;          // undeformed model-space position, for sampling
+varying vec3 rest_normal;
+varying vec3 posed_pos;         // after head deformation, for facing
+varying vec3 posed_normal;
 
 void fragment() {
-    vec3  p_head = (head_from_world * vec4(world_pos, 1.0)).xyz;
-    vec2  uv     = face_surface_project(p_head);
+    vec2  uv     = face_surface_project(rest_pos);
 
     vec2  d      = (uv - (region_uv.xy + region_anchor)) / (region_uv.zw * 0.5);
     d = mat2(cos(region_rot), -sin(region_rot),
@@ -268,16 +306,76 @@ void fragment() {
     if (any(lessThan(iuv, vec2(0.0))) || any(greaterThan(iuv, vec2(1.0)))) discard;
 
     vec3  cam  = srgb_to_linear(texture(camera_tex, iuv).rgb);
-    vec3  view = normalize(CAMERA_POSITION_WORLD - world_pos);
-    float facing = smoothstep(0.10, 0.35, dot(normalize(world_normal), view));
+    vec3  view = normalize(CAMERA_POSITION_WORLD - posed_pos);
+    float facing = smoothstep(0.10, 0.35, dot(normalize(posed_normal), view));
+    float m    = texture(matte_tex, iuv).r;
 
     ALBEDO = cam * colour_gain + colour_lift;
-    ALPHA  = mask * facing * facing;
+    ALPHA  = mask * facing * facing * m;
 }
 ```
 
 `ALPHA` is squared on `facing` so the silhouette fades faster than the interior; a linear fade
 leaves a visible rim.
+
+---
+
+## Face matte
+
+The output never contains a camera passthrough. The only camera pixels that reach the output are the
+ones the decal samples, inside the region masks. A matte still matters: a region edge that overlaps
+hair, a wall, or a window would otherwise carry that background into the avatar's face.
+
+Two mattes, selected automatically:
+
+| Mode | Input | Use |
+|---|---|---|
+| `chroma` | A green or blue screen | Best quality; soft key with spill suppression |
+| `software` | Any background | Best effort; low-resolution person/face segmentation, temporally smoothed |
+
+Detection is cheap and runs about once a second:
+
+1. Sample the frame border and the area outside the face bounding box.
+2. If one hue (green or blue) dominates a configurable share of those pixels, classify the frame as a
+   chroma set; the median colour becomes the key.
+3. Otherwise use `software`.
+
+The mode is `auto` by default, with `chroma`, `software` and `off` available in the Show. A manual key
+colour overrides detection; the editor has a *Test matte* button that shows the result.
+
+The software matte is a segmentation mask from the tracker's runtime (MediaPipe Selfie Segmentation,
+or an equivalent provider behind `ISegmentationProvider`), computed at 256×256 and upscaled with a
+luma-guided filter so the region edge does not halo. It uses the same frame as the landmarks and is
+temporally smoothed with the same One Euro philosophy: fast enough not to lag a blink, slow enough
+not to flicker on hair.
+
+`matte` multiplies the decal alpha. It never changes the output background and is never applied
+outside the region mask. If segmentation is unavailable, the region mask alone is used and `TRK-009`
+is logged once.
+
+---
+
+## Output contract: the avatar or nothing
+
+The output stream has exactly two visible states ([ADR-0010](adr/0010-output-is-avatar-or-nothing.md)):
+
+| State | Frame | When |
+|---|---|---|
+| **Avatar** | The rendered model with the decal | Tracking is valid, and both eyes and the mouth are present |
+| **Blank** | Transparent for OBS/Spout; the configured background colour for opaque outputs | No face, missing eyes or mouth, or tracking lost beyond the hold window |
+
+There is no passthrough, no last-frame freeze, and no fallback to the camera. A held frame only
+bridges a dropped frame or a single blink, and never for longer than 150 ms.
+
+This is deliberate. A stream that suddenly shows a frozen face, or the real camera, is worse than a
+stream that momentarily shows nothing, and the performer can see the state in the preview. The
+preview may show a "no face" overlay and, in calibration only, an opt-in camera feed; neither exists
+in the output path.
+
+The gate is enforced in the output manager, not in a shader: a `blank` state submits an empty frame
+with the correct alpha or background, so every transport behaves the same. The cause code (`TRK-002`
+for a lost face, `TRK-008` for missing features) is emitted on the transition, once, and `OUT-007`
+records the gate itself.
 
 ---
 
@@ -332,11 +430,16 @@ settings panel when the driver exposes it.
 | Face too bright / wrong hue | sRGB blended as linear, or no gain match | Linear pipeline; gain calibration |
 | Pupils stuck centre | Region anchored to head, not landmarks | Per-region centroid anchors |
 | Eyes look dead | Tracking at 30 Hz while render at 60 Hz | Accept (matches real cameras) or prefer 720p60 capture |
-| Jaw opens but chin does not | Rigid model, real mouth | Modelling guidance: neutral-open mouth or soft chin; `shaded` mode hides most of it |
+| Jaw opens but chin does not | Rigid model, real mouth | Authoring guidance: neutral-open mouth or soft chin; `shaded` mode hides most of it |
 | Face sharp, model soft (or vice versa) | Resolution/mip mismatch | Sample with the camera texture's native mip; optional slight blur on the decal |
 | Face patch stretches at close range | Lens distortion not modelled | Accepted in 1.0; keep the face centred; optional calibration is `Deferred` |
 | Avatar clips at the frame edge | Fit or zoom too tight | Increase margin or decrease zoom; the editor shows the bounds |
 | Output is unexpectedly mirrored | `mirror_output` is on | Preview mirroring is display-only; check Settings → Output |
+| Shoulders rotate with the head | Head region missing, or `node` mode selected the root | Set a neck cut, or pick the head node |
+| Neck stretches or gaps at large yaw | Falloff too tight or the cut plane too high | Widen the falloff, lower the plane, or use a head node |
+| Output blanks on a blink | Feature gate too strict, or the hold too short | Widen the hold or add per-feature hysteresis |
+| Green tint on the face edge | Spill suppression too weak | Raise spill suppression, or key a cleaner screen |
+| Face edge carries background | Matte off, or the region is larger than the face | Enable `auto` matte; tighten the feather |
 
 ---
 
@@ -351,15 +454,16 @@ face region the surface mapping can follow. The bundled guide says:
 - **Recommended:** leave the face smooth. A face without modelled eyes or a mouth gives the cleanest
   result, but a painted face is supported as long as its features fit inside a region.
 - **Recommended:** matte, non-metallic material on the face area.
-- **Recommended:** a head-and-shoulders model. The whole model rotates about the rotation centre, so
-  visible shoulders rotate with it; crop a full-body model with `fit = "head"`.
+- **Recommended:** a head-and-shoulders model, or one whose head is a separate node. For a one-piece
+  mesh the editor cuts at the neck and blends; a clean neck seam gives the best result. A full-body
+  model still crops with `fit = "head"`.
 - **Recommended:** face the model toward −Z and keep the face near the frame centre.
 - One mesh per character is fine; a separate face submesh is an optimisation, not a requirement.
 
 Existing downloaded models are the normal case, not the exception. A rigged character in a T-pose is
 rendered in bind pose with its animation ignored; a painted anime face works if the regions cover its
-eyes and mouth. The editor checks what it can (rotation centre far from geometry, non-−Z forward,
-extreme face curvature, no face-like region) and warns rather than blocks.
+eyes and mouth. The editor checks what it can (head region, rotation centre, non-−Z forward, extreme
+face curvature, no face-like region) and warns rather than blocks.
 
 ---
 
@@ -369,7 +473,9 @@ extreme face curvature, no face-like region) and warns rather than blocks.
 |---|---|
 | Extra draw (pass B, whole model, 20k tris) | < 0.7 ms |
 | Fragment cost (3 regions, ~8% of screen) | < 0.5 ms |
-| Uniform updates per frame | negligible (one mat3, one mat4, a few floats) |
+| Head-region deformation (per-vertex blend, 20k tris) | < 0.15 ms |
+| Face matte (256² segmentation + luma-guided upsample) | 1–2 ms |
+| Uniform updates per frame | negligible (one mat3, a quaternion, a few floats) |
 | CPU work (homography + anchors) | < 0.1 ms |
 
 The compositor never copies pixels. The camera texture is sampled directly by the GPU; only the
@@ -384,6 +490,8 @@ final composed frame is read back for output, once, regardless of how many desti
 | Is a planar face frame sufficient for strongly spherical characters, or is cylinder unwrap required in practice? | Determines whether the extra mode ships in 1.0 | Build both in M1; compare on three model archetypes |
 | How much does 30 Hz face content hurt next to 60 Hz head rotation? | May force 720p60 capture preference | A/B test in M2 with recorded clips |
 | Does per-region gain calibration converge reliably across skin tones and lighting? | Quality equity; a mismatch is most visible on darker skin | Test matrix in M2 across lighting conditions |
+| Does the neck-cut deformation hold at ±30° on one-piece models? | Determines whether a head node becomes effectively required | Real-model corpus in M1 (Q16) |
+| Is the software matte good enough without a green screen? | Determines whether a green screen is a soft requirement | M2 blind review at the region edge (Q17) |
 | Can the decal pass reuse the model's depth without a second draw (e.g. stencil tag in pass A)? | 0.7 ms at 1080p on low-end GPUs | Profile in M3; only pursue if the budget is tight |
 | Does lens distortion visibly stretch the face at typical webcam distance? | Determines whether optional calibration is worth the setup step | M2 quality tests with a barrel-distorted synthetic source |
 | Is `fit = "model"` sufficient, or do users need per-avatar framing presets? | Full-body models may need `fit = "head"` plus offsets | M2 usability run with three model archetypes |

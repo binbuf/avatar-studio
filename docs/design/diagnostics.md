@@ -48,7 +48,7 @@ the app itself keeps running.
 
 | Code | Severity | Meaning | Recovery |
 |---|---|---|---|
-| `CAP-001` | Error | Camera disappeared mid-stream | Hold last frame; poll for return; auto-reopen |
+| `CAP-001` | Error | Camera disappeared mid-stream | Output blanks; poll for return; auto-reopen |
 | `CAP-002` | Error | Camera is busy (exclusive access) | Name likely owners; Retry |
 | `CAP-003` | Warning | Requested format rejected; stepped down | Show negotiated mode; continue |
 | `CAP-004` | Error | Stream stalled without an OS error | Restart once; then report and stop |
@@ -61,23 +61,26 @@ the app itself keeps running.
 
 | Code | Severity | Meaning | Recovery |
 |---|---|---|---|
-| `TRK-001` | Info | No face in frame | Hint about lighting/position; hold last pose |
-| `TRK-002` | Warning | Face lost beyond timeout (250 ms) | Hold pose; decay to neutral; freeze decal |
-| `TRK-003` | Error | Tracker process/library crashed | Disable decals; render static face; offer restart |
+| `TRK-001` | Info | No face in frame | Hint about lighting/position; output blanks |
+| `TRK-002` | Warning | Face lost beyond the 150 ms hold | Output blanks; no neutral decay, no frozen face |
+| `TRK-003` | Error | Tracker process/library crashed | Output blanks; offer restart; never a static face |
 | `TRK-004` | Warning | Tracking slower than the camera | Drop frames before inference; suggest quality step |
 | `TRK-005` | Warning | Duplicate or non-monotonic timestamp | Increment by 1 ms; log once; reset graph on reconnect |
 | `TRK-006` | Error | Model file missing or hash mismatch | Refuse to start tracking; name the file and expected hash |
-| `TRK-007` | Fatal | Backend initialization failed | Report; disable tracking; keep the editor usable |
+| `TRK-007` | Fatal | Backend initialization failed | Report; disable tracking; output blanks |
+| `TRK-008` | Warning | Eyes or mouth not both tracked | Output blanks; prompt to uncover the face or face the camera |
+| `TRK-009` | Warning | Software matte unavailable | Region mask only; suggest a green screen |
 
 ## RIG — Face frame and calibration
 
 | Code | Severity | Meaning | Recovery |
 |---|---|---|---|
 | `RIG-001` | Warning | Homography solve failed | Reuse previous `H` with damped extrapolation; lower confidence |
-| `RIG-002` | Warning | Inlier count below threshold | Hold last pose; do not emit a jump |
+| `RIG-002` | Warning | Inlier count below threshold | Output blanks; do not emit a jump |
 | `RIG-003` | Warning | FaceProfile invalid or missing required names | Create a provisional profile; prompt recalibration |
-| `RIG-004` | Error | Degenerate face frame (collinear or zero scale) | Hold; ask the user to face the camera |
+| `RIG-004` | Error | Degenerate face frame (collinear or zero scale) | Output blanks; ask the user to face the camera |
 | `RIG-005` | Info | Calibration quality below target | Offer recalibration; do not block saving |
+| `RIG-006` | Warning | Head region missing; a default was derived | Open the head-region gizmo; editing continues |
 
 ## AVT — Avatar packages and library
 
@@ -99,6 +102,7 @@ the app itself keeps running.
 | `AVT-114` | Error | Invalid background type, path, or decode limit | Point at the field; refuse |
 | `AVT-115` | Error | Invalid appearance preset or override value | Point at the field; refuse |
 | `AVT-116` | Warning | No face-like region detected on the model | Open calibration with the surface gizmo; continue |
+| `AVT-117` | Error | Invalid head region: plane above the chin, or a node that does not contain the face | Point at the field; refuse |
 | `AVT-120` | Error | Package version newer than the app | Name the app version that wrote it |
 
 ## OUT — Output and transports
@@ -111,6 +115,7 @@ the app itself keeps running.
 | `OUT-004` | Error | Output resolution change failed | Restore previous size; restart transports |
 | `OUT-005` | Warning | Requested alpha mode unsupported by transport | Use the transport default; explain the fringe risk |
 | `OUT-006` | Info | No consumer is listening | Suppress readback; show idle state |
+| `OUT-007` | Info | Output gate blanked the frame | Log the transition once; resume automatically |
 
 ## VCAM — Virtual camera
 

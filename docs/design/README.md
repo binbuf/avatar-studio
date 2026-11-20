@@ -73,8 +73,10 @@ the third-party projects reviewed in
   UUIDv4.
 - **Sidedness.** `_l` and `_r` are the subject's left and right, never the viewer's. In an
   unmirrored image the subject's right eye appears on the viewer's left.
-- **Framing.** 1.0 is rotation-only: the avatar rotates with the head and stays fixed in the output
-  frame. A translation gain is `Deferred`.
+- **Head motion.** 1.0 is rotation-only, applied to the head region (a node or a neck cut); the body
+  stays still. Framing is fixed; a translation gain is `Deferred`.
+- **Output.** The output is the rendered avatar or a blank frame. The camera is never passed through,
+  and a lost face blanks rather than freezing.
 - **Colour.** Internal working space is linear; output is encoded to sRGB. Premultiplication is
   explicit at every boundary (see [`architecture.md`](architecture.md#colour-and-alpha)).
 - **Units in JSON.** Metres and degrees. Quaternions are `[x, y, z, w]`. Both are stated in the
@@ -104,7 +106,7 @@ performed on 2026-11-20 against upstream documentation.
 | 9 | "We do not need a companion app" | True for capture. False for virtual cameras: on Windows the media source is loaded into *other* applications' processes, and on macOS the extension is a separate process. | Recorded as a correction; cross-process frame sharing is now a first-class subsystem |
 | 10 | Recreating the effect is legally fine; the character is not | Directionally right, but this is not a clearance opinion, and the trademark-application claim is unverified. | Written as policy, not legal advice — [ADR-0007](adr/0007-licensing-and-assets.md) |
 | 11 | Don't rewrite Godot's renderer; C++ for the rest | Sound. One refinement: the GDExtension boundary is expensive *per call*, not per byte, so the data plane must never round-trip through `Variant`. | Binding rules in [`architecture.md`](architecture.md#gdextension-binding-rules) |
-| 12 | "Any `.glb` works; no special mesh needed" | True for flat insets; overstated for surface projection, where occlusion, silhouette and decal placement all need per-model calibration. | Automatic placement is an assistant, never a guarantee — [`editor-ux.md`](editor-ux.md#face-calibration) |
+| 12 | "Any `.glb` works; no special mesh needed" | True for flat insets; overstated for surface projection and head rotation, where occlusion, silhouette, decal placement and the neck cut all need per-model calibration. | Automatic placement is an assistant, never a guarantee - [`editor-ux.md`](editor-ux.md#face-calibration) |
 
 Two things the brief does not discuss at all, and which this design treats as first-class:
 **frame-content vs. pose synchronisation** (mismatched camera and tracking timestamps cause the

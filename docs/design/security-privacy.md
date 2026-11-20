@@ -14,6 +14,7 @@ transmitted unless the user explicitly asks for it.**
 |---|---|---|---|
 | Camera frames | RAM only (frame ring, GPU textures) | Milliseconds | No |
 | Tracking results (landmarks, pose) | RAM only | Milliseconds | No |
+| Segmentation / matte masks | RAM only | Milliseconds | No |
 | Avatar packages | Managed copy in the user data dir; originals stay where the user chose | Until deleted | Only if the user shares the file |
 | FaceProfile (biometric landmark template) | User data dir, user-only permissions | Until deleted | No |
 | Shows, outfits, settings | User data dir | Until deleted | No |
@@ -52,6 +53,7 @@ package (high), local privilege via the installer (medium), and metadata leakage
 | T12 | FaceProfile leakage | World-readable file, backup/sync tool, diagnostics bundle | User-only permissions; never logged, exported, or included in diagnostics; explicit delete action; no cloud path |
 | T13 | Camera keeps running while the screen is locked | Session lock leaves the app live | Stop capture and output on lock; emit no-signal; resume on unlock (`SEC-002`) |
 | T14 | A foreign process injects frames into the virtual camera | Fake producer writing to the ring | Per-session nonce plus producer signature check; Windows requires administrator to register a competing media source |
+| T15 | The real camera face, or a frozen face, reaches the stream | A passthrough or a hold-last-pose fallback | The output is the rendered avatar or a blank frame ([ADR-0010](adr/0010-output-is-avatar-or-nothing.md)). The decal is the only camera consumer and is masked; a lost face blanks within 150 ms. Enforced by the output gate and the no-passthrough test |
 
 Explicit non-threats: a local attacker with debugger access, physical access to the machine, and
 malicious GPU drivers are out of scope. A same-user process reading the camera is outside the
@@ -164,7 +166,9 @@ These become the privacy page in-app and the README section:
 4. Diagnostics are opt-in and never include images.
 5. Your face profile stays on this machine and can be deleted at any time.
 6. Capture stops when your screen is locked.
-7. You can delete everything the app stores from Settings → Privacy.
+7. The output is the rendered avatar or nothing. Your camera is never passed through, and a lost
+   face blanks the output rather than freezing it.
+8. You can delete everything the app stores from Settings → Privacy.
 
 ---
 

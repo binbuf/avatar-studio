@@ -43,6 +43,7 @@ The core is a well-understood rendering problem; the product is the hard part.
 | **Never require another app** | OBS is optional. A virtual camera works with Discord/Zoom/Teams directly. |
 | **Works offline, always** | No network calls in the default path. No accounts. No telemetry without explicit opt-in. |
 | **Rigid models only** | No rig, bones, blendshapes or UV work. A glTF 2.0 model with a face-shaped front is an avatar; the calibration lives beside the model, not in it. |
+| **The avatar or nothing** | The output never passes the camera through and never freezes a face. A lost face blanks the frame within 150 ms. |
 | **Data, not code** | Avatar packages are declarative JSON plus glTF. Nothing in a package executes. |
 | **Degrade, never fail** | Camera unplugged, face lost, consumer disconnected, GPU device reset: the app keeps running and says what happened. |
 
@@ -73,13 +74,15 @@ blocking QA, is in [`architecture.md`](architecture.md#supported-platforms).
 | Import `.glb`, or pick a bundled character; no rig or re-export needed | `Planned` |
 | Live eyes and mouth from webcam, three quality modes | `Planned` |
 | Head-driven rotation with smoothing and loss handling | `Planned` |
-| Rotation-only framing with model/head fit, zoom, offset, mirroring | `Planned` |
+| Head-only rotation with an editor-picked head region; the body stays still | `Planned` |
 | Face calibration UI (auto-suggest + manual adjustment) | `Planned` |
 | Named FaceProfiles, reusable across avatars | `Planned` |
 | Managed avatar library (copy on import) | `Planned` |
 | Named prop anchors and prop library (hats, glasses, held items) | `Planned` |
 | Save/load `.avatar` packages and outfits/presets; live outfit switching | `Planned` |
 | Four environment presets plus key-light control | `Planned` |
+| Green-screen keying and software face matte | `Planned` |
+| Output is the rendered avatar or blank; never a camera passthrough | `Planned` |
 | Quality presets (Quality/Balanced/Performance) | `Planned` |
 | Transparent output to OBS via Spout2 / Syphon / PipeWire | `Planned` |
 | System virtual camera on Windows 11, macOS, Linux | `Planned` |

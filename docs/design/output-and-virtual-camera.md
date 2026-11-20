@@ -168,11 +168,15 @@ signal sync object  ────────────────────
 | Versioning | Shared-memory header carries a layout version; mismatched versions refuse to connect with a clear error |
 
 **No-signal behaviour is a feature.** When the app is closed, crashed, or paused, the device stays
-enumerated. It must emit a neutral placeholder frame (configurable: black, brand card, or last frame
-frozen) so that consumer apps do not freeze or spin. This single detail prevents most "your virtual
-camera is broken" reports. It applies to Windows and macOS, where the device outlives the process.
+enumerated. It must emit a neutral placeholder frame (configurable: black, a brand card, or a "no
+signal" card) so that consumer apps do not freeze or spin. The placeholder is never a frozen frame of
+the avatar or the camera. This single detail prevents most "your virtual camera is broken" reports. It applies to Windows and macOS, where the device outlives the process.
 On Linux the PipeWire node is owned by the app and disappears when it exits, so there is nothing to
 keep alive; consumers see the device go away rather than a placeholder.
+
+While the app is running, a blank output-gate frame is submitted as a normal frame: transparent for
+OBS/Spout and the configured background colour for the virtual camera. It is never a held frame and
+never the camera; the device stays enumerated.
 
 ### Transport security
 
@@ -220,6 +224,7 @@ black-on-white edges) so users can diagnose alpha problems in seconds instead of
 | App exit | Unregister/withdraw device; flush queues |
 | OS suspend | Transports pause; device emits no-signal; queues and timestamps reset on wake |
 | Session lock | Capture and output stop; device emits no-signal; resume on unlock (`SEC-002`) |
+| Output gate blank | No face or missing eyes/mouth | Submit a blank frame; keep the device live; log once (`OUT-007`) |
 | App upgrade | macOS may require extension re-approval; detect and prompt, do not silently fail |
 | Crash | Windows/macOS: device may persist; next start detects and offers repair. Linux: node disappears with the process |
 | Consumer connects | Transport reports `wants_frames = true`; readback begins |

@@ -13,6 +13,8 @@ tell the difference between "we chose this" and "this happened".
 | [0006](0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | Proposed |
 | [0007](0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | Proposed |
 | [0008](0008-eigen-for-rig-math.md) | Eigen for native rig math | Proposed |
+| [0009](0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | Proposed |
+| [0010](0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | Proposed |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

@@ -96,7 +96,10 @@ in front of the camera. The first-run profile is created automatically.
 │   └──────────┘                       │  Depth    ───●───────  0.02 m
 │                                      │  Tilt     ──────●────  2°
 │  [x] Show mesh  [x] Freeze head      │  ─────────────────────
-│  [ ] Show camera feed                │  Feather  ────●──────  0.18
+│  [ ] Show camera feed (preview only) │  Head     ● Cut ○ Node
+│                                      │  Neck     ──────●────  0.02 m
+│                                      │  Falloff  ────●──────  0.04 m
+│                                      │  Feather  ────●──────  0.18
 │                                      │  Exposure ─────●─────  0.0
 │                                      │  [ Match to model ]    │
 └──────────────────────────────────────────────────────────────┘
@@ -112,6 +115,9 @@ plane (`face.surface.origin`, `normal`, `up`). There is no second source of trut
   from the head's aspect ratio. It is a starting point and is labelled as such.
 - **Rotation centre**: derived from the face surface when the package does not set one; an advanced
   handle moves it. Needed for models whose origin sits at the feet rather than inside the head.
+- **Head region**: *Cut* drags a plane and falloff at the neck and highlights the vertices that will
+  rotate; *Node* lets the user click the head to select a subtree. The body is never deformed. A
+  plane above the chin or an extreme falloff warns rather than blocks.
 - **Model check on import** names the reported unit and axis, mesh and triangle counts, and whether a
   rig or animation was ignored, then says what must be calibrated. It never blocks a model that
   parses.
@@ -120,8 +126,9 @@ plane (`face.surface.origin`, `normal`, `up`). There is no second source of trut
   visible, so users can be precise).
 - **Freeze head** holds the avatar in a neutral pose while the user drags, so the target does not
   move under the cursor. Essential; without it, calibration is maddening.
-- **Show camera feed** overlays the raw webcam behind the model at low opacity, so the user can see
-  whether their real eyes line up with the avatar's.
+- **Show camera feed** overlays the raw webcam behind the model at low opacity during calibration
+  only, so the user can check alignment. It is a preview overlay and never exists in the output
+  path.
 - **Blink test**: a button that highlights both eye regions and asks the user to blink; if the
   regions do not cover the eyes, it says so. This catches the most common mis-calibration without
   requiring the user to judge it themselves.
@@ -140,8 +147,8 @@ per-session and does not survive a save.
 
 ## Framing
 
-Framing is rotation-only in 1.0: the avatar turns with the head but does not move in the frame. The
-editor exposes:
+Head rotation is rotation-only in 1.0 and applies to the selected head region, not the whole avatar.
+Framing controls how the whole avatar is placed and never moves with the head. The editor exposes:
 
 | Control | Effect |
 |---|---|
@@ -201,10 +208,10 @@ desktop can differ.
 └───────────────────────────────────────────────────────────────┘
 ```
 
-- **Panic button** ("hide face"): instantly replaces the decals with a neutral, non-live face and
-  mutes the virtual camera to a placeholder. For when something goes wrong on stream. Bound to a
-  global hotkey. This is a streamer-specific requirement that is easy to overlook and impossible to
-  add later convincingly.
+- **Panic button** ("hide face"): instantly blanks the output and mutes the virtual camera, with the
+  reason shown in the preview. For when something goes wrong on stream. Bound to a global hotkey.
+  This is a streamer-specific requirement that is easy to overlook and impossible to add later
+  convincingly. It blanks; it never substitutes a static face.
 - **Status is honest**: transport state, actual fps, dropped frames, tracking confidence. If the
   output is degraded, it says so in Live, not only in a log.
 - **No editing while live** except outfits and appearance, which are safe. Changing the avatar/model,
@@ -222,6 +229,7 @@ desktop can differ.
 | Section | Contents |
 |---|---|
 | Camera | Device, resolution/fps preference, format diagnostics, exposure/WB lock, mirror preview |
+| Matte | Auto / chroma / software / off, key colour, *Test matte*, similarity and softness |
 | Profiles | Active FaceProfile; New, Rename, Recalibrate, Delete |
 | Appearance | Environment preset, key-light azimuth/elevation/intensity, per-region colour |
 | Output | Transports, alpha mode, virtual camera install/uninstall, framing, mirror output, background |
@@ -243,8 +251,9 @@ Every one of these has designed copy, an icon, and a recovery action:
 | No camera | "No camera found" | Rescan, open settings |
 | Camera denied | "Camera access is blocked by Windows/macOS" | Deep-link to the OS privacy page |
 | Camera busy | "Another app is using this camera" | List likely apps, Retry |
-| Camera lost mid-stream | "Camera disconnected" | Auto-retry; output shows placeholder |
-| Face not visible | "Can't see your face" | Hint about lighting/position; output holds last pose |
+| Camera lost mid-stream | "Camera disconnected" | Auto-retry; output blanks |
+| Face not visible | "Can't see your face" | Hint about lighting/position; output blanks |
+| Eyes or mouth hidden | "Can't see your eyes and mouth" | Output is blank; remove sunglasses, face the camera |
 | Tracking degraded | "Face tracking is struggling" | Suggest lower resolution or brighter light |
 | GPU unsupported | "This graphics card isn't supported" | Explain Forward+/Vulkan/Metal requirement |
 | Renderer is Compatibility | "OpenGL renderer is not supported" | Explain and offer to switch |
@@ -256,6 +265,8 @@ Every one of these has designed copy, an icon, and a recovery action:
 | Library import failed | "Couldn't add this avatar" | Name the path and free space; Retry |
 | Face profile unreadable | "Your face profile couldn't be read" | Create a new profile; keep a `.bad` copy |
 | Model has no face-like region | "We couldn't find the face — place it yourself" | Opens calibration with the surface gizmo active |
+| Software matte unavailable | "Using a basic face mask" | Region mask only; explain that a green screen gives a cleaner edge |
+| Head region unchecked | "Check what turns with the head" | Opens the head-region gizmo |
 | Session locked | "Paused while your screen is locked" | Resume on unlock; capture stays off |
 | Second instance | "Avatar Studio is already running" | Activate the existing window |
 | Virtual camera needs Windows 11 | "This camera needs Windows 11" | Use OBS Virtual Camera; explain the fallback |

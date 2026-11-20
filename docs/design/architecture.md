@@ -165,10 +165,11 @@ per-frame uniforms for the compositor.
 ```cpp
 struct FaceRigOutput {
     uint64_t  source_timestamp_ns;
-    Transform3D head_from_camera;    // full pose; 1.0 applies rotation only (see framing)
+    Transform3D head_from_camera;    // full pose; 1.0 applies rotation only, to the head region
     Mat3      canonical_to_image;    // homography: face-plane UV -> camera image UV
     std::array<RegionAnchor, 3> regions;  // eye_l, eye_r, mouth (canonical-space offsets)
-    float     confidence;            // 0 = hold last good pose
+    float     confidence;            // 0 = invalid; the output gate blanks
+    bool      features_valid;        // both eyes and the mouth are tracked
 };
 
 class FaceRig {
@@ -205,18 +206,22 @@ One rendered frame, end to end:
    one are discarded, not queued.
 3. **FaceRig** runs at render rate. It picks the tracking result whose `source_timestamp_ns` is
    newest-but-not-after the render time, integrates the pose with a One Euro filter, and computes
-   the homography for *that* frame. If the newest result is stale (> `tracking_timeout`), it holds
-   the last pose and lowers `confidence`.
-4. **Render** draws the avatar with the rotation from `head_from_camera` applied to the root and a
-   fixed presentation transform (`view_from_head`, 180° yaw plus fit) placing it in the frame. Head
-   translation is measured but not applied in 1.0. The decal pass then samples the camera texture
-   ring at the index matching the tracking result's timestamp, using `canonical_to_image`. Pose and
-   pixels therefore come from the same instant — this is what stops the face from sliding across the
-   model during fast motion.
+   the homography for *that* frame. A stale result is held for at most 150 ms to bridge a dropped
+   frame; beyond that the frame is marked invalid and the output blanks. It never decays to a neutral
+   pose, because a neutral pose is still a face.
+4. **Render** draws the avatar with the head rotation applied to the head region only, inside a fixed
+   presentation transform (`view_from_model`, 180° yaw plus fit) that places the whole model. The body
+   stays still. Head translation is measured but not applied in 1.0. The decal pass then samples the
+   camera texture ring at the index matching the tracking result's timestamp, using
+   `canonical_to_image`, multiplied by the face matte. Pose and pixels therefore come from the same
+   instant — this is what stops the face from sliding across the model during fast motion.
 5. **Readback** is submitted asynchronously from the render thread
    (`RenderingDevice.texture_get_data_async`), with a completion callback keyed by instance ID so a
    freed viewport is safe.
-6. **Output** workers pop from a drop-oldest ring and push to transports. A slow consumer loses
+6. **Output gate** submits the composited frame only when `features_valid` is true; otherwise it
+   submits a blank frame. There is no path that samples the camera into the output outside the decal
+   mask.
+7. **Output** workers pop from a drop-oldest ring and push to transports. A slow consumer loses
    frames; it never delays the next render.
 
 **Why the timestamp pairing matters.** The naive implementation applies the newest pose to the
@@ -256,10 +261,16 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
 - **Resolution independence.** The avatar viewport resolution, the camera resolution and the output
   resolution are independent. Tracking runs on a downscaled copy (typically 480×480 or the model's
   input size); compositing samples the full-resolution camera texture.
-- **Framing.** Rotation-only in 1.0: the avatar turns with the head but stays fixed in frame. A
-  fixed presentation transform (180° yaw plus fit) places it; the camera is perspective at 35°
-  vertical FOV. Fit, zoom, offset and margin are per-avatar with Show overrides
-  ([`face-compositing.md`](face-compositing.md#framing-and-placement)).
+- **Head motion.** Rotation-only in 1.0, applied to the head region (a node or a neck cut) so the
+  body stays still. The whole model is placed by a fixed presentation transform (180° yaw plus fit);
+  the camera is perspective at 35° vertical FOV. Fit, zoom, offset and margin are per-avatar with
+  Show overrides ([`face-compositing.md`](face-compositing.md#head-motion-and-placement)).
+- **Output gate.** The output is the rendered avatar or a blank frame. No passthrough, no frozen
+  face, no camera fallback; the invariant is tested
+  ([`testing-and-quality.md`](testing-and-quality.md#output-invariant)).
+- **Face matte.** Chroma key when a green or blue screen is detected, otherwise a software
+  segmentation matte, applied only inside the decal mask
+  ([`face-compositing.md`](face-compositing.md#face-matte)).
 - **Frame pacing.** The output cadence is fixed (default 60 Hz) and independent of the preview
   window's refresh rate. `Engine.max_fps` is pinned to the output rate; vsync is enabled only when
   the display refresh is an integer multiple, otherwise a monotonic deadline scheduler paces the
@@ -323,9 +334,12 @@ floor on how fresh the pose can be.
 
 | Failure | Detection | Behaviour |
 |---|---|---|
-| Camera unplugged | Capture thread error + device list change | Hold last frame with a "camera lost" overlay on preview; auto-reconnect on device return |
+| Camera unplugged | Capture thread error + device list change | Output blanks; preview shows "camera lost"; auto-reconnect on device return |
 | Camera busy (another app) | Open failure | Clear message naming the likely owner; retry button |
-| Face lost | Confidence below threshold for N frames | Hold pose with a slow drift to neutral; face content freezes rather than jumps |
+| Face lost | Confidence below threshold beyond the 150 ms hold | Output blanks; preview shows the state. No drift to neutral, no frozen face (`TRK-002`) |
+| Eyes or mouth missing | `features_valid` false | Output blanks; the gate requires both eyes and the mouth (`TRK-008`) |
+| Software matte unavailable | Segmentation load failure | Region mask only; log once (`TRK-009`) |
+| Head region missing | Validation / calibration | Derive a default and warn; editing continues (`RIG-006`, `AVT-117`) |
 | Tracking slower than camera | Queue depth | Drop frames before inference; never accumulate |
 | Transport consumer disconnects | Backend reports zero consumers | Stop readback entirely; resume on connect (saves GPU bandwidth) |
 | Readback failure | RD error | Fall back to synchronous readback at reduced rate; log once |

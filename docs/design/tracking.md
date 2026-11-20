@@ -17,6 +17,7 @@ The rest of the system depends on exactly this:
 struct TrackingResult {
     uint64_t   source_timestamp_ns;   // timestamp of the frame that produced this result
     bool       valid;
+    bool       features_valid;        // eyes and mouth both tracked; gates the output
     float      confidence;            // 0..1, monotonic with trustworthiness
     HeadPose   pose;                  // rotation (quaternion) + translation, camera space
     LandmarkSet landmarks;            // 478 points, normalised image coords + relative depth
@@ -33,6 +34,10 @@ public:
     virtual void shutdown() = 0;
 };
 ```
+
+`valid` means a face is present. `features_valid` is stricter: the eye centres and mouth are present
+well enough to build the decal, and the output gate requires it. A head pose without eyes or mouth is
+still useful to the preview, but it must not put a face on screen.
 
 Properties the contract guarantees:
 
@@ -156,13 +161,13 @@ Raw landmarks and pose jitter at rest and lag under motion. The filter stack:
 | Translation smoothing | One Euro, higher cutoff | min cutoff 2.0 Hz |
 | Deadband | Ignore changes below a threshold at low speed to kill shimmer | 0.15° |
 | Prediction | Extrapolate pose to render time by `(t_render − t_source)`, clamped | max 50 ms |
-| Loss hold | Hold last pose, decay toward neutral over ~1.5 s, freeze decal content | timeout 250 ms |
+| Loss handling | Bridge a dropped frame for at most 150 ms, then mark invalid and blank the output. Never decay to neutral | timeout 150 ms |
 
 One Euro is chosen over a fixed low-pass because the artifact profile is asymmetric: at rest users
 notice jitter, in motion they notice lag. A fixed filter forces a single bad compromise.
 
 **Prediction is bounded on purpose.** Extrapolating a head turn through a 200 ms tracking gap
-produces overshoot that looks worse than a freeze. Clamp, then hold.
+produces overshoot that looks worse than a freeze. Clamp, then blank.
 
 ### Tracking rate vs render rate
 
@@ -175,14 +180,27 @@ Rendering runs at the output rate (60 Hz). Tracking runs at the camera rate (30 
 - Mitigation options, in order of cost: prefer 720p60 capture when available; accept it; warp the
   decal by the inter-frame landmark delta (deferred, complexity not justified yet).
 
+## Segmentation
+
+The software matte ([`face-compositing.md`](face-compositing.md#face-matte)) is an optional output of
+the same runtime where it exists: MediaPipe Selfie Segmentation at 256×256, one pass, CPU or GPU
+delegate. The provider returns a low-resolution mask aligned with the camera frame; the compositor
+upsamples it with a luma-guided filter. It is behind `ISegmentationProvider` so a backend without it
+still satisfies the tracking contract.
+
+Segmentation is best effort by design. It never blocks tracking, it uses the same source frame as the
+landmarks, and a slow mask is dropped rather than delayed. If the provider is absent or fails to
+load, `TRK-009` is logged once and the decal falls back to the region mask.
+
 ## Failure behaviour
 
 | Situation | Detection | Behaviour |
 |---|---|---|
-| No face in frame | Presence score below threshold | `valid = false`; rig holds last pose; UI shows a hint |
-| Face leaves and returns | Re-detection | Re-acquire without a pose jump: blend from held pose to new pose over 150 ms |
-| Tracking stalls | No result for > 250 ms | Hold, mark degraded, keep rendering at full rate |
-| Tracker crashes | C-ABI call returns error | Disable decals, keep the avatar rendering with a static face; surface a support code |
+| No face in frame | Presence score below threshold | `valid = false`; output blanks; UI shows a hint |
+| Face leaves and returns | Re-detection | Re-acquire without a pose jump: blend from the last pose over 150 ms. Output is blank during the gap |
+| Missing eyes or mouth | Landmark subset incomplete | `features_valid = false`; output blanks. Sunglasses, a hand, or a profile view is the usual cause |
+| Tracking stalls | No result for > 150 ms | Mark invalid; output blanks; keep rendering the preview |
+| Tracker crashes | C-ABI call returns error | Disable tracking; output blanks (never a static face); surface a support code |
 | Camera format change | Frame dimensions change | Reconfigure input; do not assume a fixed input size |
 | OS resume | Timestamp base changed | Reset the graph and timestamp base; re-acquire; never feed a stale timestamp |
 | Multiple faces | Second face appears | Ignore; keep tracking the current identity until loss |
