@@ -1,0 +1,113 @@
+# Avatar Studio — Design Documentation
+
+**Status:** proposal. No application code exists yet; every item in this document set is
+`Planned` unless explicitly marked otherwise.
+**Last updated:** 2026-11-20
+**Source brief:** [`../Start.md`](../Start.md) — an exported research conversation, untracked
+working material. It is the origin of this design, not a specification.
+
+Avatar Studio is a desktop application that turns a rigid 3D model into a live avatar whose
+eyes and mouth are real webcam pixels, driven by head tracking. It targets Windows, macOS and
+Linux, runs fully offline, and is meant to be usable without Blender, without the Godot editor,
+and without OBS (though OBS is a first-class consumer).
+
+The defining technique is not a face rig: it is **webcam footage projected onto an ordinary
+static mesh, in a head-stable coordinate space**. That single decision drives most of the
+architecture in this document set.
+
+---
+
+## Document map
+
+| Document | Scope | Primary audience |
+|---|---|---|
+| [`product-overview.md`](product-overview.md) | Vision, users, scope, non-goals, success criteria, legal posture | everyone |
+| [`architecture.md`](architecture.md) | System structure, processes, threads, interfaces, build, distribution, risks | engineers |
+| [`face-compositing.md`](face-compositing.md) | The core rendering technique: face frame math, projection modes, shader design | rendering engineers |
+| [`tracking.md`](tracking.md) | Tracking backend contract, MediaPipe usage, filtering, failure handling | CV / systems engineers |
+| [`camera-capture.md`](camera-capture.md) | Capture abstraction, formats, timestamps, per-platform backends, permissions | systems engineers |
+| [`output-and-virtual-camera.md`](output-and-virtual-camera.md) | Render-once/distribute-many, OBS transports, OS virtual cameras, cross-process frames | systems engineers |
+| [`avatar-package-format.md`](avatar-package-format.md) | `.avatar` package, JSON schema, anchors, props, presets, versioning | tooling / content |
+| [`editor-ux.md`](editor-ux.md) | Screens, calibration flow, states, error surfaces, accessibility | product / UX |
+| [`security-privacy.md`](security-privacy.md) | Threat model, camera-data policy, package sanitisation, installer privileges | security reviewers |
+| [`testing-and-quality.md`](testing-and-quality.md) | Test pyramid, synthetic face source, golden frames, CI matrix, perf gates | QA / CI owners |
+| [`roadmap.md`](roadmap.md) | Milestones with exit criteria, open questions, risk register | leads |
+| [`adr/`](adr/README.md) | Architecture decision records | everyone |
+
+Read in this order: overview → architecture → face-compositing → roadmap. The rest are
+reference.
+
+---
+
+## Status vocabulary
+
+Used consistently in every document:
+
+| Status | Meaning |
+|---|---|
+| `Planned` | Designed here, not built |
+| `Prototype` | A throwaway spike exists or is scheduled in the current milestone |
+| `Implemented` | Shipping behaviour, covered by tests |
+| `Deferred` | Deliberately out of the current plan, with a documented re-entry condition |
+| `Rejected` | Considered and discarded; reason recorded in an ADR |
+
+Current reality: **everything is `Planned`.** A few items carry `Prototype` where a spike is
+already scheduled in a milestone. The only concrete prior art is the source conversation and the
+third-party projects reviewed in [`product-overview.md`](product-overview.md#prior-art-reviewed).
+
+---
+
+## Conventions used throughout
+
+- **Coordinate systems.** Right-handed, Y-up, forward is −Z (glTF convention). Avatar and world
+  units are metres. The canonical face space is normalised (inter-ocular distance = 1.0) and is
+  defined in [`face-compositing.md`](face-compositing.md#coordinate-spaces).
+- **Timestamps.** All timestamps are monotonic nanoseconds from a single process-wide
+  `FrameClock`. Wall-clock time is never used for synchronisation.
+- **Identifiers.** Stable IDs are lower_snake_case ASCII (`head_top`, `eye_l`). Package IDs are
+  UUIDv4.
+- **Colour.** Internal working space is linear; output is encoded to sRGB. Premultiplication is
+  explicit at every boundary (see [`architecture.md`](architecture.md#colour-and-alpha)).
+- **Units in JSON.** Metres and degrees. Quaternions are `[x, y, z, w]`. Both are stated in the
+  schema so that no field is ambiguous.
+
+---
+
+## Review of the source brief
+
+`../Start.md` is a research conversation, not an engineering document. It reaches the right
+headline conclusions but several of its load-bearing claims are stale, imprecise, or silently
+scope-limiting. This section records what was checked and what changed as a result. All checks
+were performed on 2026-11-20 against upstream documentation.
+
+| # | Claim in the brief | Finding | Design response |
+|---|---|---|---|
+| 1 | Godot 4.7.2 is current stable | Confirmed. 4.7.2 shipped 2026-08-18; 4.8 is in beta. | Pin 4.7.2; upgrade policy in [ADR-0001](adr/0001-engine-and-language.md) |
+| 2 | Godot has no webcam support on Windows, but does on macOS/Linux | Confirmed. `CameraServer` is implemented only on Linux, Android, macOS, iOS. | Still write native capture everywhere for timestamp/format control — [ADR-0002](adr/0002-native-camera-capture.md) |
+| 3 | MediaPipe C++ is "experimental" on Windows | Confirmed, and worse: Windows builds need MSYS2 + Bazel + a pinned OpenCV, and GPU inference is unavailable on Windows *and* macOS desktop. CPU-only inference must be assumed. | M0 validation gate, narrow C-ABI wrapper, replaceable tracker — [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md) |
+| 4 | Windows virtual camera = `MFCreateVirtualCamera` | Correct but understated: Windows 11 build 22000+, the media source is a COM server that must be registered in `HKLM` (administrator), packaged apps need the webcam capability, and it must not be called from the UI thread. | Installer design + cross-process frame transport — [ADR-0005](adr/0005-output-transports.md) |
+| 5 | macOS virtual camera = signed camera extension | Correct, and the extension runs as its own sandboxed process, communicating with the app over an app-group Mach service. App Store delivery is supported. | Cross-process transport, not an in-process sink |
+| 6 | Linux virtual camera = `v4l2loopback` | Outdated as the primary path. A PipeWire `Video/Source` node with `media.role=Camera` is user-space, needs no kernel module, no root, and is consumed by OBS's PipeWire camera source and by browsers that enable PipeWire camera support. | PipeWire primary, `v4l2loopback` fallback |
+| 7 | `SpectatorStreamExporter` is a good reference for OBS output | Confirmed: MIT, Godot 4.7, Spout2/Syphon/PipeWire, async readback with a drop-oldest ring. Also confirmed: all backends copy through the CPU (~500 MB/s at 1080p60) and it requires Forward+/Mobile (RenderingDevice). | Adopt its frame-queue design; treat zero-copy as research — [ADR-0005](adr/0005-output-transports.md) |
+| 8 | "≤70 ms median capture-to-preview latency" | Ambiguous and partly unachievable: consumer webcams add 30–60 ms of sensor/ISP latency before the app sees a frame. | Split into app-side and end-to-end budgets with explicit measurement definitions — [`architecture.md`](architecture.md#latency-budget) |
+| 9 | "We do not need a companion app" | True for capture. False for virtual cameras: on Windows the media source is loaded into *other* applications' processes, and on macOS the extension is a separate process. | Recorded as a correction; cross-process frame sharing is now a first-class subsystem |
+| 10 | Recreating the effect is legally fine; the character is not | Directionally right, but this is not a clearance opinion, and the trademark-application claim is unverified. | Written as policy, not legal advice — [ADR-0007](adr/0007-licensing-and-assets.md) |
+| 11 | Don't rewrite Godot's renderer; C++ for the rest | Sound. One refinement: the GDExtension boundary is expensive *per call*, not per byte, so the data plane must never round-trip through `Variant`. | Binding rules in [`architecture.md`](architecture.md#gdextension-binding-rules) |
+| 12 | "Any `.glb` works; no special mesh needed" | True for flat insets; overstated for surface projection, where occlusion, silhouette and decal placement all need per-model calibration. | Automatic placement is an assistant, never a guarantee — [`editor-ux.md`](editor-ux.md#face-calibration) |
+
+Two things the brief does not discuss at all, and which this design treats as first-class:
+**frame-content vs. pose synchronisation** (mismatched camera and tracking timestamps cause the
+face to "swim" across the model) and **packaging/privilege** (the two virtual-camera platforms
+require installer-level registration).
+
+---
+
+## What was deliberately left out of this proposal
+
+- **Full-body or rigged characters.** A rigged `.glb` loads and animates nothing: only the root
+  transform is driven. Rig-driven animation is not designed here.
+- **Audio, recording, and stream orchestration.** Out of scope; OBS owns that.
+- **Mobile and web targets.** Not planned.
+- **Cloud anything.** The product is offline by design.
+
+See [`product-overview.md`](product-overview.md#non-goals) for reasoning and re-entry conditions.

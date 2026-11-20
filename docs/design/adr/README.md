@@ -1,0 +1,49 @@
+# Architecture Decision Records
+
+Decisions that are expensive to reverse, recorded with their context so that a future maintainer can
+tell the difference between "we chose this" and "this happened".
+
+| ADR | Title | Status |
+|---|---|---|
+| [0001](0001-engine-and-language.md) | Godot 4.7 + C++20 GDExtension as the application platform | Proposed |
+| [0002](0002-native-camera-capture.md) | Native camera capture on all three platforms | Proposed |
+| [0003](0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | Proposed |
+| [0004](0004-face-decal-projection.md) | Face decals rendered on the model's own surface in canonical face space | Proposed |
+| [0005](0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | Proposed |
+| [0006](0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | Proposed |
+| [0007](0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | Proposed |
+
+Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
+and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.
+
+## Template
+
+```markdown
+# ADR-000N: Title
+
+- **Status:** Proposed
+- **Date:** YYYY-MM-DD
+- **Supersedes:** —
+- **Related:** docs/design/<doc>.md
+
+## Context
+What forces are at play. Include constraints and what was true at the time.
+
+## Decision
+One paragraph, present tense, unambiguous.
+
+## Alternatives considered
+Table: option, why not.
+
+## Consequences
+Positive / negative / neutral. Be honest about the cost.
+
+## Follow-ups
+What must be verified, and by when.
+```
+
+Rules:
+
+1. ADRs are immutable once accepted. Corrections are new ADRs that supersede them.
+2. An ADR that is not linked from a design document is probably not a real decision.
+3. "We'll decide later" is a valid ADR outcome only if it names the milestone that decides.

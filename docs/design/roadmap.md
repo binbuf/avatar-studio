@@ -1,0 +1,232 @@
+# Roadmap
+
+**Status:** proposal · **Last updated:** 2026-11-20
+
+Six milestones. Each has an exit criterion that is a measurement, not a feeling, and each retires a
+specific risk. The ordering is chosen so that the two things that could invalidate the whole design
+(tracker viability, face quality) are answered before any product surface is built.
+
+---
+
+## Sequence
+
+```
+M0 Feasibility ──▶ M1 Vertical slice ──▶ M2 Quality + editor ──▶ M3 OBS transports ──▶ M4 Virtual cameras ──▶ M5 Release
+   (can we?)          (does it work?)        (is it good?)            (does it reach OBS?)    (does it reach apps?)   (can we ship?)
+```
+
+M3 and M4 are independent and can run in parallel if there are two systems engineers. M2 is the
+long pole and the only milestone where schedule slip is expected.
+
+---
+
+## M0 — Feasibility spike
+
+**Question:** can the tracker and capture stack actually run on all three platforms at acceptable
+latency?
+
+**Deliverables**
+
+- MediaPipe Face Landmarker built as a shared library behind the five-function C ABI, on Windows
+  (MSVC), macOS (universal), Linux (x86-64).
+- Native capture on all three platforms producing timestamped frames.
+- A headless harness: frames in, `TrackingResult` out, latency histogram written as JSON.
+- Numbers on Reference and Minimum hardware, at 256² and 192² input.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| Inference p95 | ≤ 15 ms on Reference, ≤ 30 ms on Minimum |
+| Tracker runs 30 min without leak or drift | Required |
+| All three platforms build in CI from a clean checkout | Required |
+| Pose is stable enough to drive rotation without visible jitter | Subjective, recorded clip reviewed |
+
+**Retires:** the largest risk in the project. If M0 fails, [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md)
+is superseded by the ONNX Runtime fallback before any UI work begins. That is a planned pivot, not a
+crisis.
+
+**Explicitly not in M0:** rendering, UI, output.
+
+---
+
+## M1 — Vertical slice
+
+**Question:** does the core effect read as convincing at all?
+
+**Deliverables**
+
+- GLB import at runtime; one hard-coded avatar.
+- Face frame estimation (homography), pose application, `flat` decal mode.
+- Timestamp-paired camera ring.
+- 60 fps render into a `SubViewport`, preview window, window-capture output.
+- Synthetic face source and the first golden-image test.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| Face stays attached at ±20° yaw | Blind review of 3 clips, 5 reviewers, no "sliding" reports |
+| 1080p60 sustained | p99 frame time ≤ 16.6 ms on Reference |
+| App-side latency | p50 ≤ 70 ms |
+| Setup with a prepared model | ≤ 10 min with a developer present |
+
+**Retires:** "is the effect achievable with our math", "does timestamp pairing fix swimming".
+
+---
+
+## M2 — Quality and editor
+
+**Question:** is it good enough that a non-technical user can achieve the result alone?
+
+**Deliverables**
+
+- `surface` and `shaded surface` modes; region anchors; colour matching.
+- Full editor: face calibration gizmo, blink test, yaw sweep, props, anchors, appearance.
+- `.avatar` package load/save/validate/migrate; `FaceProfile`; outfits; shows.
+- Three CC0 example avatars (flat, spherical, high-curvature) with provenance manifests.
+- Golden images across the three archetypes and three lighting setups.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| New user, own model, unassisted | 5 of 5 participants live within 5 minutes |
+| Face quality at ±30° yaw | No "floating sticker" in blind A/B against a reference clip |
+| Colour mismatch | Reviewers cannot identify the face as a separate photograph in 4 of 5 scenes |
+| Package round-trip | 100 fixture packages load, save, reload identically |
+| No regression | All M1 criteria still met |
+
+**Retires:** "does it look right to someone who did not build it", "can users calibrate it".
+
+This is the milestone where the product either exists or does not. Schedule buffer belongs here.
+
+---
+
+## M3 — OBS transports
+
+**Question:** can a streamer actually put this over gameplay, with alpha?
+
+**Deliverables**
+
+- Spout2 (Windows), Syphon (macOS), PipeWire (Linux) backends behind `IVideoOutput`.
+- Async readback, per-transport drop-oldest queues, idle suppression.
+- Alpha modes + checkerboard/fringe test patterns.
+- Transport status in Live mode; consumer connect/disconnect handling.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| Alpha correct in OBS on all three platforms | No black halo or bright fringe on the test card |
+| Dropped frames | 0 over 10 minutes at 1080p60 |
+| Latency added by transport | ≤ 4 ms |
+| Idle cost with no consumer | GPU readback count = 0 |
+
+**Retires:** "can we deliver frames without a second render", "is CPU readback fast enough".
+
+**Non-goal in M3:** zero-copy GPU sharing. It is a research item with its own spike, and shipping it
+late must not block the milestone.
+
+---
+
+## M4 — Virtual cameras
+
+**Question:** can a user join a call with the avatar and no OBS?
+
+**Deliverables**
+
+- Windows: media source COM DLL, `HKLM` registration, shared-memory ring, sync object, no-signal
+  frame, installer integration, repair flow.
+- macOS: CMIOExtension target, app-group Mach service, XPC + `IOSurface` transport, install/approve
+  flow, removal action, notarisation.
+- Linux: PipeWire `Video/Source` node with `media.role=Camera`; `v4l2loopback` fallback.
+- Cross-process frame transport with a versioned shared-memory header.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| Visible and working in Discord, Zoom, Teams, Chrome | 4 of 4 on each platform |
+| Install → first frame | ≤ 60 s including OS approval |
+| Crash recovery | Device reappears or is repairable within one app restart |
+| Uninstall | No device, no files, no registry residue (Windows), extension removed (macOS) |
+| No-signal behaviour | Consumers show a placeholder, never hang or black-screen |
+
+**Retires:** "does the cross-process design hold", "can we survive two very different OS extension
+models".
+
+---
+
+## M5 — Release hardening
+
+**Question:** can we ship this to strangers?
+
+**Deliverables**
+
+- Signed installers/packages, notarised macOS build, reproducible CI.
+- Licence audit complete; `NOTICE` generated; asset manifests verified.
+- Security review against [`security-privacy.md`](security-privacy.md); fuzzing green for 14 days.
+- Docs: user guide, modelling guide, troubleshooting, privacy page.
+- Accessibility pass; i18n pipeline with one pseudo-locale.
+- Manual QA checklist executed on all three tiers.
+
+**Exit criteria**
+
+| Criterion | Threshold |
+|---|---|
+| Crash-free sessions | ≥ 99.5% over a 2-week beta |
+| S1/S2 bugs open | 0 |
+| Perf gates | All met on Reference, usable on Minimum |
+| Clean-machine install | Works with no dev tools, no Visual C++ redistributable prompts, no Python |
+
+---
+
+## Consolidated open questions
+
+Each is owned by a milestone and has a decision point. None may drift past its milestone.
+
+| # | Question | Owner | If wrong |
+|---|---|---|---|
+| Q1 | Is MediaPipe viable on all three platforms? | M0 | Supersede ADR-0003 with ONNX Runtime |
+| Q2 | Is planar face projection sufficient, or is cylinder unwrap needed for 1.0? | M1 | Ship both; extra editor control |
+| Q3 | Does timestamp pairing eliminate sliding in practice? | M1 | Revisit capture/tracking rate strategy |
+| Q4 | Can users calibrate without help? | M2 | More automation, fewer knobs |
+| Q5 | Is 30 Hz face content acceptable next to 60 Hz rotation? | M2 | Prefer 720p60 capture; consider landmark warp |
+| Q6 | Does colour matching work across skin tones and lighting? | M2 | Manual gain as primary, auto as suggestion |
+| Q7 | Is CPU readback fast enough on Minimum hardware? | M3 | Prioritise zero-copy spike |
+| Q8 | Is the OBS PipeWire camera source reliable across versions? | M3 | Document v4l2loopback as the Linux OBS path |
+| Q9 | Can Windows register the virtual camera without a reboot after a crash? | M4 | New CLSID per session, cleanup on start |
+| Q10 | Does the macOS extension survive app upgrades without re-approval? | M4 | Explicit re-approval flow in-app |
+| Q11 | Is `HKLM` COM registration avoidable via MSIX packaged COM? | M4 | Stay per-machine; document the prompt |
+
+---
+
+## Risk register (release view)
+
+| Risk | Trigger to act | Mitigation already in the design |
+|---|---|---|
+| Tracker not viable | M0 numbers miss by > 2× | C-ABI seam, ONNX fallback planned |
+| Face quality plateau | M2 blind review fails twice | Surface+shading modes, per-model calibration, modelling guide |
+| Perf on low-end GPUs | M3 gates fail on Minimum | Quality presets, 720p output, reduced tracking rate |
+| macOS approval friction | > 30% of beta users fail to install | In-app guided flow, detection + repair, docs |
+| Windows installer friction | > 20% abandon at admin prompt | Portable build without virtual camera; OBS fallback |
+| OS API churn | Any platform breaks in a point release | Integration tests per platform, nightly |
+| Scope creep | Any milestone adds a non-goal | Non-goals are explicit; changes require an ADR |
+
+---
+
+## Post-1.0 candidates
+
+Not scheduled; listed so that they are not smuggled into 1.0.
+
+1. Zero-copy GPU transport (per-platform spikes).
+2. Auto-update with signed deltas.
+3. Rigged characters / blendshape-driven expressions (the tracker already provides 52 coefficients).
+4. Fitted clothing.
+5. Multi-face / guest avatars.
+6. VRM import.
+7. HDR output.
+8. Community avatar library (would introduce the first network feature, and with it a review burden).
+
+Each requires a new ADR before work starts.
