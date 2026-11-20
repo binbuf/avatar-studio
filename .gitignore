@@ -1,2 +1,9 @@
 .DS_Store
 docs/Start.md
+
+# Model authoring workspace: only the exported .glb is tracked.
+# Keep generators and renders local; they are not part of the app.
+assets/models/**/*.blend
+assets/models/**/*.blend1
+assets/models/**/*.py
+assets/models/**/previews/
