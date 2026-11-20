@@ -22,10 +22,9 @@ Mixing these together is the usual reason avatar tools become unusable. They are
 
 A `Show` is what "go live" actually starts. It references an avatar by id and path, never embeds it.
 
-A fourth, separate concept:
-
-| **FaceProfile** | Landmark → canonical `(u,v)` mapping for a *person* | User config directory | Per user, reusable across avatars |
-| --- | --- | --- | --- |
+A fourth, separate concept is the **FaceProfile**: the landmark → canonical `(u,v)` mapping for a
+*person*. It lives in the user config directory, not in the package, and is reusable across avatars.
+Its schema, capture, and lifecycle are in [`user-data.md`](user-data.md#faceprofile).
 
 Keeping `FaceProfile` out of the package is what lets one user calibrate once and try every avatar,
 and lets an avatar be authored without knowing who will wear it.
@@ -47,6 +46,8 @@ Avocado.avatar/
 │   └── sunglasses.glb
 ├── outfits/
 │   └── default.json
+├── backgrounds/
+│   └── studio.png        # optional; package-relative background images
 └── preview/
     └── turntable.webp     # optional; store presentation
 ```
@@ -145,11 +146,14 @@ Rules:
     }
   ],
   "appearance": {
-    "material_overrides": [],
-    "environment": "studio_soft"
+    "environment": "studio_soft",
+    "key_light": { "azimuth_deg": 25.0, "elevation_deg": 30.0, "intensity": 1.0 },
+    "material_overrides": []
   },
   "output": {
     "resolution": [1920, 1080],
+    "framing": { "fit": "model", "zoom": 1.0, "offset": [0.0, 0.0], "margin": 0.10 },
+    "mirror_output": false,
     "background": { "type": "transparent" }
   },
   "meta": {
@@ -176,7 +180,7 @@ Rules:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `mode` | `"flat"` \| `"surface"` \| `"shaded"` | Which geometry carries the decal; see [`face-compositing.md`](face-compositing.md#projection-modes). Default `surface` |
+| `mode` | `"flat"` \| `"surface"` \| `"shaded"` | Which geometry carries the decal; `shaded` is the shaded-surface mode. See [`face-compositing.md`](face-compositing.md#projection-modes). Default `surface` |
 | `surface` | object | Head space → canonical face plane mapping (below) |
 | `regions` | array | Eye and mouth regions (below) |
 | `lighting_influence` | 0–1 | Fraction of the scene key light applied to the decal in `shaded` mode; default 0.35 |
@@ -218,16 +222,89 @@ Unknown anchor names are allowed (for custom rigs) but props attached to them ar
 **`props[]`** — `asset` must be inside `props/`. `default_enabled` is the state used when the
 avatar is first loaded; outfits override it.
 
-**`appearance`** — `environment` names a lighting environment shipped with the app (for example
-`studio_soft`). `material_overrides` is an array of per-material overrides applied at load; its
-entry schema is **not yet specified** and is finalised with the appearance system in M2.
+**`appearance`**
 
-**`output`** — `resolution` is the default `[width, height]`. `background` is specified only as
-`{"type": "transparent"}` in the example above; the opaque background variants required by
-virtual-camera and window output are **not yet enumerated** and must be added with the output work.
+| Field | Type | Meaning |
+|---|---|---|
+| `environment` | `"studio_soft"` \| `"neutral"` \| `"dramatic"` \| `"flat"` | Lighting preset; see [Appearance and lighting](#appearance-and-lighting) |
+| `key_light` | object | Optional overrides for the preset's key light: `azimuth_deg`, `elevation_deg`, `intensity` |
+| `material_overrides` | array | Per-material overrides applied at load; entry schema below |
+
+**`appearance.key_light`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `azimuth_deg` | −180–180 | Horizontal angle; 0 is the camera axis |
+| `elevation_deg` | −90–90 | Vertical angle; positive is above |
+| `intensity` | 0–2 | Multiplier on the preset's key intensity |
+
+**`output`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `resolution` | `[w, h]` | Default output resolution; a Show may override it |
+| `framing` | object | How the avatar is fitted into the frame; see below |
+| `mirror_output` | bool | Flip the final composited output horizontally. Default `false` |
+| `background` | object | Background for opaque outputs; see below |
+
+**`output.framing`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `fit` | `"model"` \| `"head"` | Fit the whole model, or a head region around the face plane. Default `model` |
+| `zoom` | number > 0 | Multiplier on the fitted camera distance; 1.0 is the computed fit |
+| `offset` | `[x, y]` | Nudge in fractions of the visible half-extent; positive x moves the avatar right |
+| `margin` | 0–0.5 | Padding around the fitted extent; default 0.10 |
+
+**`output.background`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `type` | `"transparent"` \| `"color"` \| `"image"` | Transparent is for OBS; opaque outputs use a colour or image, or black if left transparent |
+| `value` | `[r,g,b,a]` | Required for `color`; sRGB, 0–1 |
+| `path` | string | Required for `image`; package-relative and inside `backgrounds/` |
+
+An opaque output (virtual camera, window capture) cannot carry transparency. If the configured
+background is `transparent`, it is composited over black and the UI states this; choose `color` or
+`image` to control the result.
 
 **`meta`** — authoring metadata (`created`, `generator`). Informational only; never interpreted as
 behaviour.
+
+## Appearance and lighting
+
+Lighting is a preset plus a small override, not a light rig. That is enough to make the model and the
+live face read as one photograph without turning the editor into a renderer.
+
+| Preset | Key | Fill | Rim | Use |
+|---|---|---|---|---|
+| `studio_soft` | 30° azimuth, 35° elevation, 5600 K, 1.0 | 0.35 | 0.20 | Default; flattering, low contrast |
+| `neutral` | 0°, 25°, 6500 K, 0.9 | 0.45 | 0.10 | Colour-accurate; matches a neutral room |
+| `dramatic` | 45°, 20°, 4800 K, 1.2 | 0.15 | 0.35 | Strong key and rim; stylised characters |
+| `flat` | 0°, 45°, 6500 K, 0.7 | 0.60 | 0.05 | Minimal shading; debugging and flat art |
+
+`key_light` may override azimuth, elevation and intensity. Fill, rim and ambient are fixed per preset
+in 1.0. The key light direction and intensity are also passed to the face decal
+([`face-compositing.md`](face-compositing.md#colour-and-light-matching)); the face follows the same
+light as the model.
+
+**Material overrides** are deliberately narrow: no textures, no shaders, no material graphs.
+
+```json
+{
+  "material": "Body",
+  "albedo": [0.82, 0.55, 0.31, 1.0],
+  "metallic": 0.0,
+  "roughness": 0.75
+}
+```
+
+`material` must match a material name in the loaded GLB; an unknown name is a validation warning, not
+an error, because a model may be re-exported. Values are clamped to their valid ranges. Overrides are
+applied to the runtime scene and never written back into the GLB.
+
+The environment is a named preset rather than an HDRI. Shipping HDRIs would add tens of megabytes and
+a colour-management surface that 1.0 does not need.
 
 ---
 
@@ -296,13 +373,27 @@ A `Show` (user config, not in the package):
 ```json
 {
   "version": 1,
-  "avatar": { "id": "0f3a7c1e-…", "path": "…/Avocado.avatar" },
+  "id": "b1d0…",
+  "name": "Default",
+  "avatar": { "id": "0f3a7c1e-…", "path": "library/0f3a7c1e-…" },
   "outfit": "default",
+  "profile_id": "6a1e2f4c-…",
   "camera": { "device_id": "…", "width": 1280, "height": 720, "fps": 60 },
   "tracking": { "smoothing": 0.5, "mirror_preview": true },
-  "output": { "transports": ["spout"], "virtual_camera": true }
+  "framing": { "fit": "model", "zoom": 1.0, "offset": [0.0, 0.0], "margin": 0.10 },
+  "output": {
+    "resolution": [1920, 1080],
+    "mirror_output": false,
+    "transports": ["spout"],
+    "virtual_camera": true,
+    "background": { "type": "transparent" }
+  },
+  "quality": "balanced"
 }
 ```
+
+The full Show schema, library rules, and profile storage are in
+[`user-data.md`](user-data.md#shows-and-settings).
 
 ---
 
@@ -326,6 +417,9 @@ unknown-field policy.
 | Every prop asset parses and is inside `props/` | `AVT-107` |
 | `assets.json` covers every distributed binary file | `AVT-108` (warning) |
 | Package total ≤ 200 MB, single glb ≤ 100 MB | `AVT-109` |
+| `output.framing` valid: `zoom > 0`, `margin` 0–0.5, known `fit` | `AVT-113` |
+| Background type/path valid, inside `backgrounds/`, within decode limits | `AVT-114` |
+| Appearance preset known; key-light and material-override values in range | `AVT-115` |
 
 Errors are reported with the JSON path (`face.regions[1].size`) and a suggestion, because the
 alternative is a support ticket.
@@ -355,7 +449,7 @@ A package is untrusted input. The importer enforces:
 - No external URIs in glTF (no `http(s)://`, no `data:` buffers above 1 MB).
 - No symlinks, no `..`, no absolute paths, no NTFS alternate data streams.
 - No embedded scripts or HTML in metadata fields; strings are length-capped and rendered as text.
-- Texture dimensions capped (8k) and decoded with limits to avoid decompression bombs.
+- Texture and background images capped (8k) and decoded with limits to avoid decompression bombs.
 - glTF extensions: allow-listed. Unknown extensions are ignored with a warning, not passed to the
   loader.
 

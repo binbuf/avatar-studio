@@ -58,16 +58,19 @@ crisis.
 
 - GLB import at runtime; one hard-coded avatar.
 - Face frame estimation (homography), pose application, `flat` decal mode.
+- Rotation-only framing (model/head fit, zoom, offset) and the asymmetric-marker mirroring test.
 - Timestamp-paired camera ring.
 - 60 fps render into a `SubViewport`, preview window, window-capture output.
-- Synthetic face source and the first golden-image test.
+- Synthetic face source, the first golden-image test, and the first diagnostic codes.
 
 **Exit criteria**
 
 | Criterion | Threshold |
 |---|---|
 | Face stays attached at ±20° yaw | Blind review of 3 clips, 5 reviewers, no "sliding" reports |
+| Framing stable | Avatar stays inside the viewport across ±30° yaw, ±20° pitch/roll; no drift |
 | 1080p60 sustained | p99 frame time ≤ 16.6 ms on Reference |
+| Frame pacing | p99 interval ≤ 16.6 ms on 60/120/144 Hz displays, no bursts |
 | App-side latency | p50 ≤ 70 ms |
 | Setup with a prepared model | ≤ 10 min with a developer present |
 
@@ -82,10 +85,11 @@ crisis.
 **Deliverables**
 
 - `surface` and `shaded surface` modes; region anchors; colour matching.
-- Full editor: face calibration gizmo, blink test, yaw sweep, props, anchors, appearance.
-- `.avatar` package load/save/validate/migrate; `FaceProfile`; outfits; shows.
+- Full editor: face calibration gizmo, blink test, yaw sweep, framing, props, anchors, appearance.
+- `.avatar` package load/save/validate/migrate; named FaceProfiles; managed library; outfits; shows.
+- Four environment presets with key-light control; three quality presets.
 - Three CC0 example avatars (flat, spherical, high-curvature) with provenance manifests.
-- Golden images across the three archetypes and three lighting setups.
+- Golden images across the three archetypes, three lighting setups, and framing/mirroring cases.
 
 **Exit criteria**
 
@@ -94,6 +98,9 @@ crisis.
 | New user, own model, unassisted | 5 of 5 participants live within 5 minutes |
 | Face quality at ±30° yaw | No "floating sticker" in blind A/B against a reference clip |
 | Colour mismatch | Reviewers cannot identify the face as a separate photograph in 4 of 5 scenes |
+| Profile reuse | One profile, three avatars, no recalibration; quality unchanged |
+| Framing | No clipping or drift across model/head fit and zoom extremes |
+| Library | 20 imports, duplicate id, delete; originals untouched |
 | Package round-trip | 100 fixture packages load, save, reload identically |
 | No regression | All M1 criteria still met |
 
@@ -112,6 +119,8 @@ This is the milestone where the product either exists or does not. Schedule buff
 - Spout2 (Windows), Syphon (macOS), PipeWire (Linux) backends behind `IVideoOutput`.
 - Async readback, per-transport drop-oldest queues, idle suppression.
 - Alpha modes + checkerboard/fringe test patterns.
+- Transport access control: DACL, app-group entitlement, session nonce, versioned header.
+- OBS onboarding card and window-capture fallback.
 - Transport status in Live mode; consumer connect/disconnect handling.
 
 **Exit criteria**
@@ -141,7 +150,10 @@ late must not block the milestone.
 - macOS: CMIOExtension target, app-group Mach service, XPC + `IOSurface` transport, install/approve
   flow, removal action, notarisation.
 - Linux: PipeWire `Video/Source` node with `media.role=Camera`; `v4l2loopback` fallback.
-- Cross-process frame transport with a versioned shared-memory header.
+- Cross-process frame transport with a versioned shared-memory header and access control.
+- Single-instance lock and activation; a second instance cannot register the same device.
+- Installer manifest and uninstall-residue test.
+- Suspend/resume and session-lock handling.
 
 **Exit criteria**
 
@@ -150,6 +162,8 @@ late must not block the milestone.
 | Visible and working in Discord, Zoom, Teams, Chrome | 4 of 4 on each platform |
 | Install → first frame | ≤ 60 s including OS approval |
 | Crash recovery | Device reappears or is repairable within one app restart |
+| Second instance | Activates the running window; no device or ring conflict |
+| Suspend / lock | No-signal while suspended or locked; capture resumes on wake/unlock |
 | Uninstall | No device, no files, no registry residue (Windows), extension removed (macOS) |
 | No-signal behaviour | Consumers show a placeholder, never hang or black-screen |
 
@@ -166,10 +180,11 @@ models".
 
 - Signed installers/packages, notarised macOS build, reproducible CI.
 - Licence audit complete; `NOTICE` generated; asset manifests verified.
-- Security review against [`security-privacy.md`](security-privacy.md); fuzzing green for 14 days.
+- Security review against [`security-privacy.md`](security-privacy.md); fuzzing and sanitizers green
+  for 14 days.
 - Docs: user guide, modelling guide, troubleshooting, privacy page.
 - Accessibility pass; i18n pipeline with one pseudo-locale.
-- Manual QA checklist executed on all three tiers.
+- Manual QA checklist executed on all three tiers; Windows 10 best-effort smoke if hardware exists.
 
 **Exit criteria**
 
@@ -199,6 +214,10 @@ Each is owned by a milestone and has a decision point. None may drift past its m
 | Q9 | Can Windows register the virtual camera without a reboot after a crash? | M4 | New CLSID per session, cleanup on start |
 | Q10 | Does the macOS extension survive app upgrades without re-approval? | M4 | Explicit re-approval flow in-app |
 | Q11 | Is `HKLM` COM registration avoidable via MSIX packaged COM? | M4 | Stay per-machine; document the prompt |
+| Q12 | Does lens distortion visibly hurt the face at close range? | M2 | Accept and document; optional calibration post-1.0 |
+| Q13 | Is 60 Hz output pacing stable on 120/144 Hz displays? | M1 | Timer-paced output; accept preview tearing |
+| Q14 | Does the managed library stay responsive at 100+ avatars? | M2 | Rebuildable index plus lazy thumbnails |
+| Q15 | How much Windows 10 parity do we actually get without CI? | M5 | Best-effort policy; community reports |
 
 ---
 
@@ -212,6 +231,7 @@ Each is owned by a milestone and has a decision point. None may drift past its m
 | macOS approval friction | > 30% of beta users fail to install | In-app guided flow, detection + repair, docs |
 | Windows installer friction | > 20% abandon at admin prompt | Portable build without virtual camera; OBS fallback |
 | OS API churn | Any platform breaks in a point release | Integration tests per platform, nightly |
+| Windows 10 best-effort | A supported platform has no blocking coverage | Smoke test when hardware is available; community reports; document the policy |
 | Scope creep | Any milestone adds a non-goal | Non-goals are explicit; changes require an ADR |
 
 ---
@@ -228,5 +248,10 @@ Not scheduled; listed so that they are not smuggled into 1.0.
 6. VRM import.
 7. HDR output.
 8. Community avatar library (would introduce the first network feature, and with it a review burden).
+9. Full 6-DOF framing or a damped translation gain.
+10. Preloaded avatar switching while live.
+11. Optional per-camera lens distortion calibration.
+12. ARM64 Windows/Linux builds.
+13. Encrypted FaceProfile export/import.
 
 Each requires a new ADR before work starts.

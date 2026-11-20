@@ -43,6 +43,47 @@ Properties the contract guarantees:
   is what makes pose/pixel pairing possible.
 - Results are published atomically; a reader sees a complete result or the previous one.
 
+## Landmark map
+
+The rig never hard-codes backend indices. `LandmarkMap` is the named correspondence set: a stable
+anatomical name per point, resolved by the active backend adapter. A `FaceProfile` stores names and
+canonical `(u,v)`, so it survives a backend swap
+([`user-data.md`](user-data.md#faceprofile)).
+
+The correspondence set used for the homography excludes eyelids, inner lips and eyebrows because
+they move with expression:
+
+| Name | Anatomical point |
+|---|---|
+| `eye_outer_r`, `eye_inner_r` | Subject's right eye corners |
+| `eye_outer_l`, `eye_inner_l` | Subject's left eye corners |
+| `iris_center_r`, `iris_center_l` | Iris centres, when the backend provides them |
+| `nose_bridge`, `nose_tip` | Nose midline |
+| `nose_left`, `nose_right` | Nose alae |
+| `mouth_corner_r`, `mouth_corner_l` | Mouth corners |
+| `mouth_upper_center`, `mouth_lower_center` | Lip midline |
+| `chin` | Chin point |
+| `jaw_left`, `jaw_right` | Jaw at the widest stable point |
+| `temple_l`, `temple_r` | Temple |
+| `cheek_l`, `cheek_r` | Cheekbone |
+| `forehead_center` | Forehead midline |
+
+`_l`/`_r` are the subject's left and right, never the viewer's. The MediaPipe adapter maps each name
+to its pinned model index; the index table is backend data, not design. The M0 harness verifies the
+mapping with an asymmetric marker (a dot on the subject's right cheek) and fails if the names are
+swapped.
+
+Requirements:
+
+- Every name resolves to a distinct index, or the adapter reports it as unavailable.
+- The homography requires at least 8 inliers. A backend that provides fewer than 8 of these names is
+  unsupported for sampling; it may still drive rotation.
+- Unknown names are ignored. A profile missing names falls back to the available subset and raises
+  `RIG-003`.
+- Adding a name is additive: existing profiles lack it and the solver uses the subset.
+- The package's `landmark_anchor` values (`eye_l_centroid`, `eye_r_centroid`, `mouth_centroid`) are
+  computed from this set, never stored as indices.
+
 ## Why MediaPipe first
 
 MediaPipe Face Landmarker is the only maintained, permissively licensed option that provides all
@@ -93,6 +134,8 @@ Details that are easy to get wrong:
   range and the pose estimator loses the jaw.
 - **Run inference on a downscaled frame, sample pixels from the full-resolution frame.** Landmark
   precision at 256² is ample for a homography; the decal needs the full-resolution texture.
+- **No undistortion in 1.0.** Tracking and decal sampling use the same distorted frame; the
+  assumption and its limits are in [`face-compositing.md`](face-compositing.md#lens-distortion).
 - **One face.** `num_faces = 1`; the largest/closest face wins. Multi-face is deferred.
 
 ### Confidence
@@ -141,6 +184,7 @@ Rendering runs at the output rate (60 Hz). Tracking runs at the camera rate (30 
 | Tracking stalls | No result for > 250 ms | Hold, mark degraded, keep rendering at full rate |
 | Tracker crashes | C-ABI call returns error | Disable decals, keep the avatar rendering with a static face; surface a support code |
 | Camera format change | Frame dimensions change | Reconfigure input; do not assume a fixed input size |
+| OS resume | Timestamp base changed | Reset the graph and timestamp base; re-acquire; never feed a stale timestamp |
 | Multiple faces | Second face appears | Ignore; keep tracking the current identity until loss |
 
 Every transition is logged with a stable support code (`TRK-001` … ) so that user reports are
@@ -183,3 +227,4 @@ them, "the face feels laggy" is unactionable.
 | Does MediaPipe's Windows build survive MSVC + our C++20 code in the same process? | M0; the C-ABI isolation is designed for this |
 | Is the facial transformation matrix stable enough to drive rotation directly, or does it need the PnP/homography cross-check? | M1 A/B on recorded clips |
 | Do we need 60 Hz tracking for fast head turns, or is 30 Hz plus prediction sufficient? | M1 usability test |
+| Is the MediaPipe landmark index mapping stable across the pinned model versions? | M0 harness with an asymmetric marker; fail the build on drift |

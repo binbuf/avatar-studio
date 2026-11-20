@@ -22,6 +22,11 @@ All performance gates are defined on **Reference**. Minimum must be *usable* (30
 acceptable, tracking may drop to 15 Hz); low-end probe exists to catch regressions that make the app
 unusable, not to set targets.
 
+OS matrix: Windows 11 22H2+ is the only blocking Windows platform; Windows 10 22H2+ is best-effort
+and not in CI. macOS CI runs the current and previous major on a 13+ floor. Linux CI runs Ubuntu
+24.04 LTS and Fedora current, on X11 and Wayland. The policy is in
+[`architecture.md`](architecture.md#supported-platforms).
+
 ---
 
 ## Test pyramid
@@ -29,6 +34,7 @@ unusable, not to set targets.
 | Layer | What | Runs | Blocking |
 |---|---|---|---|
 | Unit | Homography, filters, schema/migration, ring buffers, config | Every commit, < 30 s | Yes |
+| Static analysis / sanitizers | clang-tidy, ASan/UBSan/TSan, warning policy | Every commit | Yes |
 | Component | Capture → ring → tracker → rig with synthetic input | Every commit, < 2 min | Yes |
 | Golden image | Rendered frames vs. stored references, perceptual diff | Every commit on one OS, all OS on release | Yes (threshold) |
 | Integration | Real transport ↔ real consumer on each OS | Nightly | Yes for release |
@@ -65,7 +71,11 @@ shows up as a numeric failure, not as "it looked weird".
 ## Golden-image tests
 
 - Reference scenes: three avatars (flat-faced, spherical, high-curvature), three camera motions
-  (still, yaw sweep, fast nod), two lighting setups.
+  (still, yaw sweep, fast nod), two lighting setups, and one asymmetric marker (a dot on the
+  subject's right cheek) to catch left/right and mirroring regressions.
+- Framing cases: model fit, head fit, zoom/offset extremes; assert the avatar stays inside the
+  viewport and the decal stays attached.
+- One barrel-distorted source, to quantify the accepted lens error.
 - Comparison: per-pixel with a perceptual metric (SSIM ≥ 0.995, plus a max-delta guard on the decal
   bounding box) rather than exact equality, because GPU rasterisation differs across vendors.
 - Failures attach the reference, the actual, and a difference image to the CI artifact.
@@ -82,6 +92,8 @@ wrong space, alpha premultiplied twice, colour space regression.
 |---|---|---|
 | App-side latency | Timestamp at capture callback, timestamp at transport submit, same frame | p50 ≤ 70 ms, p95 ≤ 100 ms |
 | Frame time | Render thread, 10-minute run | p99 ≤ 16.6 ms |
+| Frame interval jitter | Render timestamps, 10-minute run | p99 ≤ 16.6 ms, no burst > 2 frames |
+| Frame pacing across displays | Manual + scripted on 60/120/144 Hz | 60 fps output, no cumulative drift |
 | Dropped output frames | Transport counters | 0 per 10 min |
 | Dropped tracking frames | Tracker counters | ≤ 2% |
 | CPU usage | OS counters, idle vs live | ≤ 25% of one core at 1080p60 (excl. tracking), ≤ 60% incl. |
@@ -107,6 +119,11 @@ fails the nightly.
 | Alpha correctness (checkerboard) | ✔ | ✔ | ✔ (where supported) |
 | Install/uninstall leaves no residue | ✔ | ✔ | ✔ |
 | Crash → device recovers or repairs | ✔ | ✔ | n/a |
+| Library import/delete round-trip, original untouched | ✔ | ✔ | ✔ |
+| Profile create, migrate, corrupt fallback | ✔ | ✔ | ✔ |
+| Session lock stops capture and output | ✔ | ✔ | ✔ |
+| Second instance activates the first | ✔ | ✔ | ✔ |
+| Foreign process cannot open the shared-memory ring | ✔ | ✔ | n/a (PipeWire policy) |
 
 The "virtual camera → consumer" tests are the ones that catch integration rot in OS updates, which
 is the most common long-term maintenance failure for this class of app.
@@ -122,11 +139,34 @@ is the most common long-term maintenance failure for this class of app.
 | Native build (MediaPipe) | All three | Nightly + on tracker changes | Slowest job; cached aggressively |
 | Integration (transports) | All three | Nightly | Uses virtual devices; no physical camera |
 | Performance | Reference hardware (self-hosted) | Nightly | Not on shared cloud runners |
-| Fuzzing | Linux | Nightly | glTF + JSON loaders |
+| ASan + UBSan | Linux, macOS | Every push | Unit/component only; no GPU |
+| TSan | Linux | Every push | Ring buffers, tracking handoff, output queues |
+| Static analysis | Any | Every push | clang-tidy plus the warning policy |
+| Fuzzing | Linux | Nightly | glTF, JSON, shared-memory header, archive paths |
 | Licence audit | Any | Every push | Fails on manifest drift |
 
 A green build requires all blocking jobs. Performance and integration are blocking for release
 branches, advisory on feature branches (with a warning comment).
+
+---
+
+## Sanitizers, static analysis, and fuzzing
+
+The data plane is threaded C++ with a binary cross-process contract, so "it passed on my machine" is
+not enough.
+
+| Tool | Scope | Gate |
+|---|---|---|
+| ASan + UBSan | Unit and component tests on Linux/macOS | Every push; a finding is a release blocker |
+| TSan | Ring buffers, tracking handoff, output queues | Every push |
+| MSVC ASan | Windows unit tests | Nightly; advisory until the toolchain is stable |
+| clang-tidy | `native/` with a pinned config | Every push on changed files; new findings fail |
+| Warning policy | `-Wall -Wextra -Werror`, MSVC `/W4 /WX` | Every build |
+| libFuzzer | glTF importer, JSON loader, shared-memory header parser, archive path handling | Nightly, 30 min per target |
+
+The shared-memory header is a versioned binary interface shared with a process we do not control. It
+gets the same fuzzing treatment as a file parser, including truncated, oversized, and
+version-mismatched inputs. A crash there is a `VCAM-005`/`SEC-004` class bug, not a cosmetic one.
 
 ---
 
@@ -144,6 +184,12 @@ Quality is subjective; the checklist makes it comparable.
 8. **Every transport** on its platform, with alpha and without.
 9. **Accessibility pass**: keyboard-only, 200% UI scale, screen reader announces primary controls.
 10. **Uninstall**: no leftover device, no leftover files outside the documented list.
+11. **Framing**: model fit, head fit, zoom/offset extremes, mirror output; avatar never clips or drifts.
+12. **Profiles**: create two, switch, delete, corrupt one; no cross-contamination.
+13. **Library**: import, duplicate id, delete; the original is untouched.
+14. **Suspend and lock**: sleep/wake, lock/unlock, minimise/restore; capture stops on lock and resumes.
+15. **OBS onboarding**: plugin absent → setup card; window capture fallback works.
+16. **Windows 10 smoke** (if hardware is available): capture, preview, OBS output; no native camera.
 
 Results are recorded per build; a failing item is a release blocker unless explicitly waived with a
 written reason.
@@ -172,7 +218,7 @@ A feature is done when:
 1. It has unit or component tests covering its contract.
 2. It has at least one integration or golden test if it touches rendering or output.
 3. Its failure modes are implemented and have user-facing copy.
-4. It appears in the diagnostics/log output with a stable code.
+4. Its failure modes have registered codes in [`diagnostics.md`](diagnostics.md) and appear in the log.
 5. Its documentation in `docs/design/` reflects what was built, including deviations.
 6. It does not regress any performance gate.
 

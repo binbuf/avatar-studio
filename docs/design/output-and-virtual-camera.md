@@ -86,6 +86,12 @@ guessing. BGRA at the viewport size, one framerate, no ranges — this is the sh
 with OBS's camera source in practice. Advertising a format menu is how you get black frames and
 unhelpful bug reports.
 
+**OBS onboarding.** Spout2 on Windows is a third-party OBS plugin; Syphon is built into OBS; the
+PipeWire camera source is beta. The app cannot assume the plugin is installed. When a transport is
+enabled and no receiver connects within a few seconds, Live mode shows a setup card naming the
+plugin, the minimum version, a link, and a *Test connection* action. Window capture is always
+offered as the fallback.
+
 ## Virtual cameras
 
 ### Windows — Media Foundation virtual camera
@@ -168,6 +174,30 @@ camera is broken" reports. It applies to Windows and macOS, where the device out
 On Linux the PipeWire node is owned by the app and disappears when it exits, so there is nothing to
 keep alive; consumers see the device go away rather than a placeholder.
 
+### Transport security
+
+The frame path is a local attack surface, and the OS camera permission prompt does not cover it.
+
+| Platform | Control |
+|---|---|
+| Windows | The named shared-memory section is created with a DACL that grants the current user SID. Packaged consumers are the open question: their AppContainer SID is not known in advance, so M4 either grants `ALL APPLICATION PACKAGES` (same-user trust boundary, documented) or introduces a broker. A per-session nonce in the header rejects a stale producer; it is not a defense against a same-user process that can already open the section (T11). |
+| macOS | The Mach service and `IOSurface` live in the app-group container. Only processes signed by the same team and carrying the app-group entitlement can connect. The extension validates the app's code signature (`SecCodeCheckValidity` with the expected requirement) before accepting frames. |
+| Linux | The PipeWire node is owned by the user's session; PipeWire policy controls which clients may connect. No shared memory is used. |
+
+Threats and residual risk:
+
+- **Another local process reads the frames.** Same-user processes can already open a physical camera.
+  The DACL/entitlement keeps other users and sandboxed apps out; it does not defend against a
+  same-user process. This is documented in the privacy page rather than implied away.
+- **A foreign producer injects frames.** The session nonce rejects a stale producer, and the macOS
+  code-signature check rejects an unsigned one. On Windows, registering a competing media source
+  requires administrator; a same-user process with write access is the T11 residual risk.
+- **A stale consumer reads a recycled buffer.** The sequence number is published with release
+  semantics; the consumer copies a complete slot and never reads a slot being written.
+
+The shared-memory header is versioned and fuzzed
+([`testing-and-quality.md`](testing-and-quality.md#sanitizers-static-analysis-and-fuzzing)).
+
 ## Alpha policy
 
 | Consumer | Wants | Default we send |
@@ -185,8 +215,12 @@ black-on-white edges) so users can diagnose alpha problems in seconds instead of
 | Event | Behaviour |
 |---|---|
 | App start | Enumerate transports; do not register virtual cameras until the user enables output |
+| Second instance | Cannot register the same device; its virtual camera is disabled and the running instance is activated |
 | Enable virtual camera | Register device (Windows), install/activate extension (macOS), publish node (Linux) |
 | App exit | Unregister/withdraw device; flush queues |
+| OS suspend | Transports pause; device emits no-signal; queues and timestamps reset on wake |
+| Session lock | Capture and output stop; device emits no-signal; resume on unlock (`SEC-002`) |
+| App upgrade | macOS may require extension re-approval; detect and prompt, do not silently fail |
 | Crash | Windows/macOS: device may persist; next start detects and offers repair. Linux: node disappears with the process |
 | Consumer connects | Transport reports `wants_frames = true`; readback begins |
 | Consumer disconnects | Readback stops after a grace period (2 s) |

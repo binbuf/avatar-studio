@@ -12,6 +12,7 @@ tell the difference between "we chose this" and "this happened".
 | [0005](0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | Proposed |
 | [0006](0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | Proposed |
 | [0007](0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | Proposed |
+| [0008](0008-eigen-for-rig-math.md) | Eigen for native rig math | Proposed |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

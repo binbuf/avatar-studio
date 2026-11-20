@@ -21,6 +21,11 @@ control, or buffer access at the level the pipeline needs.
 | Exposure/WB lock where supported | Prevent mid-stream colour pops |
 | No dependency on a window or GPU context | Headless tests must work |
 
+**Lens distortion is not corrected in 1.0.** The pipeline assumes a pinhole camera and requires no
+intrinsics; tracking and decal sampling share the same uncorrected frame. The error and its limits
+are in [`face-compositing.md`](face-compositing.md#lens-distortion). Optional per-camera calibration
+is `Deferred`.
+
 ## Frame model
 
 ```cpp
@@ -178,6 +183,7 @@ Capture must be testable without hardware, so two synthetic sources are first-cl
 |---|---|---|
 | `TestPatternSource` | Colour bars, moving square, timestamp burn-in, alpha checkerboard | Fully deterministic |
 | `SyntheticFaceSource` | A rendered face that translates/rotates on a scripted path, with a known ground-truth pose | Fully deterministic |
+| `SyntheticFaceSource` (distorted) | The same face with a synthetic barrel distortion, to quantify the accepted lens error | Fully deterministic |
 | `ReplaySource` | Recorded `.y4m`/`.mkv` clip with a sidecar pose track | Frame-exact |
 
 `SyntheticFaceSource` is what makes CI possible: it feeds the real tracker (or the scripted tracker)
@@ -194,6 +200,8 @@ of a camera.
 | Format rejected | Step down the preference list, log the actual negotiated mode, inform the UI |
 | Frames stop without error (stalled device) | Watchdog at 2× expected interval → restart the stream once, then report |
 | Timestamps go backwards | Reset the ring, log once, re-map to arrival time |
+| OS suspend / resume | Stop the stream; reset ring and timestamp base; reopen the previous device; report if it is gone |
+| Session locked | Stop capture entirely; resume on unlock (privacy, `SEC-002`) |
 
 ## Performance targets
 

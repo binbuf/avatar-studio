@@ -80,6 +80,13 @@ Two properties matter more than the boxes:
 | Rig thread (or main) | Filtering, pose integration, anchor smoothing | Fixed-rate, cheap; may run on the main thread at 60 Hz |
 | Output worker (1 per transport) | Readback consumption, conversion, transport push | Bounded queue, drop-oldest, never back-pressures the render thread |
 
+**Single instance.** The application takes a per-user named lock at startup (named mutex on Windows,
+a lock file on macOS/Linux). A second launch forwards an `activate` message, optionally with an
+avatar or show path, to the running instance and exits. `--new-instance` is a testing escape hatch:
+a second instance uses a distinct shared-memory name and cannot register the same virtual camera, so
+it runs with the virtual camera disabled. Two instances competing for one camera produce the normal
+`CAP-002` busy state, not a crash.
+
 Synchronisation primitives:
 
 - **Latest-value slots** for pose and tracking results. Losing an intermediate pose is correct;
@@ -158,7 +165,7 @@ per-frame uniforms for the compositor.
 ```cpp
 struct FaceRigOutput {
     uint64_t  source_timestamp_ns;
-    Transform3D head_from_camera;    // avatar root transform
+    Transform3D head_from_camera;    // full pose; 1.0 applies rotation only (see framing)
     Mat3      canonical_to_image;    // homography: face-plane UV -> camera image UV
     std::array<RegionAnchor, 3> regions;  // eye_l, eye_r, mouth (canonical-space offsets)
     float     confidence;            // 0 = hold last good pose
@@ -200,10 +207,12 @@ One rendered frame, end to end:
    newest-but-not-after the render time, integrates the pose with a One Euro filter, and computes
    the homography for *that* frame. If the newest result is stale (> `tracking_timeout`), it holds
    the last pose and lowers `confidence`.
-4. **Render** draws the avatar with `head_from_camera` applied to the root, then the decal pass
-   samples the camera texture ring at the index matching the tracking result's timestamp, using
-   `canonical_to_image`. Pose and pixels therefore come from the same instant — this is what stops
-   the face from sliding across the model during fast motion.
+4. **Render** draws the avatar with the rotation from `head_from_camera` applied to the root and a
+   fixed presentation transform (`view_from_head`, 180° yaw plus fit) placing it in the frame. Head
+   translation is measured but not applied in 1.0. The decal pass then samples the camera texture
+   ring at the index matching the tracking result's timestamp, using `canonical_to_image`. Pose and
+   pixels therefore come from the same instant — this is what stops the face from sliding across the
+   model during fast motion.
 5. **Readback** is submitted asynchronously from the render thread
    (`RenderingDevice.texture_get_data_async`), with a completion callback keyed by instance ID so a
    freed viewport is safe.
@@ -247,6 +256,20 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
 - **Resolution independence.** The avatar viewport resolution, the camera resolution and the output
   resolution are independent. Tracking runs on a downscaled copy (typically 480×480 or the model's
   input size); compositing samples the full-resolution camera texture.
+- **Framing.** Rotation-only in 1.0: the avatar turns with the head but stays fixed in frame. A
+  fixed presentation transform (180° yaw plus fit) places it; the camera is perspective at 35°
+  vertical FOV. Fit, zoom, offset and margin are per-avatar with Show overrides
+  ([`face-compositing.md`](face-compositing.md#framing-and-placement)).
+- **Frame pacing.** The output cadence is fixed (default 60 Hz) and independent of the preview
+  window's refresh rate. `Engine.max_fps` is pinned to the output rate; vsync is enabled only when
+  the display refresh is an integer multiple, otherwise a monotonic deadline scheduler paces the
+  output and the preview may tear. A late frame is dropped, never doubled. Rendering continues while
+  a consumer is connected even if the window is hidden; Godot's low-processor mode and macOS App Nap
+  are disabled while live. The exact engine knobs are validated in M1; the requirement is the
+  cadence, not the mechanism.
+- **Lighting.** Four environment presets plus key-light overrides
+  ([`avatar-package-format.md`](avatar-package-format.md#appearance-and-lighting)). The same key
+  direction and intensity feed the decal's diffuse term, so model and face are lit together.
 
 ### Colour and alpha
 
@@ -308,10 +331,18 @@ floor on how fresh the pose can be.
 | Readback failure | RD error | Fall back to synchronous readback at reduced rate; log once |
 | GPU device lost | Renderer error | Suspend output, rebuild viewport, resume; if repeated, disable decals and continue |
 | Virtual camera still registered after crash | Startup check | Offer "repair camera registration"; unregister on clean exit always |
-| Disk full while saving preset | Write error | Atomic write to temp + rename; never leave a half-written package |
+| OS suspend / resume | Session and device notifications | Reset the frame ring, tracker timestamp base and output queues; reopen the camera; re-register the virtual camera if needed; consumers see no-signal meanwhile |
+| Session locked | OS session notification | Stop capture and output, emit no-signal, resume on unlock (`SEC-002`). A locked screen must not keep a live camera feed |
+| Window hidden or occluded | Window state + consumer state | Keep rendering while a consumer is connected; disable low-processor/App Nap. With no consumer, throttle and keep capture alive |
+| Second instance launched | Named lock held | Forward `activate` and exit; never contend for the camera or virtual camera |
+| Settings, profile, or library index corrupt | Parse/validation | Rebuild from defaults, backup, or directory; keep a `.bad` copy (`CFG-001`, `CFG-005`) |
+| Library import copy fails | I/O error | Remove `.incoming-*`; report the path and free space (`AVT-110`) |
+| Diagnostics export fails | I/O error | Keep the bundle local; name the path (`SEC-003`) |
+| Disk full while saving preset | Write error | Atomic write to temp + rename; never leave a half-written package (`CFG-002`) |
 
-Every failure above has a user-visible string and a support-code in the log. Silent degradation is
-a defect.
+Every failure above has a user-visible string and a support code in the log. The registry is
+[`diagnostics.md`](diagnostics.md); codes are stable and never reused. Silent degradation is a
+defect.
 
 ## Repository layout
 
@@ -324,7 +355,7 @@ avatar-studio/
 │   ├── shaders/               # face_decal_*.gdshader, yuv_convert.gdshader
 │   └── assets/
 ├── native/
-│   ├── core/                  # frame types, clock, ring buffers, logging, config
+│   ├── core/                  # frame types, clock, ring buffers, logging, diagnostics, config
 │   ├── capture/               # windows/ macos/ linux/ + test_pattern/
 │   ├── tracking/              # itracking_backend.h, mediapipe/ (C-ABI wrapper)
 │   ├── rig/                   # pose filter, face frame, homography, calibration
@@ -347,11 +378,37 @@ avatar-studio/
 The `platform/*/vcam` directories are the only components that may run outside the main process.
 They are small, separately versioned, and communicate through a documented shared-memory contract.
 
+## User data
+
+The managed library, FaceProfiles, shows, settings, and logs live outside the repository and outside
+the `.avatar` package. The layout, permissions, migration, and deletion rules are in
+[`user-data.md`](user-data.md). The app never writes into its install directory and never modifies
+the original source package; edits go to the managed library copy or to a package the user
+explicitly saves. Every write uses an atomic replace.
+
 ## Build and distribution
+
+### Supported platforms
+
+| Platform | Support | Blocking QA | Native virtual camera |
+|---|---|---|---|
+| Windows 11 22H2+ (build 22621+) | Yes | Yes | Yes (build 22000+) |
+| Windows 10 22H2+ | Best-effort | No | No; OBS Virtual Camera fallback |
+| macOS 13+ (Intel, Apple Silicon) | Yes | Current + previous major | Yes (system extension) |
+| Linux x86-64, glibc 2.35+, PipeWire 0.3.50+ | Yes | Ubuntu 24.04 LTS, Fedora current | Yes (PipeWire node); `v4l2loopback` fallback |
+
+Windows 10 is supported for capture, preview, window capture and OBS output. It is not in the
+blocking matrix: Windows 11 is the only Windows platform in CI and manual QA, and a Windows 10 bug
+that cannot be reproduced there may be closed as best-effort. This is an explicit policy, not a claim
+of parity. macOS 13 is the floor; blocking QA runs the current and previous major, and older versions
+are best-effort. Linux is tested on the current Ubuntu LTS and Fedora; other distributions are
+best-effort. No 32-bit, ARM64 Windows/Linux, mobile, or web targets in 1.0; ARM64 is post-1.0.
+
+### Toolchain and artifacts
 
 | Platform | Toolchain | Artifact |
 |---|---|---|
-| Windows 10/11 x64 | MSVC 2022 + CMake + Ninja; MediaPipe via Bazel | Signed installer (MSI or EXE), per-machine for virtual-camera registration |
+| Windows 11 x64 (Windows 10 best-effort) | MSVC 2022 + CMake + Ninja; MediaPipe via Bazel | Signed per-machine MSI; portable ZIP without the virtual camera |
 | macOS 13+ universal | Xcode + CMake; Bazel for MediaPipe | Signed, notarised `.app` bundle containing the CMIOExtension; DMG |
 | Linux x86_64 | GCC/Clang + CMake; Bazel for MediaPipe | AppImage + DEB/RPM; PipeWire node needs no privileges |
 
@@ -365,8 +422,56 @@ Build rules:
   tracker changes.
 - **godot-cpp is pinned to the engine version** (4.7 at time of writing) and upgraded only together
   with the engine.
+- **Eigen is confined to `native/rig`** ([ADR-0008](adr/0008-eigen-for-rig-math.md)). It is
+  header-only, pinned, uses double precision for estimation, and never appears in the GDExtension
+  boundary or the tracker C ABI.
 - **Dependency licenses are audited at build time.** A CI step fails the build if a new dependency
   appears without an entry in the manifest.
+
+### Install and uninstall contract
+
+The installer's application-specific writes are exactly this; standard OS bookkeeping (MSI installer
+keys, quarantine attributes) is not listed. The list is the contract QA snapshots before install and
+after uninstall ([`testing-and-quality.md`](testing-and-quality.md#manual-qa-checklist-per-release)).
+
+**Windows (per-machine MSI):**
+
+| Path or key | Content |
+|---|---|
+| `%ProgramFiles%\Avatar Studio\` | `AvatarStudio.exe`, GDExtension and tracker DLLs, models, examples, `LICENSE`, `NOTICE` |
+| `%ProgramFiles%\Avatar Studio\vcam\AvatarStudioVCam.dll` | Signed Media Foundation media source (COM) |
+| `HKLM\SOFTWARE\Classes\CLSID\{GUID}\InprocServer32` | Media source path, `ThreadingModel=Both` |
+| `HKLM\SOFTWARE\Classes\CLSID\{GUID}` | Friendly name `Avatar Studio Camera` |
+| Frame-server store | Virtual camera registration through `MFCreateVirtualCamera` |
+| `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{GUID}` | MSI uninstall entry |
+| Start Menu | Shortcut |
+| — | No service, no driver, no firewall rule, no per-user COM registration |
+
+**macOS:**
+
+| Path | Content |
+|---|---|
+| `/Applications/Avatar Studio.app` | App, GDExtension, tracker, models, examples |
+| `Contents/Library/SystemExtensions/<bundle>` | CMIOExtension |
+| App group `group.<team>.avatarstudio` | Shared container for the ring/IOSurface |
+| `~/Library/Application Support/AvatarStudio/` | User data |
+| `~/Library/Logs/AvatarStudio/` | Logs |
+| — | No LaunchAgent, no LaunchDaemon, no kernel extension |
+
+**Linux:**
+
+| Path | Content |
+|---|---|
+| `/opt/avatar-studio/` | App, libraries, models, examples |
+| `/usr/bin/avatar-studio` | Symlink |
+| `/usr/share/applications/avatar-studio.desktop` | Desktop entry |
+| `/usr/share/icons/hicolor/…` | Icons |
+| `/usr/share/doc/avatar-studio/` | `LICENSE`, `NOTICE` |
+| — | No service, no udev rule, no kernel module; `v4l2loopback` is optional and user-installed |
+
+Uninstall removes exactly these entries. User data is left in place unless the Windows installer's
+*Remove user data* checkbox is selected. The app is fully functional without the virtual-camera
+component; a portable ZIP/AppImage omits it entirely.
 
 ## Extensibility
 
@@ -392,6 +497,7 @@ If a seam has only one implementation, it is not an abstraction, it is indirecti
 | macOS extension approval friction | Users see a blocked extension | Certain | In-app install flow, clear System Settings instructions, detection + repair | M4 |
 | Face looks wrong on curved or extreme geometry | Quality failure on some models | Medium | Surface-projection mode with per-model calibration; documented modelling guidance | M2 |
 | Colour mismatch between face and model | Uncanny, low quality | High without care | Linear pipeline, per-region gain, calibration step, reference test scenes | M2 |
+| Windows 10 is supported but not in CI | Regressions reach a supported platform unnoticed | Best-effort policy; community reports; no blocking gate; Windows 11 is the reference | continuous |
 | Scope creep into a general 3D editor | Schedule | High | Non-goals are explicit; editor edits configuration only | continuous |
 
 ## Verification notes

@@ -14,12 +14,16 @@ transmitted unless the user explicitly asks for it.**
 |---|---|---|---|
 | Camera frames | RAM only (frame ring, GPU textures) | Milliseconds | No |
 | Tracking results (landmarks, pose) | RAM only | Milliseconds | No |
-| Avatar packages | User-chosen folder | Until deleted | Only if the user shares the file |
-| FaceProfile (landmark template) | User config dir | Until deleted | No |
-| Shows, outfits, settings | User config dir | Until deleted | No |
-| Logs | User config dir, rotated | 7 days | Only in opt-in diagnostics |
+| Avatar packages | Managed copy in the user data dir; originals stay where the user chose | Until deleted | Only if the user shares the file |
+| FaceProfile (biometric landmark template) | User data dir, user-only permissions | Until deleted | No |
+| Shows, outfits, settings | User data dir | Until deleted | No |
+| Library index, thumbnails | User data dir | Rebuildable | No |
+| Logs | User data dir, rotated | 7 days | Only in opt-in diagnostics |
 | Crash reports | Not sent by default | — | Only with explicit opt-in, redacted |
 | Debug recordings | User-chosen folder | Until deleted | No |
+
+The storage layout, per-platform paths, permissions, and deletion rules are in
+[`user-data.md`](user-data.md).
 
 No account, no cloud, no analytics SDK, no ad SDK, no third-party network calls in the default path.
 This is checkable: the release build's CI asserts that no unexpected network-capable dependency is
@@ -44,9 +48,14 @@ package (high), local privilege via the installer (medium), and metadata leakage
 | T8 | Supply-chain compromise of the tracker or transport libraries | Upstream compromise | Pinned versions, hash-pinned model files, reproducible builds where possible, dependency review at upgrade time |
 | T9 | Denial of service via a hostile package | 500k-triangle model, 16k textures, cyclic node graph | Hard limits at import (triangles, texture size, node count, total size); loader timeout |
 | T10 | Screen-share leakage of the user's real face | Preview shows the raw camera feed in calibration mode | Raw-feed overlay is opt-in, off by default, and never shown in Live mode |
+| T11 | Another local process reads the virtual-camera frames | Named shared memory (Windows), Mach service + `IOSurface` (macOS), PipeWire node (Linux) | Per-user DACL on Windows (packaged-consumer caveat in the output doc); app-group entitlement plus code-signature validation on macOS; PipeWire session policy on Linux. Residual risk: a same-user process can read the frames, exactly as it can open a physical camera; documented, not hidden |
+| T12 | FaceProfile leakage | World-readable file, backup/sync tool, diagnostics bundle | User-only permissions; never logged, exported, or included in diagnostics; explicit delete action; no cloud path |
+| T13 | Camera keeps running while the screen is locked | Session lock leaves the app live | Stop capture and output on lock; emit no-signal; resume on unlock (`SEC-002`) |
+| T14 | A foreign process injects frames into the virtual camera | Fake producer writing to the ring | Per-session nonce plus producer signature check; Windows requires administrator to register a competing media source |
 
 Explicit non-threats: a local attacker with debugger access, physical access to the machine, and
-malicious GPU drivers are out of scope.
+malicious GPU drivers are out of scope. A same-user process reading the camera is outside the
+sandbox model on all three platforms and is stated as such in the privacy page.
 
 ---
 
@@ -97,7 +106,9 @@ process* (never linked) with legal sign-off, recorded in an ADR.
 | Linux | `v4l2loopback` module (fallback only) | `pkexec` prompt with explanation; the default PipeWire path needs no privileges at all |
 
 The app never asks for administrator rights to *run*. Elevation is confined to installation of an
-optional output device, and the app is fully functional without it.
+optional output device, and the app is fully functional without it. The exact files, registry keys,
+and services written by each installer are in
+[`architecture.md`](architecture.md#install-and-uninstall-contract).
 
 ---
 
@@ -118,8 +129,8 @@ If a future feature needs the network, it must be off by default and documented 
 ## Logging and diagnostics
 
 - Log levels: error/warn/info/debug. Debug is off in release unless the user enables it.
-- Never logged: frame data, landmark coordinates, file contents, window titles of other apps, IP
-  addresses.
+- Never logged: frame data, landmark coordinates, FaceProfile contents, file contents, window titles
+  of other apps, IP addresses.
 - Always logged: app/engine/tracker versions, OS build, GPU and driver, camera device name and
   negotiated format, transport states, error codes, timing histograms.
 - Diagnostics export is a single archive the user can inspect before sending. It contains logs,
@@ -151,7 +162,9 @@ These become the privacy page in-app and the README section:
 2. Nothing is recorded unless you press record.
 3. No account, no analytics, no ads.
 4. Diagnostics are opt-in and never include images.
-5. You can delete everything the app stores from Settings → Privacy.
+5. Your face profile stays on this machine and can be deleted at any time.
+6. Capture stops when your screen is locked.
+7. You can delete everything the app stores from Settings → Privacy.
 
 ---
 
@@ -171,3 +184,5 @@ These become the privacy page in-app and the README section:
 | Does the macOS extension need its own privacy manifest (`PrivacyInfo.xcprivacy`)? | Confirm against current App Store requirements before M4 |
 | Can we detect another app recording the virtual camera, to warn the user? | OS-dependent; likely no. Document the limitation instead |
 | Is per-user COM registration viable via MSIX packaged COM, avoiding `HKLM`? | M4 spike; would materially improve install UX |
+| Can the Windows DACL be scoped to the app's package SID for packaged consumers? | M4 test with an AppContainer consumer; if not, document the limitation |
+| Does the macOS code-signature check add measurable latency to the first frame? | M4 measurement; cache the validation result per connection |

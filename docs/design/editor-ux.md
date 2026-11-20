@@ -59,11 +59,15 @@ Four top-level modes, no nested navigation:
    No permission prompt at launch before the user knows why.
 2. Camera check: live thumbnail, device picker, "no camera found" path with a fix link.
 3. Pick a bundled avatar (three CC0 examples) or **Import .glb**.
-4. Auto-calibration runs; the user is asked to look at the camera and blink once (used to verify
-   the eye regions actually land on their eyes).
-5. **"Looks right?"** with two buttons: *Yes, go live* and *Adjust*. The adjust path is the
+4. **Face profile.** A neutral capture runs: face the camera, eyes open, mouth closed. The app
+   averages 15 frames and rejects tilt, blink, or low confidence
+   ([`user-data.md`](user-data.md#capture)). The profile is named `Default` and can be renamed
+   later.
+5. **Avatar calibration** runs; the user is asked to look at the camera and blink once (used to
+   verify the eye regions actually land on their eyes).
+6. **"Looks right?"** with two buttons: *Yes, go live* and *Adjust*. The adjust path is the
    calibration gizmo, not a settings tree.
-6. FaceProfile is saved for reuse; the user never has to do this again unless their camera or
+7. The profile is saved for reuse; the user never has to do this again unless their appearance or
    lighting changes drastically.
 
 Total target: under five minutes, with the user's own model. Measured, not assumed
@@ -76,13 +80,17 @@ Total target: under five minutes, with the user's own model. Measured, not assum
 The single most important flow. Three entry points: first run, "Face" inspector panel, and a warning
 banner when confidence is low or the face visibly floats.
 
+**Profiles.** The active `FaceProfile` is per person, not per avatar. Settings → Profiles lists them,
+with *New*, *Rename*, *Recalibrate*, and *Delete*. Switching is explicit; the app never guesses who is
+in front of the camera. The first-run profile is created automatically.
+
 ### Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Live preview (mirrored)             │  Face                  │
 │                                      │  ─────                 │
-│   ┌──────────┐                       │  Surface  ○ Plane ● Cylinder
+│   ┌──────────┐                       │  Surface  ● Plane ○ Cylinder
 │   │  ◯   ◯   │  ← draggable regions  │  Width    ─────●─────  0.09 m
 │   │    ▭     │                       │  Height   ────●──────  0.11 m
 │   └──────────┘                       │  Depth    ───●───────  0.02 m
@@ -125,6 +133,38 @@ per-session and does not survive a save.
 
 ---
 
+## Framing
+
+Framing is rotation-only in 1.0: the avatar turns with the head but does not move in the frame. The
+editor exposes:
+
+| Control | Effect |
+|---|---|
+| Fit | `Model` (whole model) or `Head` (face-centred, for full-body models) |
+| Zoom | 0.5–2.0; 1.0 is the computed fit |
+| Offset | Drag or two sliders; fractions of the visible half-extent |
+| Margin | 0–0.5 padding around the fitted extent |
+| Mirror preview | Display-only; on by default |
+| Mirror output | Flips the final frame, including props; off by default, warns |
+
+A bounds overlay shows the model's AABB and the camera frustum while framing. Leaning does not move
+the avatar; a translation gain is `Deferred`. The `Show` may override the package's framing.
+
+### Quality presets
+
+| Preset | Output | Tracking | Rendering |
+|---|---|---|---|
+| Quality | 1080p60 | 60 Hz when the camera supports it, otherwise 30 Hz | Decal mode as authored; 2× MSAA; full-resolution camera |
+| Balanced (default) | 1080p60 | 30 Hz | Decal capped at `surface`; no MSAA; full-resolution camera |
+| Performance | 720p60 | 30 Hz | Decal capped at `surface`; no MSAA; prefer 720p60 capture |
+
+Presets are a ceiling, not a per-avatar override: an avatar authored for `flat` stays `flat` under
+Quality. If p99 frame time exceeds 16.6 ms for 3 s, the app suggests one step down and shows the
+reason; it never changes quality silently. The preset is stored in the Show, so a laptop and a
+desktop can differ.
+
+---
+
 ## Props
 
 - Drag from a library panel onto an anchor; drop targets highlight when a drag starts.
@@ -162,8 +202,13 @@ per-session and does not survive a save.
   add later convincingly.
 - **Status is honest**: transport state, actual fps, dropped frames, tracking confidence. If the
   output is degraded, it says so in Live, not only in a log.
-- **No editing while live** except outfits and appearance, which are safe. Anything that
-  reconfigures capture or output asks for confirmation because it will drop frames.
+- **No editing while live** except outfits and appearance, which are safe. Changing the avatar/model,
+  face calibration, camera, output resolution, or transport requires Stop; the UI offers
+  *Stop & switch* rather than reconfiguring the live pipeline. There is no preloaded avatar switch in
+  1.0 ([`roadmap.md`](roadmap.md#post-10-candidates)).
+- **OBS setup card.** If a transport is enabled and no consumer connects within a few seconds, Live
+  shows the plugin name, minimum version, link, and *Test connection*, with window capture as the
+  fallback ([`output-and-virtual-camera.md`](output-and-virtual-camera.md#transports-for-cooperating-apps)).
 
 ---
 
@@ -172,10 +217,12 @@ per-session and does not survive a save.
 | Section | Contents |
 |---|---|
 | Camera | Device, resolution/fps preference, format diagnostics, exposure/WB lock, mirror preview |
-| Output | Transports, alpha mode, virtual camera install/uninstall, background for opaque output |
-| Performance | Quality preset, tracking rate, output resolution, renderer info |
-| Privacy | Diagnostics opt-in, log location, "delete recordings", data summary |
-| About | Versions (app, engine, tracker model), licences, dependency manifest |
+| Profiles | Active FaceProfile; New, Rename, Recalibrate, Delete |
+| Appearance | Environment preset, key-light azimuth/elevation/intensity, per-region colour |
+| Output | Transports, alpha mode, virtual camera install/uninstall, framing, mirror output, background |
+| Performance | Quality preset (Quality/Balanced/Performance), tracking rate, output resolution, renderer info |
+| Privacy | Diagnostics opt-in, log location, delete face profiles, delete all app data, data summary |
+| About | Versions (app, engine, tracker model), licences, dependency manifest, support codes |
 
 Advanced and diagnostic values live behind a single "Advanced" disclosure. Nothing that can break
 the stream is one accidental click away.
@@ -199,7 +246,13 @@ Every one of these has designed copy, an icon, and a recovery action:
 | Virtual camera not installed | "Virtual camera isn't set up" | Install (may require admin/approval) |
 | Virtual camera blocked (macOS) | "macOS is waiting for your approval" | Open System Settings → Privacy & Security |
 | Output consumer disconnected | "OBS isn't receiving frames" | Show transport name + troubleshooting |
+| OBS plugin missing | "OBS needs the Spout2 plugin" | Setup card with link; use window capture |
 | Package invalid | "This avatar can't be opened" | Show the first validation error with its JSON path |
+| Library import failed | "Couldn't add this avatar" | Name the path and free space; Retry |
+| Face profile unreadable | "Your face profile couldn't be read" | Create a new profile; keep a `.bad` copy |
+| Session locked | "Paused while your screen is locked" | Resume on unlock; capture stays off |
+| Second instance | "Avatar Studio is already running" | Activate the existing window |
+| Virtual camera needs Windows 11 | "This camera needs Windows 11" | Use OBS Virtual Camera; explain the fallback |
 
 Rule: no error is a bare code. Code + human sentence + one action.
 
@@ -245,6 +298,8 @@ Accessibility commitments for 1.0:
 - Model geometry, UV editing, rigging, weight painting.
 - Texture painting or material graph authoring (material *overrides* only).
 - Scene composition with multiple characters.
+- Changing the avatar/model while live; that requires Stop/Go Live.
+- Lighting beyond the environment presets and key-light override; no HDRI or multi-light rig.
 - Recording or streaming.
 
 Each of these exists in a better tool. The editor's value is the calibration and the preview.

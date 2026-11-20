@@ -30,10 +30,15 @@ modes exist to make (2) cheap to avoid; the shader exists to make (3) tunable.
 
 | Space | Units | Definition |
 |---|---|---|
-| **Image** | normalised `[0,1]²` | Camera frame, origin top-left, +v down. Undistorted; no mirroring applied. |
+| **Image** | normalised `[0,1]²` | Camera frame, origin top-left, +v down. Assumed undistorted in 1.0 (lens distortion is accepted, see [below](#lens-distortion)); no mirroring applied. |
 | **Camera** | metres | Right-handed, −Z forward, matching the tracker's pose output. |
 | **Head** | metres | The avatar's root space after pose application. Origin at the model's pivot. |
-| **Canonical face** | unitless `(u,v)` | The face plane. Origin at the midpoint between the eye centres. `+u` toward the user's right eye, `+v` toward the forehead. **Inter-ocular distance = 1.0.** `z` is the plane normal, unused for planar projection. |
+| **Canonical face** | unitless `(u,v)` | The face plane. Origin at the midpoint between the eye centres. `+u` toward the **subject's right eye**, `+v` toward the forehead. **Inter-ocular distance = 1.0.** `z` is the plane normal, unused for planar projection. |
+
+`_l` and `_r` are always the **subject's** left and right, never the viewer's. In an unmirrored
+camera image the subject's right eye appears on the viewer's left, so canonical `+u` maps to the
+image's left side. This is the convention used by `LandmarkMap`
+([`tracking.md`](tracking.md#landmark-map)), the region ids, and the `FaceProfile`.
 
 Canonical face space is the contract between the user's face and the avatar's face. It is
 deliberately not measured in millimetres: normalising by inter-ocular distance makes the mapping
@@ -48,8 +53,9 @@ Two independent calibrations meet in this space:
         measured once, neutral pose              face plane placement, region shapes
 ```
 
-Separating them is what lets a user calibrate once and then try twenty avatars without redoing it,
-and lets an avatar be shared between users.
+`FaceProfile` is specified in [`user-data.md`](user-data.md#faceprofile); the avatar side is in
+[`avatar-package-format.md`](avatar-package-format.md). Separating them is what lets a user calibrate
+once and then try twenty avatars without redoing it, and lets an avatar be shared between users.
 
 ### Face frame estimation
 
@@ -95,6 +101,54 @@ For each region (`eye_l`, `eye_r`, `mouth`):
 
 The slow filter is deliberate: it tracks gaze and lip shape without inheriting landmark jitter, and
 the clamp prevents a bad frame from throwing the patch across the face.
+
+---
+
+## Framing and placement
+
+1.0 is **rotation-only**. The tracker's pose translation is measured, filtered and carried in
+`FaceRigOutput`, but it does not move the avatar. The avatar rotates about its pivot and stays fixed
+in the output frame. This is a product decision: a stream overlay that drifts when the user leans is
+worse than one that is stable, and it removes a follow-camera from the design.
+
+The fixed presentation transform is:
+
+```
+view_from_head = T(offset) · R_y(180°) · T(−c)
+```
+
+- `c` is the centre of the fitted volume in head space.
+- The 180° yaw exists because the model's authored forward is −Z while the viewer camera looks down
+  −Z from +Z. The model faces the camera after the rotation; the head pose is applied in head space
+  before it. The rotation is not a mirror: the model's right side stays on the viewer's left, matching
+  an unmirrored camera image.
+- `offset` is the user's framing nudge, in fractions of the visible half-extent.
+
+Fit is chosen per avatar:
+
+| `fit` | Meaning |
+|---|---|
+| `model` | Fit the whole model's AABB. The default for head-shaped avatars. |
+| `head` | Fit a sphere at the face plane origin with radius `1.5 × inter-ocular distance`. Useful for full-body models where the body should crop. |
+
+The camera is perspective, 35° vertical FOV, `KEEP_HEIGHT`. With `r` the fitted bounding-sphere
+radius and `θ` the smaller of the vertical and horizontal half-FOV:
+
+```
+D = (r / sin θ) · (1 + margin) / zoom
+```
+
+The camera sits at `(0, 0, D)` looking at the origin; `margin` defaults to 0.10 and `zoom` to 1.0.
+The formula is a fit, not a guarantee: a very asymmetric model may still clip, and the editor shows
+the bounds while framing.
+
+**Mirroring.** The camera image is never mirrored for sampling. The preview is mirrored by default
+(selfie view) as a display-only transform. The output is unmirrored by default; `mirror_output`
+flips the final composited frame, including props, and the UI warns that asymmetric props and text
+will flip. Flipping after compositing keeps the decal attached.
+
+**Deferred:** a translation gain (0 in 1.0) that would let leaning move the avatar slightly. It needs
+a clamp, a follow-camera or wider framing, and its own product decision. It is not in 1.0.
 
 ---
 
@@ -227,6 +281,19 @@ leaves a visible rim.
 
 ---
 
+## Lens distortion
+
+1.0 does not undistort. The homography is estimated from, and samples, the same camera frame, so
+landmarks and pixels share the same distortion; the face patch is smoothly warped rather than
+misaligned. At typical webcam fields of view and a centred face the error is small. At wide FOV or
+close range the face can stretch slightly toward the edges.
+
+No camera intrinsics are used in 1.0. The assumption is recorded in the modelling guide and tested
+with a synthetic barrel-distorted source. Optional per-camera radial calibration is `Deferred`; it
+re-enters only if M2 quality tests show a visible error.
+
+---
+
 ## Colour and light matching
 
 The face comes from a consumer camera with auto-exposure, auto-white-balance and unknown gamma; the
@@ -240,6 +307,11 @@ model is lit by the scene. Three mechanisms, in order of importance:
 3. **Lighting influence.** Multiply by a fraction of the scene's key-light diffuse term. Default
    0.35: enough that turning the model's virtual light visibly moves the face, low enough that a
    dark scene does not black out the eyes.
+
+The key light comes from the avatar's `appearance.environment` preset plus the `appearance.key_light`
+overrides ([`avatar-package-format.md`](avatar-package-format.md#appearance-and-lighting)). The decal
+uses the same direction and intensity as the model, so moving the virtual light moves both. Material
+overrides do not apply to the decal; its colour comes from the camera and the per-region transform.
 
 Auto-white-balance flicker is the sneaky failure: the camera changes colour mid-stream and the face
 pops. Mitigation: smooth the gain over ~500 ms, and recommend locking camera exposure/WB in the
@@ -262,6 +334,9 @@ settings panel when the driver exposes it.
 | Eyes look dead | Tracking at 30 Hz while render at 60 Hz | Accept (matches real cameras) or prefer 720p60 capture |
 | Jaw opens but chin does not | Rigid model, real mouth | Modelling guidance: neutral-open mouth or soft chin; `shaded` mode hides most of it |
 | Face sharp, model soft (or vice versa) | Resolution/mip mismatch | Sample with the camera texture's native mip; optional slight blur on the decal |
+| Face patch stretches at close range | Lens distortion not modelled | Accepted in 1.0; keep the face centred; optional calibration is `Deferred` |
+| Avatar clips at the frame edge | Fit or zoom too tight | Increase margin or decrease zoom; the editor shows the bounds |
+| Output is unexpectedly mirrored | `mirror_output` is on | Preview mirroring is display-only; check Settings → Output |
 
 ---
 
@@ -275,6 +350,8 @@ Users will import arbitrary models, so the app must state what works. The bundle
 - Put the pivot near the head's centre of rotation, not at the feet.
 - Front of the model faces −Z.
 - One mesh per character is fine; a separate face submesh is an optimisation, not a requirement.
+- For a full-body model, set `fit = "head"` so the body crops instead of shrinking the head.
+- Keep the face near the centre of the frame; wide-angle lens distortion is not corrected in 1.0.
 
 The editor checks these where it can (pivot far from geometry, non-−Z forward, extreme face
 curvature) and warns rather than blocks.
@@ -303,3 +380,5 @@ final composed frame is read back for output, once, regardless of how many desti
 | How much does 30 Hz face content hurt next to 60 Hz head rotation? | May force 720p60 capture preference | A/B test in M2 with recorded clips |
 | Does per-region gain calibration converge reliably across skin tones and lighting? | Quality equity; a mismatch is most visible on darker skin | Test matrix in M2 across lighting conditions |
 | Can the decal pass reuse the model's depth without a second draw (e.g. stencil tag in pass A)? | 0.7 ms at 1080p on low-end GPUs | Profile in M3; only pursue if the budget is tight |
+| Does lens distortion visibly stretch the face at typical webcam distance? | Determines whether optional calibration is worth the setup step | M2 quality tests with a barrel-distorted synthetic source |
+| Is `fit = "model"` sufficient, or do users need per-avatar framing presets? | Full-body models may need `fit = "head"` plus offsets | M2 usability run with three model archetypes |

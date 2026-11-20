@@ -30,9 +30,11 @@ architecture in this document set.
 | [`camera-capture.md`](camera-capture.md) | Capture abstraction, formats, timestamps, per-platform backends, permissions | systems engineers |
 | [`output-and-virtual-camera.md`](output-and-virtual-camera.md) | Render-once/distribute-many, OBS transports, OS virtual cameras, cross-process frames | systems engineers |
 | [`avatar-package-format.md`](avatar-package-format.md) | `.avatar` package, JSON schema, anchors, props, presets, versioning | tooling / content |
+| [`user-data.md`](user-data.md) | Managed library, FaceProfiles, shows/settings, migration, permissions | tooling / app |
 | [`editor-ux.md`](editor-ux.md) | Screens, calibration flow, states, error surfaces, accessibility | product / UX |
 | [`security-privacy.md`](security-privacy.md) | Threat model, camera-data policy, package sanitisation, installer privileges | security reviewers |
 | [`testing-and-quality.md`](testing-and-quality.md) | Test pyramid, synthetic face source, golden frames, CI matrix, perf gates | QA / CI owners |
+| [`diagnostics.md`](diagnostics.md) | Stable support codes, logging contract, diagnostics bundle | support / QA / engineers |
 | [`roadmap.md`](roadmap.md) | Milestones with exit criteria, open questions, risk register | leads |
 | [`adr/`](adr/README.md) | Architecture decision records | everyone |
 
@@ -69,6 +71,10 @@ the third-party projects reviewed in
   `FrameClock`. Wall-clock time is never used for synchronisation.
 - **Identifiers.** Stable IDs are lower_snake_case ASCII (`head_top`, `eye_l`). Package IDs are
   UUIDv4.
+- **Sidedness.** `_l` and `_r` are the subject's left and right, never the viewer's. In an
+  unmirrored image the subject's right eye appears on the viewer's left.
+- **Framing.** 1.0 is rotation-only: the avatar rotates with the head and stays fixed in the output
+  frame. A translation gain is `Deferred`.
 - **Colour.** Internal working space is linear; output is encoded to sRGB. Premultiplication is
   explicit at every boundary (see [`architecture.md`](architecture.md#colour-and-alpha)).
 - **Units in JSON.** Metres and degrees. Quaternions are `[x, y, z, w]`. Both are stated in the
