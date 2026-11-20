@@ -1,7 +1,9 @@
 ### Git
 
+- Prefer to squash branches when merging to `main`
 - Don't check anything into git that shouldn't be there (e.g. logs, telemetry, possibly configs, credentials, etc)
   - Git add and commit when a task session is completing
+  - Temporary files can be checked into the non-main branches as long as they're removed before merging to `main` via squash
 
 ### Architecture & Documentation
 
