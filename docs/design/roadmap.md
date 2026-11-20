@@ -90,6 +90,7 @@ crisis.
 - Four environment presets with key-light control; three quality presets.
 - Three CC0 example avatars (flat, spherical, high-curvature) with provenance manifests.
 - Golden images across the three archetypes, three lighting setups, and framing/mirroring cases.
+- Real-model corpus: unmodified downloaded GLBs import and calibrate without a re-export.
 
 **Exit criteria**
 
@@ -101,6 +102,7 @@ crisis.
 | Profile reuse | One profile, three avatars, no recalibration; quality unchanged |
 | Framing | No clipping or drift across model/head fit and zoom extremes |
 | Library | 20 imports, duplicate id, delete; originals untouched |
+| Existing-model corpus | 10 typical downloaded GLBs import; 8 calibrate within 10 minutes without re-export |
 | Package round-trip | 100 fixture packages load, save, reload identically |
 | No regression | All M1 criteria still met |
 

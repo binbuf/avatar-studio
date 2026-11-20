@@ -31,6 +31,76 @@ and lets an avatar be authored without knowing who will wear it.
 
 ---
 
+## Model requirements
+
+The model is not the integration work. A glTF 2.0 file that already looks like a character is
+enough; everything that turns it into an avatar is calibration stored next to it, set in the editor.
+
+### Required
+
+| Requirement | Why |
+|---|---|
+| Valid glTF 2.0 `.glb`, or `.gltf` with relative buffers | The only supported import format (`AVT-101`) |
+| At least one mesh; ≤ 200k triangles | `AVT-102` |
+| A front-facing head or face region that is roughly planar or cylindrical | The decal is projected from a face surface; a snout, beak, visor or mask is outside the 1.0 envelope |
+| Self-contained, package-relative files | Security and portability |
+
+### Not required
+
+| Commonly assumed | Reality here |
+|---|---|
+| Rig, armature, bones or skin weights | Ignored. A rigid mesh is the intended input |
+| Blendshapes or morph targets | Ignored. Expressions come from the camera, not the model |
+| Animations | Not played; the model renders in its bind/rest pose |
+| UVs on the face | Unused. The decal samples the camera |
+| Named nodes, meshes or materials | Not needed. `face_submesh` is an optional optimisation, not a naming convention |
+| A specific origin or pivot | Derived from the calibrated face plane when omitted (see `model.pivot`) |
+| Specific units or forward axis | Converted on import (`model.units`, `model.forward`, `model.up`) |
+| A separate face mesh, LODs, or a particular topology | Optional |
+
+### What the editor calibrates
+
+Everything below is per avatar, stored in the package, and set by direct manipulation
+([`editor-ux.md`](editor-ux.md#face-calibration)): units and axes, rotation centre, face surface
+(plane or cylinder, origin, normal, up, scale), eye and mouth regions, prop anchors, and framing.
+None of it is authored in Blender.
+
+### Known limits
+
+| Model | Behaviour |
+|---|---|
+| Non-human face: muzzle, beak, visor, mask | A plane or cylinder does not fit; the decal floats or clips. Manual calibration can make it usable, but it is outside the supported envelope |
+| Painted eyes and mouth | Supported. The regions composite over the painted face; only features larger than a region peek out |
+| Protruding glasses, fringe, or hands | Geometry in front of the face occludes the decal in `surface` mode, which is the intended behaviour |
+| Skinned character in a T-pose | Renders in bind pose; rig and animation are ignored. Export a head-and-shoulders model |
+| Visible shoulders or torso | The whole model rotates about the rotation centre, so shoulders rotate with the head. Crop with `fit = "head"` or export a bust |
+| Alpha-blended hair | Sorts with the decal; prefer opaque or alpha-tested hair |
+| Unlit or custom-shader materials | glTF PBR is the supported path. Unlit materials render but do not receive the key light |
+
+`AVT-116` warns when no face-like region is detected at import; the user can still calibrate by hand.
+
+### From an existing `.glb`
+
+Importing a bare model is the normal path, so it does not require the user to understand the package
+format. It creates one:
+
+1. Pick a `.glb`, or a `.gltf` plus its relative buffers and textures.
+2. Copy the referenced files into a new managed package `library/<new-uuid>/` as `model.glb`
+   (or `model.gltf` with its relative resources). Loose buffers and textures move inside the
+   package; nothing is read from outside it afterwards.
+3. Generate `avatar.json` with a new UUIDv4, the filename as `name`, glTF conventions for units and
+   axes (`m`, `Y` up, `−Z` forward), an auto-placed face surface, and empty regions.
+4. Write `assets.json` with `source: "imported"` and `author: "unknown"`; the user can fill these in
+   before sharing.
+5. Run the model check, then open face calibration. The package is written on save; an abandoned
+   draft is removed like any other incomplete import ([`user-data.md`](user-data.md#managed-library)).
+
+The defaults are a starting point, not a guess that has to be right: the model-check panel shows the
+realised size and facing, and the user corrects units, scale, or facing there before calibrating.
+Nothing in this flow asks the user to open a 3D editor.
+
+---
+
 ## Layout
 
 ```
@@ -78,7 +148,7 @@ Rules:
     "units": "m",
     "forward": "-Z",
     "up": "Y",
-    "pivot": [0.0, 0.0, 0.0],
+    "pivot": null,
     "scale": 1.0,
     "face_submesh": null
   },
@@ -172,7 +242,7 @@ Rules:
 | `path` | string | Package-relative `.glb` |
 | `units` | `"m"` \| `"cm"` \| `"mm"` | Units the model was authored in; converted to metres on load |
 | `forward` / `up` | string | Authored axes; the importer rotates to −Z/Y |
-| `pivot` | `[x,y,z]` | Rotation origin in model space. Used directly as the head rotation centre |
+| `pivot` | `[x,y,z]` \| null | Rotation centre in model space. When `null` (the default), it is derived from the face surface as `origin − normal × 0.75 × scale`, roughly the head's centre of rotation. The editor's rotation-centre handle overrides it |
 | `scale` | number | Uniform scale applied after unit conversion |
 | `face_submesh` | string \| null | Optional mesh name; restricts the decal pass to it |
 

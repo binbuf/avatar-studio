@@ -42,7 +42,7 @@ The core is a well-understood rendering problem; the product is the hard part.
 | **One render, many destinations** | The avatar renders once into a dedicated viewport; transports fan it out. No destination may block rendering. |
 | **Never require another app** | OBS is optional. A virtual camera works with Discord/Zoom/Teams directly. |
 | **Works offline, always** | No network calls in the default path. No accounts. No telemetry without explicit opt-in. |
-| **Rigid models only** | No rig, no bones, no blendshape requirement. If a user has a `.glb`, they have an avatar. |
+| **Rigid models only** | No rig, bones, blendshapes or UV work. A glTF 2.0 model with a face-shaped front is an avatar; the calibration lives beside the model, not in it. |
 | **Data, not code** | Avatar packages are declarative JSON plus glTF. Nothing in a package executes. |
 | **Degrade, never fail** | Camera unplugged, face lost, consumer disconnected, GPU device reset: the app keeps running and says what happened. |
 
@@ -70,7 +70,7 @@ blocking QA, is in [`architecture.md`](architecture.md#supported-platforms).
 
 | Capability | Status |
 |---|---|
-| Import `.glb`, or pick a bundled character | `Planned` |
+| Import `.glb`, or pick a bundled character; no rig or re-export needed | `Planned` |
 | Live eyes and mouth from webcam, three quality modes | `Planned` |
 | Head-driven rotation with smoothing and loss handling | `Planned` |
 | Rotation-only framing with model/head fit, zoom, offset, mirroring | `Planned` |

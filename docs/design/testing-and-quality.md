@@ -86,6 +86,22 @@ wrong space, alpha premultiplied twice, colour space regression.
 
 ---
 
+## Real-model corpus
+
+Synthetic faces prove the math; real models prove the claim that no special model is needed. The
+corpus is a set of unmodified, downloaded glTF characters: an anime bust, a realistic bust, a
+stylised animal, a rigged T-pose character, a painted-face model, a model whose origin is at the
+feet, and one with glasses.
+
+For each model the test imports it, runs auto-placement, and asserts that calibration converges, or
+that the warning names the specific incompatibility. A model in the corpus is never re-exported or
+edited; that would hide the problem the corpus exists to catch.
+
+It is a manual M2 gate. Once the fixtures are licensed for internal use it also becomes a nightly
+smoke, with the pass condition recorded per model rather than as a single boolean.
+
+---
+
 ## Performance harness
 
 | Metric | Method | Gate (Reference) |
@@ -190,6 +206,7 @@ Quality is subjective; the checklist makes it comparable.
 14. **Suspend and lock**: sleep/wake, lock/unlock, minimise/restore; capture stops on lock and resumes.
 15. **OBS onboarding**: plugin absent → setup card; window capture fallback works.
 16. **Windows 10 smoke** (if hardware is available): capture, preview, OBS output; no native camera.
+17. **Existing model**: import a downloaded glTF, auto-place, check the model-check panel and rotation centre.
 
 Results are recorded per build; a failing item is a release blocker unless explicitly waived with a
 written reason.

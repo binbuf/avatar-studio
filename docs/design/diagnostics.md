@@ -98,6 +98,7 @@ the app itself keeps running.
 | `AVT-113` | Error | Invalid framing values | Point at the field; refuse |
 | `AVT-114` | Error | Invalid background type, path, or decode limit | Point at the field; refuse |
 | `AVT-115` | Error | Invalid appearance preset or override value | Point at the field; refuse |
+| `AVT-116` | Warning | No face-like region detected on the model | Open calibration with the surface gizmo; continue |
 | `AVT-120` | Error | Package version newer than the app | Name the app version that wrote it |
 
 ## OUT — Output and transports

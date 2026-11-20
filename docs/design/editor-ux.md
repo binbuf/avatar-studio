@@ -110,6 +110,11 @@ plane (`face.surface.origin`, `normal`, `up`). There is no second source of trut
 
 - **Auto-placement** estimates the face plane from the model's bounding box and the region shapes
   from the head's aspect ratio. It is a starting point and is labelled as such.
+- **Rotation centre**: derived from the face surface when the package does not set one; an advanced
+  handle moves it. Needed for models whose origin sits at the feet rather than inside the head.
+- **Model check on import** names the reported unit and axis, mesh and triangle counts, and whether a
+  rig or animation was ignored, then says what must be calibrated. It never blocks a model that
+  parses.
 - **Direct manipulation**: drag a region to move, corner handles to resize, a ring handle to rotate,
   scroll to feather. Every gesture has a numeric equivalent in the inspector (both are always
   visible, so users can be precise).
@@ -250,6 +255,7 @@ Every one of these has designed copy, an icon, and a recovery action:
 | Package invalid | "This avatar can't be opened" | Show the first validation error with its JSON path |
 | Library import failed | "Couldn't add this avatar" | Name the path and free space; Retry |
 | Face profile unreadable | "Your face profile couldn't be read" | Create a new profile; keep a `.bad` copy |
+| Model has no face-like region | "We couldn't find the face — place it yourself" | Opens calibration with the surface gizmo active |
 | Session locked | "Paused while your screen is locked" | Resume on unlock; capture stays off |
 | Second instance | "Avatar Studio is already running" | Activate the existing window |
 | Virtual camera needs Windows 11 | "This camera needs Windows 11" | Use OBS Virtual Camera; explain the fallback |

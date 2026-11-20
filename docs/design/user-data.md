@@ -69,9 +69,12 @@ portable installs are a legitimate use.
 
 ## Managed library
 
-Import is a copy, not a reference. The pipeline is:
+Import is a copy, not a reference. There are two inputs: an existing `.avatar` package, and a bare
+`.glb`/`.gltf`, which the importer wraps into a package first
+([`avatar-package-format.md`](avatar-package-format.md#from-an-existing-glb)). The pipeline is:
 
-1. Validate the package (schema and semantic layers, [`avatar-package-format.md`](avatar-package-format.md#validation)).
+1. Validate the package, or the draft the importer just generated (schema and semantic layers,
+   [`avatar-package-format.md`](avatar-package-format.md#validation)).
 2. Copy into `library/.incoming-<uuid>/` on the same volume.
 3. Re-validate the copy and verify `assets.json` hashes.
 4. Rename into `library/<package-id>/`.
@@ -90,7 +93,8 @@ Rules:
 - **Move.** A user may move the whole data directory while the app is closed; the index stores
   relative paths so the library survives.
 - **Disk.** Before import, warn if free space is below 1 GB. A failed copy leaves `.incoming-*`
-  removed on next start.
+  removed on next start. A bare-GLB import that is abandoned before calibration is saved is removed
+  the same way; the user's original file is never touched.
 - **Thumbnails.** Use `thumbnail.png` from the package. If missing, render a 512×512 frame from the
   neutral pose and cache it at `cache/thumbnails/<id>.png`. Regenerate when the package mtime
   changes.

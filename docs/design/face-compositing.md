@@ -32,7 +32,7 @@ modes exist to make (2) cheap to avoid; the shader exists to make (3) tunable.
 |---|---|---|
 | **Image** | normalised `[0,1]²` | Camera frame, origin top-left, +v down. Assumed undistorted in 1.0 (lens distortion is accepted, see [below](#lens-distortion)); no mirroring applied. |
 | **Camera** | metres | Right-handed, −Z forward, matching the tracker's pose output. |
-| **Head** | metres | The avatar's root space after pose application. Origin at the model's pivot. |
+| **Head** | metres | The avatar's root space after pose application. Origin at the rotation centre (`model.pivot`, or derived from the face plane). |
 | **Canonical face** | unitless `(u,v)` | The face plane. Origin at the midpoint between the eye centres. `+u` toward the **subject's right eye**, `+v` toward the forehead. **Inter-ocular distance = 1.0.** `z` is the plane normal, unused for planar projection. |
 
 `_l` and `_r` are always the **subject's** left and right, never the viewer's. In an unmirrored
@@ -340,21 +340,26 @@ settings panel when the driver exposes it.
 
 ---
 
-## Modelling guidance (shipped as documentation)
+## Model compatibility and authoring guidance
 
-Users will import arbitrary models, so the app must state what works. The bundled guide says:
+The model needs no rig, UVs, blendshapes or naming convention; the full list is in
+[`avatar-package-format.md`](avatar-package-format.md#model-requirements). What it does need is a
+face region the surface mapping can follow. The bundled guide says:
 
-- Leave the face area smooth; do not model eyes or a mouth.
-- Keep the eye/mouth area within roughly ±30° of a plane (or use cylindrical unwrap).
-- Avoid strong specular or metallic material on the face area.
-- Put the pivot near the head's centre of rotation, not at the feet.
-- Front of the model faces −Z.
+- **Required:** keep the eye/mouth area within roughly ±30° of a plane, or use a cylinder for a
+  rounder head.
+- **Recommended:** leave the face smooth. A face without modelled eyes or a mouth gives the cleanest
+  result, but a painted face is supported as long as its features fit inside a region.
+- **Recommended:** matte, non-metallic material on the face area.
+- **Recommended:** a head-and-shoulders model. The whole model rotates about the rotation centre, so
+  visible shoulders rotate with it; crop a full-body model with `fit = "head"`.
+- **Recommended:** face the model toward −Z and keep the face near the frame centre.
 - One mesh per character is fine; a separate face submesh is an optimisation, not a requirement.
-- For a full-body model, set `fit = "head"` so the body crops instead of shrinking the head.
-- Keep the face near the centre of the frame; wide-angle lens distortion is not corrected in 1.0.
 
-The editor checks these where it can (pivot far from geometry, non-−Z forward, extreme face
-curvature) and warns rather than blocks.
+Existing downloaded models are the normal case, not the exception. A rigged character in a T-pose is
+rendered in bind pose with its animation ignored; a painted anime face works if the regions cover its
+eyes and mouth. The editor checks what it can (rotation centre far from geometry, non-−Z forward,
+extreme face curvature, no face-like region) and warns rather than blocks.
 
 ---
 
