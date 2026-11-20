@@ -172,6 +172,15 @@ Rules:
 | `scale` | number | Uniform scale applied after unit conversion |
 | `face_submesh` | string \| null | Optional mesh name; restricts the decal pass to it |
 
+**`face`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `mode` | `"flat"` \| `"surface"` \| `"shaded"` | Which geometry carries the decal; see [`face-compositing.md`](face-compositing.md#projection-modes). Default `surface` |
+| `surface` | object | Head space → canonical face plane mapping (below) |
+| `regions` | array | Eye and mouth regions (below) |
+| `lighting_influence` | 0–1 | Fraction of the scene key light applied to the decal in `shaded` mode; default 0.35 |
+
 **`face.surface`**
 
 | Field | Meaning |
@@ -196,7 +205,7 @@ circumference-to-canonical ratio. The calibration gizmo sets all of these; users
 | `shape` | `ellipse` \| `rounded_rect` |
 | `feather` | Fraction of the half-size that fades (0 = hard edge) |
 | `opacity` | 0–1 multiplier |
-| `landmark_anchor` | Which landmark centroid drives the slow local offset |
+| `landmark_anchor` | Which landmark centroid drives the slow local offset: `eye_l_centroid`, `eye_r_centroid` or `mouth_centroid` |
 | `color` | Per-region colour transform (see [`face-compositing.md`](face-compositing.md#colour-and-light-matching)) |
 
 **`anchors[]`** — named attach points. `position`/`rotation`/`scale` are in model space. Prop
@@ -208,6 +217,17 @@ Unknown anchor names are allowed (for custom rigs) but props attached to them ar
 
 **`props[]`** — `asset` must be inside `props/`. `default_enabled` is the state used when the
 avatar is first loaded; outfits override it.
+
+**`appearance`** — `environment` names a lighting environment shipped with the app (for example
+`studio_soft`). `material_overrides` is an array of per-material overrides applied at load; its
+entry schema is **not yet specified** and is finalised with the appearance system in M2.
+
+**`output`** — `resolution` is the default `[width, height]`. `background` is specified only as
+`{"type": "transparent"}` in the example above; the opaque background variants required by
+virtual-camera and window output are **not yet enumerated** and must be added with the output work.
+
+**`meta`** — authoring metadata (`created`, `generator`). Informational only; never interpreted as
+behaviour.
 
 ---
 

@@ -193,6 +193,7 @@ uniform vec2  region_anchor;    // filtered centroid offset
 uniform float region_rot;       // radians, from rotation_deg
 uniform float feather;
 uniform vec3  colour_gain;
+uniform vec3  colour_lift;
 uniform float lighting_influence;
 
 varying vec3 world_pos;
@@ -216,7 +217,7 @@ void fragment() {
     vec3  view = normalize(CAMERA_POSITION_WORLD - world_pos);
     float facing = smoothstep(0.10, 0.35, dot(normalize(world_normal), view));
 
-    ALBEDO = cam * colour_gain;
+    ALBEDO = cam * colour_gain + colour_lift;
     ALPHA  = mask * facing * facing;
 }
 ```

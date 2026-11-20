@@ -3,8 +3,10 @@
 **Status:** proposal. No application code exists yet; every item in this document set is
 `Planned` unless explicitly marked otherwise.
 **Last updated:** 2026-11-20
-**Source brief:** [`../Start.md`](../Start.md) — an exported research conversation, untracked
-working material. It is the origin of this design, not a specification.
+**Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
+repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
+[Provenance and corrections](#provenance-and-corrections-to-the-original-brief) so the decision
+record survives without the source file.
 
 Avatar Studio is a desktop application that turns a rigid 3D model into a live avatar whose
 eyes and mouth are real webcam pixels, driven by head tracking. It targets Windows, macOS and
@@ -51,9 +53,10 @@ Used consistently in every document:
 | `Deferred` | Deliberately out of the current plan, with a documented re-entry condition |
 | `Rejected` | Considered and discarded; reason recorded in an ADR |
 
-Current reality: **everything is `Planned`.** A few items carry `Prototype` where a spike is
-already scheduled in a milestone. The only concrete prior art is the source conversation and the
-third-party projects reviewed in [`product-overview.md`](product-overview.md#prior-art-reviewed).
+Current reality: **everything is `Planned`.** No item is `Prototype` yet; the first spike is M0 in
+[`roadmap.md`](roadmap.md). The only concrete prior art is the original research conversation and
+the third-party projects reviewed in
+[`product-overview.md`](product-overview.md#prior-art-reviewed).
 
 ---
 
@@ -73,12 +76,14 @@ third-party projects reviewed in [`product-overview.md`](product-overview.md#pri
 
 ---
 
-## Review of the source brief
+## Provenance and corrections to the original brief
 
-`../Start.md` is a research conversation, not an engineering document. It reaches the right
-headline conclusions but several of its load-bearing claims are stale, imprecise, or silently
-scope-limiting. This section records what was checked and what changed as a result. All checks
-were performed on 2026-11-20 against upstream documentation.
+The design began as a review of an exported research conversation ("the brief"), which is not
+retained in this repository. It was a research conversation, not an engineering document: it
+reached the right headline conclusions, but several load-bearing claims were stale, imprecise, or
+silently scope-limiting. This section records what was checked and what changed as a result, and
+quotes each claim so the decision history survives without the source file. All checks were
+performed on 2026-11-20 against upstream documentation.
 
 | # | Claim in the brief | Finding | Design response |
 |---|---|---|---|

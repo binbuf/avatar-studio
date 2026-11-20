@@ -70,7 +70,7 @@ target). A crash in either is a release blocker, not a bug.
 
 ## Dependency and asset manifest
 
-A single machine-readable manifest (`docs/…` source of truth: `native/…/licenses.json` + generated
+A single machine-readable manifest (`native/licenses.json`, the source of truth, plus a generated
 `NOTICE`) records, for every third-party component and every bundled asset:
 
 - name, version/commit, license SPDX id, upstream URL, whether it is modified, and its hash where

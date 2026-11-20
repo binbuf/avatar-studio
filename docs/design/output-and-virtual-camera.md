@@ -164,7 +164,9 @@ signal sync object  ────────────────────
 **No-signal behaviour is a feature.** When the app is closed, crashed, or paused, the device stays
 enumerated. It must emit a neutral placeholder frame (configurable: black, brand card, or last frame
 frozen) so that consumer apps do not freeze or spin. This single detail prevents most "your virtual
-camera is broken" reports.
+camera is broken" reports. It applies to Windows and macOS, where the device outlives the process.
+On Linux the PipeWire node is owned by the app and disappears when it exits, so there is nothing to
+keep alive; consumers see the device go away rather than a placeholder.
 
 ## Alpha policy
 
@@ -185,7 +187,7 @@ black-on-white edges) so users can diagnose alpha problems in seconds instead of
 | App start | Enumerate transports; do not register virtual cameras until the user enables output |
 | Enable virtual camera | Register device (Windows), install/activate extension (macOS), publish node (Linux) |
 | App exit | Unregister/withdraw device; flush queues |
-| Crash | Device may persist; next start detects and offers repair |
+| Crash | Windows/macOS: device may persist; next start detects and offers repair. Linux: node disappears with the process |
 | Consumer connects | Transport reports `wants_frames = true`; readback begins |
 | Consumer disconnects | Readback stops after a grace period (2 s) |
 | Output resolution change | All transports restart with the new size; virtual camera re-registers |

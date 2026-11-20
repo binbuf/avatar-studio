@@ -94,6 +94,10 @@ banner when confidence is low or the face visibly floats.
 └──────────────────────────────────────────────────────────────┘
 ```
 
+The inspector is a view of the same state as `avatar.json`: **Width** is the model's inter-ocular
+distance (`face.surface.scale`), and **Height**, **Depth** and **Tilt** position and orient the face
+plane (`face.surface.origin`, `normal`, `up`). There is no second source of truth.
+
 ### Behaviours
 
 - **Auto-placement** estimates the face plane from the model's bounding box and the region shapes
