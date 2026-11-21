@@ -38,11 +38,13 @@ architecture in this document set.
 | [`security-privacy.md`](security-privacy.md) | Threat model, camera-data policy, package sanitisation, installer privileges | security reviewers |
 | [`testing-and-quality.md`](testing-and-quality.md) | Test pyramid, synthetic face source, golden frames, CI matrix, perf gates | QA / CI owners |
 | [`diagnostics.md`](diagnostics.md) | Stable support codes, logging contract, diagnostics bundle | support / QA / engineers |
-| [`roadmap.md`](roadmap.md) | Milestones with exit criteria, open questions, risk register | leads |
+| [`roadmap.md`](roadmap.md) | Milestones with exit criteria, MVP sequencing, open questions, risk register | leads |
+| [`implementation-map.md`](implementation-map.md) | Row-by-row status: subsystem, owning module, task ids, implemented vs planned | everyone |
 | [`adr/`](adr/README.md) | Architecture decision records | everyone |
 
-Read in this order: overview → architecture → face-compositing → roadmap. The rest are
-reference.
+Read in this order: implementation map → overview → architecture → face-compositing → roadmap. The
+rest are reference. The map is the only document that tracks what is built; the others describe
+intent.
 
 ---
 
@@ -58,14 +60,22 @@ Used consistently in every document:
 | `Deferred` | Deliberately out of the current plan, with a documented re-entry condition |
 | `Rejected` | Considered and discarded; reason recorded in an ADR |
 
-Current reality: the foundation is implemented — the framework-free C++20 core (including the SPSC
-ring, latest-value slot, `FrameClock` and diagnostics registry from T03), the pinned
+Current reality: only the foundation exists. Implemented today: the framework-free C++20 core
+(SPSC ring, latest-value slot, `FrameClock`, diagnostics registry), the pinned
 bootstrap/verification contract, the headless Godot shell with a loadable GDExtension (T01–T03), the
-deterministic capture/tracking sources with their golden comparator (T04), the performance harness and
-local baseline (T05), and the three-platform CI matrix with formatting and licence gates (T06). The
-avatar pipeline, real capture, real tracking, the editor and output subsystems are still `Planned`;
-the first spike is M0 in [`roadmap.md`](roadmap.md). The only concrete prior art is the original
-research conversation and the third-party projects reviewed in
+deterministic capture and tracking sources with their golden comparator (T04), the performance
+harness and local baseline (T05), and the three-platform CI matrix with formatting and licence gates
+(T06). Every avatar capability — real capture, the tracker backend, the face rig, the decal modes,
+the editor, the output manager and the OS virtual cameras — is `Planned`. The MVP is a Windows 11
+streamer running OBS over Spout2 or window capture; macOS/Linux parity and the OS virtual cameras
+remain 1.0 requirements and are sequenced after it by
+[ADR-0017](adr/0017-windows-first-mvp-sequencing.md).
+
+[`implementation-map.md`](implementation-map.md) is the authoritative status: one row per design
+section or subsystem with its owning module, task ids and status. Read it before trusting any other
+document, and update it in the same change that flips a row. The first spike is M0 in
+[`roadmap.md`](roadmap.md). The only concrete prior art is the original research conversation and the
+third-party projects reviewed in
 [`product-overview.md`](product-overview.md#prior-art-reviewed).
 
 ---

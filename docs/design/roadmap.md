@@ -20,6 +20,28 @@ long pole and the only milestone where schedule slip is expected.
 
 ---
 
+## MVP definition and sequencing
+
+**MVP** is a Windows 11 streamer using OBS: import a GLB, calibrate face, head region and framing,
+save an `.avatar`, go live at 1080p60, and receive a transparent avatar over **Spout2**, with
+**window capture** as the documented fallback. The output is the avatar or a blank frame — never the
+camera, never a frozen face — and ten minutes over OBS plus gameplay must hold zero dropped avatar
+frames, no added stutter, and zero GPU readback while no consumer is connected.
+
+The MVP is delivered by Phases 0–4 of the task plan (T01–T51): foundation, Windows M0, the M1
+vertical slice, M2 quality and editor, then the OBS transport, alpha and onboarding work with the
+end-to-end gate at T46–T50, closed out by T51. macOS/Linux parity and the three OS virtual cameras
+remain 1.0 requirements and follow the MVP in Phase 5 (T52–T58); release hardening is Phase 6
+(T59–T64). [ADR-0017](adr/0017-windows-first-mvp-sequencing.md) records the decision, its
+consequences, and the re-entry condition: Phase 5 starts only when the MVP gate (T50) passes and T51
+records no S1 gap, and only with real macOS and Linux hardware available.
+
+This subsection sequences the milestones; it does not change the 1.0 scope, the M0–M5 definitions
+below, or any exit criterion. Row-by-row implementation status is in
+[implementation-map.md](implementation-map.md).
+
+---
+
 ## M0 — Feasibility spike
 
 **Question:** can the tracker and capture stack actually run on all three platforms at acceptable
