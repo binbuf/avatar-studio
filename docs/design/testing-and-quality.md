@@ -513,7 +513,7 @@ detached worktree of the T07 commit was bootstrapped and verified on Windows:
 | `scripts/format-check.ps1 -Require` | PASS — clang-format 18.1.8, 50 files |
 | `node scripts/check-licenses.mjs` (+ `--self-test`) | PASS — 8 components (3 active) |
 | `node scripts/check-diagnostics.mjs` (+ `--self-test`) | PASS — 69 codes, 32 files |
-| `node scripts/check-design-links.mjs --require-tasks` | PASS — 35 design files, 239 links, 18 ADRs |
+| `node scripts/check-design-links.mjs --require-tasks` | PASS — 34 tracked design files (35 including the gitignored ADR template), 239 links, 18 ADRs |
 | `tests/performance/run.ps1 -Scenario rig -Frames 300 -Warmup 30` | PASS — 300 measured frames, 0 drops |
 | `node tests/performance/check.mjs --baseline ... --result ...` | PASS — 7/7 checks against `foundation-local.json` |
 
