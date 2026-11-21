@@ -185,7 +185,7 @@ Requirements:
 index. `kMediaPipeFaceLandmarkerTable` is pinned to MediaPipe 0.10.21 with the
 `face_landmarker/face_landmarker/float16/1` bundle; `kOnnxFaceMeshV2Table` is a separate
 pinned table for the evaluated `senty-au/face_landmarks_detector-ONNX` conversion
-(`337d582…`, 478 points). The ONNX table is not used by a shipping backend yet, and the
+(`337d58218b5b1cc597ca3c67360880b920f6ce7b`, 478 points). The ONNX table is not used by a shipping backend yet, and the
 tables are deliberately separate so a future adapter opts into the topology it actually
 runs.
 

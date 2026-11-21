@@ -22,7 +22,8 @@ able to replace MediaPipe without rewriting the rig or the profile. The ONNX con
 Use a stable `LandmarkName` set from `tracking.md` and a `LandmarkMap` that resolves names to the
 active backend's indices. Each backend owns a separate, pinned table: MediaPipe 0.10.21 with the
 `face_landmarker/face_landmarker/float16/1` bundle, and the evaluated
-`senty-au/face_landmarks_detector-ONNX` conversion at `337d582…`. The tables live in
+`senty-au/face_landmarks_detector-ONNX` conversion at
+`337d58218b5b1cc597ca3c67360880b920f6ce7b`. The tables live in
 `native/tracking/include/avatar/tracking/landmark_map.h`; a future adapter calls
 `LandmarkMap::for_backend` rather than copying indices.
 
