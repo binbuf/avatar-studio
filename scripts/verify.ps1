@@ -83,62 +83,6 @@ function Invoke-Script([string]$Path, [hashtable]$Parameters = @{}) {
     }
 }
 
-function Get-GodotExecutable([string]$Root) {
-    $candidates = @(
-        (Join-Path $Root '.tools/godot/Godot_v4.7.2-stable_win64_console.exe'),
-        (Join-Path $Root '.tools/godot/Godot_v4.7.2-stable_linux.x86_64'),
-        (Join-Path $Root '.tools/godot/Godot.app/Contents/MacOS/Godot')
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate) {
-            return $candidate
-        }
-    }
-    return ''
-}
-
-function Ensure-GodotExtensionList([string]$ProjectDir) {
-    # Godot only scans res://*.gdextension into .godot/extension_list.cfg during
-    # an editor import. In 4.7.2 the headless editor exits with an access
-    # violation on shutdown after writing that file, so seed the one-line list
-    # directly; the headless smoke test is the authoritative load check.
-    $list = Join-Path $ProjectDir '.godot/extension_list.cfg'
-    if (Test-Path -LiteralPath $list) {
-        return
-    }
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $list) | Out-Null
-    Set-Content -LiteralPath $list -Value 'res://bin/avatar_studio.gdextension' -NoNewline
-    Write-Host "verify: seeded $list (headless editor import is unreliable in Godot 4.7.2)"
-}
-
-function Invoke-GodotSmoke([string]$Godot, [string]$ProjectDir) {
-    Ensure-GodotExtensionList $ProjectDir
-    $arguments = @('--headless', '--path', $ProjectDir, '--script', 'res://tests/smoke.gd')
-    Write-Command ("{0} {1}" -f $Godot, ($arguments -join ' '))
-    $output = & $Godot @arguments 2>&1
-    $code = $LASTEXITCODE
-    foreach ($line in $output) {
-        Write-Host ([string]$line)
-    }
-    if ($code -ne 0) {
-        throw "Godot shell smoke test failed with exit code $code"
-    }
-
-    $text = ($output | Out-String)
-    $fatalPatterns = @(
-        'Failed to load GDExtension',
-        'GDExtension load failed',
-        'Cannot open shared library',
-        'SCRIPT ERROR',
-        'Parse Error'
-    )
-    foreach ($pattern in $fatalPatterns) {
-        if ($text -match [regex]::Escape($pattern)) {
-            throw "Godot shell smoke output contains '$pattern'"
-        }
-    }
-}
-
 $exitCode = 0
 Push-Location $root
 try {
@@ -171,29 +115,11 @@ try {
         Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', 'fast', '-LE', 'perf', '--output-on-failure')
     }
 
-    $godot = Get-GodotExecutable $root
-    $project = Join-Path $root 'app/project.godot'
-    if ($godot -eq '') {
-        if ($requiresGodot) {
-            throw ("Godot 4.7.2 is missing from .tools/godot. Run scripts/bootstrap.ps1 -Fast. " +
-                "A native-only run is only allowed for T01.")
-        }
-        Write-Host "verify: Godot not present, skipping the shell smoke (native-only)"
-    } elseif (-not (Test-Path -LiteralPath $project)) {
-        if ($requiresGodot) {
-            throw "app/project.godot is missing; the Godot shell is required for $Task"
-        }
-        Write-Host "verify: app/project.godot not present, skipping the shell smoke"
-    } else {
-        if ($requiresGodot) {
-            $extension = Join-Path $root 'app/bin/avatar_studio.windows.x86_64.dll'
-            if (-not (Test-Path -LiteralPath $extension)) {
-                throw ("The GDExtension artifact is missing at $extension. " +
-                    "Check that .tools/godot-cpp exists and the build completed.")
-            }
-        }
-        Invoke-GodotSmoke $godot (Join-Path $root 'app')
+    $smokeParameters = @{}
+    if ($requiresGodot) {
+        $smokeParameters.Required = $true
     }
+    Invoke-Script (Join-Path $root 'scripts/smoke.ps1') $smokeParameters
 
     if ($Task -ne '') {
         $gate = Join-Path $root ("tests/gates/{0}.ps1" -f $Task)

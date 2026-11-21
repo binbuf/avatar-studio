@@ -70,8 +70,7 @@ TEST_CASE(latest_slot_never_tears_a_value_under_concurrent_publish) {
     std::thread reader([&slot, &writer_done, &torn_reads, &reads] {
         std::uint32_t local_reads = 0;
         std::uint32_t local_torn = 0;
-        while (!writer_done.load(std::memory_order_acquire) ||
-               local_reads < kPoseCount) {
+        while (!writer_done.load(std::memory_order_acquire) || local_reads < kPoseCount) {
             Pose pose;
             if (slot.read(pose)) {
                 ++local_reads;

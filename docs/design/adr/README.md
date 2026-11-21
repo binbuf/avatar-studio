@@ -20,6 +20,7 @@ tell the difference between "we chose this" and "this happened".
 | [0013](0013-core-data-plane-primitives.md) | Core data-plane primitives and the stable diagnostics registry | Accepted |
 | [0014](0014-deterministic-sources-and-golden-comparator.md) | Deterministic sources, ground truth, and the golden comparator | Accepted |
 | [0015](0015-performance-harness-and-local-baseline.md) | Performance harness result schema and local baselines | Accepted |
+| [0016](0016-ci-quality-gates.md) | CI quality gates, pinned formatting, and the licence manifest | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

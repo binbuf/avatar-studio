@@ -1,0 +1,141 @@
+# Fast, GPU-free CI for every push and pull request.
+#
+# Release-blocking jobs:
+#   - format                 (clang-format 18.1.8 drift)
+#   - licence                (native/licenses.json + diagnostics scan)
+#   - build-windows-msvc     (bootstrap, RelWithDebInfo build, ctest -L fast, smoke)
+#   - build-macos-arm64      (same)
+#   - build-linux-gcc        (same)
+#
+# The nightly workflow owns the slow, GPU-dependent and sanitizer suites.
+# Branch-protection expectations are recorded in docs/progress/T06.md.
+#
+# Action versions are pinned by major tag. Commit-SHA pinning is tracked as a
+# T06 follow-up because the SHAs must be verified against the upstream repos;
+# every action here is first-party and needs only contents: read.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Keep the pinned formatting tool and the CMake build type consistent across
+  # all jobs. The scripts also default to these values.
+  AVATAR_FORMAT_VERSION: '18.1.8'
+  CMAKE_BUILD_TYPE: RelWithDebInfo
+
+jobs:
+  format:
+    name: format (release-blocking)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format ${{ env.AVATAR_FORMAT_VERSION }}
+        run: |
+          # Ubuntu 24.04's Python is externally managed (PEP 668), so use a
+          # throwaway venv rather than pip --user.
+          python3 -m venv "$RUNNER_TEMP/clang-format-venv"
+          "$RUNNER_TEMP/clang-format-venv/bin/python" -m pip install --quiet \
+            "clang-format==${AVATAR_FORMAT_VERSION}"
+          echo "$RUNNER_TEMP/clang-format-venv/bin" >> "$GITHUB_PATH"
+      - name: Check formatting drift
+        env:
+          AVATAR_REQUIRE_FORMAT: '1'
+        run: |
+          export PATH="$RUNNER_TEMP/clang-format-venv/bin:$PATH"
+          bash scripts/format-check.sh --require
+
+  licence:
+    name: licence manifest (release-blocking)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Third-party licence manifest
+        run: node scripts/check-licenses.mjs
+      - name: Diagnostics source scan (advisory until T41)
+        run: node scripts/check-diagnostics.mjs
+
+  build:
+    name: build-${{ matrix.name }} (release-blocking)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc
+            os: windows-latest
+          - name: macos-arm64
+            os: macos-latest
+          - name: linux-gcc
+            os: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Linux runtime libraries (headless Godot)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2t64 libdbus-1-3 libfontconfig1 libfreetype6 libgl1 \
+            libpulse0 libwayland-client0 libx11-6 libxcursor1 libxinerama1 \
+            libxi6 libxrandr2
+
+      - name: Bootstrap pinned dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/bootstrap.ps1 -Fast
+
+      - name: Bootstrap pinned dependencies (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=ON
+
+      - name: Build RelWithDebInfo
+        shell: bash
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Fast tests
+        shell: bash
+        run: ctest --test-dir build -C RelWithDebInfo -L fast -LE perf --output-on-failure
+
+      - name: Headless shell smoke
+        shell: pwsh
+        run: ./scripts/smoke.ps1 -Required
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-${{ matrix.name }}-${{ github.run_id }}
+          path: |
+            build/Testing
+            build/CMakeCache.txt
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/perf
+            tests/performance/results
+            app/.godot
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,7 +1,8 @@
 # Diagnostics and Support Codes
 
-**Status:** proposal; the enum, metadata registry and structured logger are implemented (T03). The
-generated string table and CI drift check are T06.
+**Status:** proposal; the enum, metadata registry and structured logger are implemented (T03), and the
+advisory source scan is implemented (T06). The generated string table and the blocking drift check are
+T41.
 **Last updated:** 2026-11-20
 
 Every failure in this application has a stable code, a human sentence, and one recovery action.
@@ -49,7 +50,7 @@ the app itself keeps running.
 ## Implemented registry (T03)
 
 The source of truth is `native/core/include/avatar/core/diagnostics.h`; the tables below are the
-human-readable registry and are generated from that header from T06 onwards.
+human-readable registry and will be generated from that header in T41.
 
 - `DiagnosticCode` is a stable `enum class : uint32_t`. The numeric value is
   `<area digit><NNN>`: `CAP-001` is 1001, `TRK-002` is 2002, `AVT-101` is 4101. Codes are never
@@ -67,7 +68,8 @@ human-readable registry and are generated from that header from T06 onwards.
   other private payloads (`frame_data`, `landmarks`, `pixels`, `face_profile`, ...) and counts the
   redaction; `frame_id` and similar metadata keys remain allowed.
 - A unit test asserts unique codes, unique message/action keys, non-empty keys, complete area
-  coverage and canonical formatting. T06 adds the generated table and the source scan.
+  coverage and canonical formatting. T06 adds the advisory source scan; T41 adds the generated table
+  and makes the scan blocking.
 
 The severity and recovery text below is the reviewed intent for each code; it is not compiled into
 the registry (the message/action keys resolve to the string table).
@@ -236,9 +238,15 @@ is a local file; the app does not upload it.
 ## CI enforcement
 
 - `native/core/include/avatar/core/diagnostics.h` is the enum and metadata source of truth.
-- The registry tables in this document are generated from the header and compared in CI; drift
-  fails the build (T06).
-- A source scan rejects a literal `AREA-NNN` that is not in the enum, and a log call without a code.
+- `scripts/check-diagnostics.mjs` (T06) parses the enum and scans `native/` and `app/`:
+  - a literal `AREA-NNN` that is not in the enum is a finding,
+  - a raw `printf`/`cout`/`cerr`/`puts`/`perror` call, or a GDScript `print`/`push_error`, without a
+    code on the line is a finding. A `// diagnostics-scan: allow` comment suppresses one line.
+  - The scan is **advisory** until T41 wires the string table: it prints findings and exits 0.
+    `--strict` (or `AVATAR_DIAGNOSTICS_STRICT=1`) fails instead, and the self-test and T06 gate
+    exercise that mode. CTest registers `diagnostics_source_scan` under `fast;task_T06`.
+- The registry tables in this document will be generated from the header and compared in CI in T41;
+  drift then fails the build.
 - The string table must contain a message and an action for every code.
 - Unit tests assert that every code has a unique value, a unique message/action key pair and
   non-empty keys. `avatar_core_unit` is the fast-label gate for this today.

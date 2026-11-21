@@ -19,10 +19,8 @@ struct Pose {
     float confidence = 0.0F;
 };
 
-[[nodiscard]] double ns_per_iteration(
-    std::chrono::steady_clock::duration elapsed) noexcept {
-    const auto nanoseconds =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
+[[nodiscard]] double ns_per_iteration(std::chrono::steady_clock::duration elapsed) noexcept {
+    const auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count();
     return static_cast<double>(nanoseconds) / static_cast<double>(kIterations);
 }
 
@@ -44,8 +42,7 @@ void bench_ring() {
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     std::printf("bench: spsc_ring pop+push  %.2f ns/pair (%.2f ns/op) checksum=%llu\n",
-                ns_per_iteration(elapsed),
-                ns_per_iteration(elapsed) / 2.0,
+                ns_per_iteration(elapsed), ns_per_iteration(elapsed) / 2.0,
                 static_cast<unsigned long long>(checksum));
 }
 
@@ -70,8 +67,7 @@ void bench_latest_slot() {
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
     std::printf("bench: latest_slot publish+read %.2f ns/pair (%.2f ns/op) checksum=%llu\n",
-                ns_per_iteration(elapsed),
-                ns_per_iteration(elapsed) / 2.0,
+                ns_per_iteration(elapsed), ns_per_iteration(elapsed) / 2.0,
                 static_cast<unsigned long long>(checksum));
 }
 

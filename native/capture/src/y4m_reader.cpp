@@ -19,8 +19,8 @@ bool parse_u32(const std::string& text, std::uint32_t& value) noexcept {
 }
 
 bool is_chroma_420(const std::string& chroma) noexcept {
-    return chroma == "420" || chroma == "420jpeg" || chroma == "420mpeg2" ||
-           chroma == "420paldv" || chroma == "420p210";
+    return chroma == "420" || chroma == "420jpeg" || chroma == "420mpeg2" || chroma == "420paldv" ||
+           chroma == "420p210";
 }
 
 bool is_chroma_422(const std::string& chroma) noexcept {
@@ -38,7 +38,8 @@ core::Status Y4mReader::open(const std::filesystem::path& path) {
     stream_.clear();
     stream_.open(path, std::ios::binary);
     if (!stream_) {
-        return core::Status::error(core::StatusCode::not_found, "cannot open Y4M file", path.string());
+        return core::Status::error(core::StatusCode::not_found, "cannot open Y4M file",
+                                   path.string());
     }
 
     std::string line;
@@ -59,45 +60,51 @@ core::Status Y4mReader::open(const std::filesystem::path& path) {
         const char tag = token[0];
         const std::string value = token.substr(1);
         switch (tag) {
-        case 'W':
-            if (!parse_u32(value, header.width)) {
-                return core::Status::error(core::StatusCode::invalid_argument, "invalid Y4M width");
+            case 'W':
+                if (!parse_u32(value, header.width)) {
+                    return core::Status::error(core::StatusCode::invalid_argument,
+                                               "invalid Y4M width");
+                }
+                break;
+            case 'H':
+                if (!parse_u32(value, header.height)) {
+                    return core::Status::error(core::StatusCode::invalid_argument,
+                                               "invalid Y4M height");
+                }
+                break;
+            case 'F': {
+                const std::size_t colon = value.find(':');
+                const std::string numerator = value.substr(0, colon);
+                const std::string denominator =
+                    colon == std::string::npos ? "1" : value.substr(colon + 1);
+                if (!parse_u32(numerator, header.fps_num) ||
+                    !parse_u32(denominator, header.fps_den)) {
+                    return core::Status::error(core::StatusCode::invalid_argument,
+                                               "invalid Y4M frame rate");
+                }
+                break;
             }
-            break;
-        case 'H':
-            if (!parse_u32(value, header.height)) {
-                return core::Status::error(core::StatusCode::invalid_argument, "invalid Y4M height");
-            }
-            break;
-        case 'F': {
-            const std::size_t colon = value.find(':');
-            const std::string numerator = value.substr(0, colon);
-            const std::string denominator = colon == std::string::npos ? "1" : value.substr(colon + 1);
-            if (!parse_u32(numerator, header.fps_num) || !parse_u32(denominator, header.fps_den)) {
-                return core::Status::error(core::StatusCode::invalid_argument, "invalid Y4M frame rate");
-            }
-            break;
-        }
-        case 'I':
-            header.interlaced = value != "p";
-            break;
-        case 'C':
-            header.chroma = value;
-            break;
-        default:
-            break;
+            case 'I':
+                header.interlaced = value != "p";
+                break;
+            case 'C':
+                header.chroma = value;
+                break;
+            default:
+                break;
         }
     }
 
     if (header.width == 0 || header.height == 0) {
-        return core::Status::error(core::StatusCode::invalid_argument, "Y4M header has no frame size");
+        return core::Status::error(core::StatusCode::invalid_argument,
+                                   "Y4M header has no frame size");
     }
     if (!is_chroma_420(header.chroma) && !is_chroma_422(header.chroma) && header.chroma != "444") {
-        return core::Status::error(core::StatusCode::unsupported,
-                                   "unsupported Y4M chroma",
+        return core::Status::error(core::StatusCode::unsupported, "unsupported Y4M chroma",
                                    header.chroma);
     }
-    if ((is_chroma_420(header.chroma) || is_chroma_422(header.chroma)) && (header.width % 2u) != 0) {
+    if ((is_chroma_420(header.chroma) || is_chroma_422(header.chroma)) &&
+        (header.width % 2u) != 0) {
         return core::Status::error(core::StatusCode::invalid_argument,
                                    "subsampled Y4M requires an even width");
     }

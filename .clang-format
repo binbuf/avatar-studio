@@ -1,0 +1,39 @@
+# Pinned formatting contract. CI (scripts/format-check.sh) and the local
+# scripts/format-check.ps1 run clang-format 18.1.8 with this file.
+#
+# The style is LLVM with the project's four-space indentation and a 100-column
+# limit. Keep this file in sync with the clang-format version pinned in
+# .github/workflows/ci.yml: a different major version can reflow the tree.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+IndentPPDirectives: None
+IndentCaseLabels: true
+NamespaceIndentation: None
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+FixNamespaceComments: true

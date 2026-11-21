@@ -40,16 +40,12 @@ struct Result {
     std::string reason{};
 };
 
-[[nodiscard]] Image make_solid(std::uint32_t width,
-                               std::uint32_t height,
-                               std::uint8_t r,
-                               std::uint8_t g,
-                               std::uint8_t b);
+[[nodiscard]] Image make_solid(std::uint32_t width, std::uint32_t height, std::uint8_t r,
+                               std::uint8_t g, std::uint8_t b);
 [[nodiscard]] Image make_gradient(std::uint32_t width, std::uint32_t height);
 
 [[nodiscard]] bool load_ppm(const std::filesystem::path& path, Image& image, std::string& error);
-[[nodiscard]] bool write_ppm(const std::filesystem::path& path,
-                             const Image& image,
+[[nodiscard]] bool write_ppm(const std::filesystem::path& path, const Image& image,
                              std::string& error);
 
 /// Per-pixel absolute difference, amplified and tinted red for visibility.
@@ -63,11 +59,8 @@ struct Result {
 
 /// Writes `<name>.actual.ppm`, `<name>.baseline.ppm` and `<name>.diff.ppm` into
 /// `directory`, creating it if necessary.
-[[nodiscard]] bool write_artifacts(const std::filesystem::path& directory,
-                                   const std::string& name,
-                                   const Image& actual,
-                                   const Image& baseline,
-                                   const Image& diff,
+[[nodiscard]] bool write_artifacts(const std::filesystem::path& directory, const std::string& name,
+                                   const Image& actual, const Image& baseline, const Image& diff,
                                    std::string& error);
 
 } // namespace avatar::golden

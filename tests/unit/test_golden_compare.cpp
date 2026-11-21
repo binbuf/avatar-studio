@@ -69,12 +69,8 @@ TEST_CASE(golden_compare_writes_all_three_artifacts) {
     const Image actual = avatar::golden::make_gradient(32, 24);
     const Image baseline = avatar::golden::make_solid(32, 24, 1, 2, 3);
     std::string error;
-    CHECK(avatar::golden::write_artifacts(directory,
-                                          "frame",
-                                          actual,
-                                          baseline,
-                                          avatar::golden::make_diff(actual, baseline),
-                                          error));
+    CHECK(avatar::golden::write_artifacts(directory, "frame", actual, baseline,
+                                          avatar::golden::make_diff(actual, baseline), error));
     CHECK(std::filesystem::exists(directory / "frame.actual.ppm"));
     CHECK(std::filesystem::exists(directory / "frame.baseline.ppm"));
     CHECK(std::filesystem::exists(directory / "frame.diff.ppm"));

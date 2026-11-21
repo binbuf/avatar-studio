@@ -63,7 +63,8 @@ std::string format_double(double value) {
 
 } // namespace
 
-Image make_solid(std::uint32_t width, std::uint32_t height, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+Image make_solid(std::uint32_t width, std::uint32_t height, std::uint8_t r, std::uint8_t g,
+                 std::uint8_t b) {
     Image image;
     image.width = width;
     image.height = height;
@@ -87,7 +88,8 @@ Image make_gradient(std::uint32_t width, std::uint32_t height) {
         for (std::uint32_t x = 0; x < width; ++x) {
             const std::size_t index = (static_cast<std::size_t>(y) * width + x) * 3u;
             image.rgb[index] = static_cast<std::uint8_t>(std::lround(255.0 * x / x_denominator));
-            image.rgb[index + 1] = static_cast<std::uint8_t>(std::lround(255.0 * y / y_denominator));
+            image.rgb[index + 1] =
+                static_cast<std::uint8_t>(std::lround(255.0 * y / y_denominator));
             image.rgb[index + 2] = static_cast<std::uint8_t>(
                 std::lround(255.0 * (x + y) / (x_denominator + y_denominator)));
         }
@@ -178,9 +180,8 @@ Image make_diff(const Image& actual, const Image& baseline) {
             const int delta = std::abs(static_cast<int>(actual.rgb[index + channel]) -
                                        static_cast<int>(baseline.rgb[index + channel]));
             const int amplified = std::min(255, delta * 8);
-            diff.rgb[index + channel] =
-                channel == 0 ? static_cast<std::uint8_t>(amplified)
-                             : static_cast<std::uint8_t>(amplified / 3);
+            diff.rgb[index + channel] = channel == 0 ? static_cast<std::uint8_t>(amplified)
+                                                     : static_cast<std::uint8_t>(amplified / 3);
         }
     }
     return diff;
@@ -251,10 +252,9 @@ Metrics measure(const Image& actual, const Image& baseline) {
             double covariance = sum_xy / count - mean_x * mean_y;
             variance_x = std::max(variance_x, 0.0);
             variance_y = std::max(variance_y, 0.0);
-            const double numerator =
-                (2.0 * mean_x * mean_y + kC1) * (2.0 * covariance + kC2);
-            const double denominator = (mean_x * mean_x + mean_y * mean_y + kC1) *
-                                       (variance_x + variance_y + kC2);
+            const double numerator = (2.0 * mean_x * mean_y + kC1) * (2.0 * covariance + kC2);
+            const double denominator =
+                (mean_x * mean_x + mean_y * mean_y + kC1) * (variance_x + variance_y + kC2);
             ssim_sum += denominator > 0.0 ? numerator / denominator : 1.0;
             ++window_count;
         }
@@ -275,8 +275,8 @@ Result compare(const Image& actual, const Image& baseline, const Options& option
     }
     result.metrics = measure(actual, baseline);
     if (result.metrics.ssim < options.ssim_min) {
-        result.reason = "SSIM " + format_double(result.metrics.ssim) + " < " +
-                        format_double(options.ssim_min);
+        result.reason =
+            "SSIM " + format_double(result.metrics.ssim) + " < " + format_double(options.ssim_min);
         return result;
     }
     if (result.metrics.max_delta > options.max_delta) {
@@ -289,11 +289,8 @@ Result compare(const Image& actual, const Image& baseline, const Options& option
     return result;
 }
 
-bool write_artifacts(const std::filesystem::path& directory,
-                     const std::string& name,
-                     const Image& actual,
-                     const Image& baseline,
-                     const Image& diff,
+bool write_artifacts(const std::filesystem::path& directory, const std::string& name,
+                     const Image& actual, const Image& baseline, const Image& diff,
                      std::string& error) {
     std::error_code code;
     std::filesystem::create_directories(directory, code);

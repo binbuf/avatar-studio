@@ -37,8 +37,7 @@ public:
     Status(StatusCode code, std::string message = {}, std::string detail = {});
 
     [[nodiscard]] static Status success() noexcept;
-    [[nodiscard]] static Status error(StatusCode code,
-                                      std::string message = {},
+    [[nodiscard]] static Status error(StatusCode code, std::string message = {},
                                       std::string detail = {});
 
     [[nodiscard]] bool ok() const noexcept { return code_ == StatusCode::ok; }

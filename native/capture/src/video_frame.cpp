@@ -26,29 +26,29 @@ void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
 
 bool is_supported_pixel_format(PixelFormat format) noexcept {
     switch (format) {
-    case PixelFormat::nv12:
-    case PixelFormat::yuy2:
-    case PixelFormat::bgra8:
-    case PixelFormat::rgba8:
-        return true;
-    case PixelFormat::mjpeg:
-        return false;
+        case PixelFormat::nv12:
+        case PixelFormat::yuy2:
+        case PixelFormat::bgra8:
+        case PixelFormat::rgba8:
+            return true;
+        case PixelFormat::mjpeg:
+            return false;
     }
     return false;
 }
 
 const char* pixel_format_name(PixelFormat format) noexcept {
     switch (format) {
-    case PixelFormat::nv12:
-        return "nv12";
-    case PixelFormat::yuy2:
-        return "yuy2";
-    case PixelFormat::mjpeg:
-        return "mjpeg";
-    case PixelFormat::bgra8:
-        return "bgra8";
-    case PixelFormat::rgba8:
-        return "rgba8";
+        case PixelFormat::nv12:
+            return "nv12";
+        case PixelFormat::yuy2:
+            return "yuy2";
+        case PixelFormat::mjpeg:
+            return "mjpeg";
+        case PixelFormat::bgra8:
+            return "bgra8";
+        case PixelFormat::rgba8:
+            return "rgba8";
     }
     return "unknown";
 }
@@ -61,9 +61,7 @@ bool is_planar_yuv(PixelFormat format) noexcept {
     return format == PixelFormat::nv12;
 }
 
-bool compute_plane_layout(PixelFormat format,
-                          std::uint32_t width,
-                          std::uint32_t height,
+bool compute_plane_layout(PixelFormat format, std::uint32_t width, std::uint32_t height,
                           std::array<PlaneLayout, kMaxFramePlanes>& planes) noexcept {
     planes = {};
     if (width == 0 || height == 0) {
@@ -71,29 +69,29 @@ bool compute_plane_layout(PixelFormat format,
     }
 
     switch (format) {
-    case PixelFormat::bgra8:
-    case PixelFormat::rgba8:
-        planes[0].stride = width * 4u;
-        planes[0].size = static_cast<std::size_t>(planes[0].stride) * height;
-        return true;
-    case PixelFormat::nv12:
-        if ((width % 2u) != 0 || (height % 2u) != 0) {
+        case PixelFormat::bgra8:
+        case PixelFormat::rgba8:
+            planes[0].stride = width * 4u;
+            planes[0].size = static_cast<std::size_t>(planes[0].stride) * height;
+            return true;
+        case PixelFormat::nv12:
+            if ((width % 2u) != 0 || (height % 2u) != 0) {
+                return false;
+            }
+            planes[0].stride = width;
+            planes[0].size = static_cast<std::size_t>(width) * height;
+            planes[1].stride = width;
+            planes[1].size = static_cast<std::size_t>(width) * (height / 2u);
+            return true;
+        case PixelFormat::yuy2:
+            if ((width % 2u) != 0) {
+                return false;
+            }
+            planes[0].stride = width * 2u;
+            planes[0].size = static_cast<std::size_t>(planes[0].stride) * height;
+            return true;
+        case PixelFormat::mjpeg:
             return false;
-        }
-        planes[0].stride = width;
-        planes[0].size = static_cast<std::size_t>(width) * height;
-        planes[1].stride = width;
-        planes[1].size = static_cast<std::size_t>(width) * (height / 2u);
-        return true;
-    case PixelFormat::yuy2:
-        if ((width % 2u) != 0) {
-            return false;
-        }
-        planes[0].stride = width * 2u;
-        planes[0].size = static_cast<std::size_t>(planes[0].stride) * height;
-        return true;
-    case PixelFormat::mjpeg:
-        return false;
     }
     return false;
 }

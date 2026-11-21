@@ -52,8 +52,7 @@ struct PlaneLayout {
 /// Fills the plane layout for a fixed-size CPU format. Returns false for an
 /// unsupported format or a dimension that cannot be represented (odd sizes for
 /// 4:2:0 / 4:2:2, zero dimensions).
-[[nodiscard]] bool compute_plane_layout(PixelFormat format,
-                                        std::uint32_t width,
+[[nodiscard]] bool compute_plane_layout(PixelFormat format, std::uint32_t width,
                                         std::uint32_t height,
                                         std::array<PlaneLayout, kMaxFramePlanes>& planes) noexcept;
 

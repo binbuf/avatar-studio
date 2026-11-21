@@ -10,19 +10,17 @@
 namespace {
 
 using avatar::capture::FaceGroundTruth;
+using avatar::capture::frame_content_hash;
 using avatar::capture::GroundTruthLandmark;
 using avatar::capture::PixelFormat;
+using avatar::capture::pose_at;
 using avatar::capture::SyntheticFaceConfig;
 using avatar::capture::SyntheticFaceSource;
 using avatar::capture::VideoFrame;
-using avatar::capture::frame_content_hash;
-using avatar::capture::pose_at;
 using avatar::core::FrameClock;
 using avatar::core::ManualTimeSource;
 
-SyntheticFaceConfig make_config(std::uint32_t width,
-                                std::uint32_t height,
-                                PixelFormat format,
+SyntheticFaceConfig make_config(std::uint32_t width, std::uint32_t height, PixelFormat format,
                                 float barrel_k1 = 0.0f) {
     SyntheticFaceConfig config;
     config.width = width;
@@ -37,9 +35,7 @@ struct FaceFixture {
     FrameClock clock;
     SyntheticFaceSource source;
 
-    FaceFixture(std::uint32_t width,
-                std::uint32_t height,
-                PixelFormat format,
+    FaceFixture(std::uint32_t width, std::uint32_t height, PixelFormat format,
                 float barrel_k1 = 0.0f)
         : time(0), clock(time), source(clock, make_config(width, height, format, barrel_k1)) {}
 };
@@ -53,9 +49,9 @@ bool window_has_green(const VideoFrame& frame, int centre_x, int centre_y, int r
                 y >= static_cast<int>(frame.height)) {
                 continue;
             }
-            const std::uint8_t* pixel =
-                frame.plane(0) + static_cast<std::size_t>(y) * frame.stride(0) +
-                static_cast<std::size_t>(x) * 4u;
+            const std::uint8_t* pixel = frame.plane(0) +
+                                        static_cast<std::size_t>(y) * frame.stride(0) +
+                                        static_cast<std::size_t>(x) * 4u;
             if (pixel[1] > 200 && pixel[2] < 80 && pixel[0] < 80) {
                 return true;
             }
@@ -187,7 +183,8 @@ TEST_CASE(synthetic_face_is_deterministic) {
     CHECK(first_lease.has_value());
     CHECK(second_lease.has_value());
     if (first_lease && second_lease) {
-        CHECK(frame_content_hash(first_lease->frame()) == frame_content_hash(second_lease->frame()));
+        CHECK(frame_content_hash(first_lease->frame()) ==
+              frame_content_hash(second_lease->frame()));
     }
 }
 

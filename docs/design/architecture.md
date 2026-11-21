@@ -132,6 +132,7 @@ a camera, or a GPU.
 | Frame model, `FrameRing`, `ICameraSource`, test/replay sources | `native/capture/` | Implemented (T04) |
 | `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04); real backend is T11 |
 | Performance harness, hardware fingerprint, local baseline | `tests/performance/` | Implemented (T05); real render/transport gates are T26/T46 |
+| CI matrix, formatting, static analysis, licence manifest | `.github/workflows/`, `scripts/` | Implemented (T06); goldens/perf release gates are T26/T46 |
 | Windows Media Foundation capture | `native/capture/windows/` | Planned (T10) |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
 | FaceRig math | `native/rig/` | Planned (T18) |
@@ -485,7 +486,12 @@ Build rules:
   header-only, pinned, uses double precision for estimation, and never appears in the GDExtension
   boundary or the tracker C ABI.
 - **Dependency licenses are audited at build time.** A CI step fails the build if a new dependency
-  appears without an entry in the manifest.
+  appears without an entry in the manifest. The gate is `scripts/check-licenses.mjs` against
+  `native/licenses.json`; a denied licence fails unless a reviewed exception names an ADR
+  ([ADR-0016](adr/0016-ci-quality-gates.md)).
+- **Formatting and static analysis are pinned.** `.clang-format` (clang-format 18.1.8) runs in the
+  fast CI job via `scripts/format-check.*`; `.clang-tidy` (clang-tidy 18) runs nightly. Warnings are
+  errors in every build.
 
 ### Local development build
 
@@ -517,6 +523,11 @@ The native core builds without Godot; the shell adds the engine when it is boots
   suite and `tests/gates/TNN.ps1`; `-Task TNN` selects the task label and gate. From T02 the
   contract also runs `app/tests/smoke.gd` headlessly and requires the engine and adapter for T02 and
   later. `-Task T01` uses the native-only bootstrap and remains usable without Godot.
+- `scripts/ci.ps1` / `scripts/ci.sh` mirror the fast CI job: format drift, licence manifest,
+  advisory diagnostics scan, bootstrap, configure, RelWithDebInfo build, `ctest -L fast` and the
+  headless smoke. `.github/workflows/ci.yml` runs that sequence on Windows, macOS and Ubuntu;
+  `.github/workflows/nightly.yml` owns the full suite, sanitizers, clang-tidy, lavapipe goldens and
+  performance ([ADR-0016](adr/0016-ci-quality-gates.md)).
 - The shell baseline (`app/project.godot`, `app/scenes/main.tscn`, `app/bin/avatar_studio.gdextension`)
   is Forward+ with a fixed 1920x1080 transparent `SubViewport` using `render_target_update_mode =
   ALWAYS`; `AvatarRuntime` is the only GDExtension class and exposes a version string and a frame

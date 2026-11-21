@@ -1,0 +1,159 @@
+{
+  "schema": "avatar.licenses.v1",
+  "updated": "2026-11-20",
+  "description": "Third-party components shipped or linked by Avatar Studio. Source of truth for the licence gate (scripts/check-licenses.mjs). Add a component before its first include; planned entries reserve the licence decision for later tasks.",
+  "policy": {
+    "deny_spdx": [
+      "GPL-2.0-only",
+      "GPL-2.0-or-later",
+      "GPL-3.0-only",
+      "GPL-3.0-or-later",
+      "AGPL-3.0-only",
+      "AGPL-3.0-or-later",
+      "SSPL-1.0",
+      "LGPL-2.1-only",
+      "LGPL-2.1-or-later",
+      "LGPL-3.0-only",
+      "LGPL-3.0-or-later",
+      "CC-BY-NC-4.0",
+      "LicenseRef-Proprietary"
+    ],
+    "deny_patterns": [
+      "(^|[^A-Za-z])GPL-",
+      "AGPL",
+      "SSPL",
+      "^CC-BY-NC",
+      "non-?commercial",
+      "proprietary"
+    ],
+    "exceptions": []
+  },
+  "components": [
+    {
+      "id": "nlohmann_json",
+      "name": "nlohmann/json",
+      "version": "3.11.3",
+      "license": "MIT",
+      "url": "https://github.com/nlohmann/json",
+      "modified": false,
+      "shipped": true,
+      "status": "active",
+      "require_usage": true,
+      "include_prefixes": [
+        "nlohmann/"
+      ],
+      "sha256": "9BEA4C8066EF4A1C206B2BE5A36302F8926F7FDC6087AF5D20B417D0CF103EA6",
+      "notes": "Header-only JSON parser. Fetched by scripts/bootstrap.* from the v3.11.3 release."
+    },
+    {
+      "id": "godot",
+      "name": "Godot Engine",
+      "version": "4.7.2",
+      "license": "MIT",
+      "url": "https://github.com/godotengine/godot",
+      "modified": false,
+      "shipped": true,
+      "status": "active",
+      "require_usage": false,
+      "include_prefixes": [],
+      "notes": "Runtime shell and editor binary. Pinned by scripts/bootstrap.*; never linked into the native core."
+    },
+    {
+      "id": "godot-cpp",
+      "name": "godot-cpp",
+      "version": "10.0.0-stable",
+      "license": "MIT",
+      "url": "https://github.com/godotengine/godot-cpp",
+      "modified": false,
+      "shipped": true,
+      "status": "active",
+      "require_usage": true,
+      "include_prefixes": [
+        "godot_cpp/",
+        "gdextension_interface.h"
+      ],
+      "sha256": "C763A08B8EC18DAE300CD54BB8848FAF1A5FD11DA629449D16649A72A1884727",
+      "notes": "GDExtension bindings built with GODOTCPP_API_VERSION=4.7 (ADR-0012)."
+    },
+    {
+      "id": "eigen",
+      "name": "Eigen",
+      "version": "3.4.0",
+      "license": "MPL-2.0",
+      "url": "https://gitlab.com/libeigen/eigen",
+      "modified": false,
+      "shipped": true,
+      "status": "planned",
+      "require_usage": false,
+      "include_prefixes": [
+        "Eigen/",
+        "unsupported/Eigen/"
+      ],
+      "notes": "Header-only rig math, confined to native/rig (ADR-0008). Not yet fetched by bootstrap."
+    },
+    {
+      "id": "mediapipe",
+      "name": "MediaPipe Face Landmarker",
+      "version": "0.10.x",
+      "license": "Apache-2.0",
+      "url": "https://github.com/google-ai-edge/mediapipe",
+      "modified": false,
+      "shipped": true,
+      "status": "planned",
+      "require_usage": false,
+      "include_prefixes": [
+        "mediapipe/"
+      ],
+      "notes": "Tracking backend behind the C-ABI wrapper (ADR-0003); version pinned when T11 adds the build."
+    },
+    {
+      "id": "onnxruntime",
+      "name": "ONNX Runtime",
+      "version": "1.20.x",
+      "license": "MIT",
+      "url": "https://github.com/microsoft/onnxruntime",
+      "modified": false,
+      "shipped": true,
+      "status": "planned",
+      "require_usage": false,
+      "include_prefixes": [
+        "onnxruntime/",
+        "onnxruntime_c_api.h",
+        "onnxruntime_cxx_api.h"
+      ],
+      "notes": "Fallback tracker runtime if MediaPipe is not viable; version pinned when selected."
+    },
+    {
+      "id": "spout2",
+      "name": "Spout2",
+      "version": "2.007.x",
+      "license": "BSD-2-Clause",
+      "url": "https://github.com/leadedge/Spout2",
+      "modified": false,
+      "shipped": true,
+      "status": "planned",
+      "require_usage": false,
+      "include_prefixes": [
+        "SpoutSDK/",
+        "SpoutGL/",
+        "Spout.h"
+      ],
+      "notes": "Windows OBS/Spout transport (T46)."
+    },
+    {
+      "id": "syphon",
+      "name": "Syphon",
+      "version": "5.x",
+      "license": "BSD-2-Clause",
+      "url": "https://github.com/Syphon/Syphon-Framework",
+      "modified": false,
+      "shipped": true,
+      "status": "planned",
+      "require_usage": false,
+      "include_prefixes": [
+        "Syphon/"
+      ],
+      "notes": "macOS OBS/Syphon transport (T46)."
+    }
+  ]
+}

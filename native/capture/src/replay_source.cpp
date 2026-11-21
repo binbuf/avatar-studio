@@ -72,12 +72,10 @@ core::Status ReplaySource::start() {
     }
     if (!load_sidecar()) {
         return core::Status::error(core::StatusCode::invalid_argument,
-                                   "cannot load the replay sidecar",
-                                   last_error_);
+                                   "cannot load the replay sidecar", last_error_);
     }
 
-    ring_ = std::make_unique<FrameRing>(reader_.header().width,
-                                        reader_.header().height,
+    ring_ = std::make_unique<FrameRing>(reader_.header().width, reader_.header().height,
                                         config_.format);
     next_frame_ = 0;
     last_timestamp_ = 0;
@@ -247,8 +245,7 @@ bool ReplaySource::convert(VideoFrame& frame) const {
         std::uint8_t* y_plane = const_cast<std::uint8_t*>(frame.planes[0]);
         std::uint8_t* uv_plane = const_cast<std::uint8_t*>(frame.planes[1]);
         for (std::uint32_t y = 0; y < height; ++y) {
-            std::copy_n(y_.data() + static_cast<std::size_t>(y) * width,
-                        width,
+            std::copy_n(y_.data() + static_cast<std::size_t>(y) * width, width,
                         y_plane + static_cast<std::size_t>(y) * frame.strides[0]);
         }
         for (std::uint32_t y = 0; y < height; y += 2) {
@@ -258,7 +255,8 @@ bool ReplaySource::convert(VideoFrame& frame) const {
                 int cr = 0;
                 for (std::uint32_t dy = 0; dy < 2; ++dy) {
                     const std::size_t chroma_row =
-                        static_cast<std::size_t>((y + dy) * geometry.height / height) * geometry.width;
+                        static_cast<std::size_t>((y + dy) * geometry.height / height) *
+                        geometry.width;
                     for (std::uint32_t dx = 0; dx < 2; ++dx) {
                         const std::size_t chroma_column =
                             static_cast<std::size_t>((x + dx) * geometry.width / width);

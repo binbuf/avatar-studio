@@ -1,11 +1,13 @@
 # Testing and Quality
 
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
-comparator and the foundation performance harness (T05) are implemented. Rendering, real
-capture/tracking, the 10-minute soak and the first avatar goldens remain `Planned`. ·
+comparator, foundation performance harness (T05) and the CI/format/licence gates (T06) are
+implemented. Rendering, real capture/tracking, the 10-minute soak and the first avatar goldens remain
+`Planned`. ·
 **Last updated:** 2026-11-20
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
-[ADR-0015](adr/0015-performance-harness-and-local-baseline.md)
+[ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
+[ADR-0016](adr/0016-ci-quality-gates.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -325,6 +327,12 @@ is the most common long-term maintenance failure for this class of app.
 
 ## CI matrix
 
+**Status:** implemented (T06). `.github/workflows/ci.yml` runs the fast matrix on every push and pull
+request; `.github/workflows/nightly.yml` owns the slow, GPU-dependent and sanitizer suites. The local
+mirror is `scripts/ci.ps1` (Windows) / `scripts/ci.sh` (macOS, Linux), which runs the same format,
+licence, configure, build, `ctest -L fast` and smoke sequence. `scripts/verify.ps1|sh` remains the
+task-level objective contract and adds `tests/gates/TNN.ps1`.
+
 | Job | OS | Trigger | Notes |
 |---|---|---|---|
 | Unit + component | Win, macOS, Linux | Every push | No GPU required (software renderer for shader compile checks) |
@@ -332,14 +340,34 @@ is the most common long-term maintenance failure for this class of app.
 | Native build (MediaPipe) | All three | Nightly + on tracker changes | Slowest job; cached aggressively |
 | Integration (transports) | All three | Nightly | Uses virtual devices; no physical camera |
 | Performance | Reference hardware (self-hosted) | Nightly | Not on shared cloud runners |
-| ASan + UBSan | Linux, macOS | Every push | Unit/component only; no GPU |
-| TSan | Linux | Every push | Ring buffers, tracking handoff, output queues |
-| Static analysis | Any | Every push | clang-tidy plus the warning policy |
+| ASan + UBSan | Linux, macOS | Nightly | Unit/component only; no GPU |
+| TSan | Linux | Nightly | Ring buffers, tracking handoff, output queues |
+| Static analysis | Any | Nightly | clang-tidy plus the warning policy |
 | Fuzzing | Linux | Nightly | glTF, JSON, shared-memory header, archive paths |
 | Licence audit | Any | Every push | Fails on manifest drift |
 
 A green build requires all blocking jobs. Performance and integration are blocking for release
-branches, advisory on feature branches (with a warning comment).
+branches, advisory on feature branches (with a warning comment). The performance job stays advisory
+until the self-hosted reference runner exists.
+
+### Implemented workflow jobs (T06)
+
+| Job | Workflow | Blocking | What runs |
+|---|---|---|---|
+| `format` | `ci.yml` | Yes | clang-format 18.1.8 via `scripts/format-check.sh --require`; `.clang-format` is the contract |
+| `licence` | `ci.yml` | Yes | `node scripts/check-licenses.mjs`; the diagnostics scan runs advisory |
+| `build-windows-msvc`, `build-macos-arm64`, `build-linux-gcc` | `ci.yml` | Yes | bootstrap, configure, RelWithDebInfo build, `ctest -L fast -LE perf`, headless smoke, failure artifacts |
+| `full-suite-*` | `nightly.yml` | Yes | complete CTest suite on all three platforms |
+| `sanitizers-asan-ubsan-tsan` | `nightly.yml` | Yes | ASan+UBSan and TSan over the fast label |
+| `clang-tidy` | `nightly.yml` | Yes | `.clang-tidy`, `CMAKE_CXX_CLANG_TIDY`, GDExtension disabled to keep the run bounded |
+| `golden-lavapipe` | `nightly.yml` | Yes after T26 | software Vulkan; no golden test is registered yet (`--no-tests=ignore`) |
+| `performance-advisory` | `nightly.yml` | No until the reference runner | `avatar_bench` plus `tests/performance/check.mjs`; uploads results |
+
+Formatting drift, a third-party include without a `native/licenses.json` entry, a denied licence, a
+missing manifest field, and a broken fast test all fail a blocking job. Jobs whose name contains
+`(release-blocking)` are required for a green build; the exact list and the branch-protection
+expectations are repeated in `docs/progress/T06.md`. Action versions are pinned by major tag today;
+commit-SHA pinning is a T06 follow-up because each SHA must be verified upstream.
 
 ---
 
@@ -350,17 +378,18 @@ not enough.
 
 | Tool | Scope | Gate |
 |---|---|---|
-| ASan + UBSan | Unit and component tests on Linux/macOS | Every push; a finding is a release blocker |
-| TSan | Ring buffers, tracking handoff, output queues | Every push |
+| ASan + UBSan | Unit and component tests on Linux/macOS | Nightly; a finding is a release blocker |
+| TSan | Ring buffers, tracking handoff, output queues | Nightly |
 | MSVC ASan | Windows unit tests | Nightly; advisory until the toolchain is stable |
-| clang-tidy | `native/` with a pinned config | Every push on changed files; new findings fail |
+| clang-tidy | `native/` with a pinned config | Nightly; new findings fail |
 | Warning policy | `-Wall -Wextra -Werror`, MSVC `/W4 /WX` | Every build |
 | libFuzzer | glTF importer, JSON loader, shared-memory header parser, archive path handling | Nightly, 30 min per target |
 
 ### ThreadSanitizer job (T06)
 
-The ring and latest-slot contracts are only credible under TSan. T06 adds a Linux job
-(clang or GCC; MSVC has no equivalent):
+The ring and latest-slot contracts are only credible under TSan. The nightly `sanitizers` job adds a
+Linux TSan build (clang or GCC; MSVC has no equivalent), plus an ASan+UBSan build of the same fast
+suite:
 
 ```bash
 cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -374,6 +403,33 @@ ctest --test-dir build-tsan -C RelWithDebInfo -L fast --output-on-failure
 concurrent `LatestSlot` torn-read test, so the `fast` label is the whole TSan surface for the
 primitives. The same job also covers the tracking handoff and output queues once those land. T03
 ran the stress test locally on Windows; the Linux TSan job is the blocking gate from T06.
+
+### Formatting and static analysis (T06)
+
+- `.clang-format` is pinned to clang-format 18.1.8. `scripts/format-check.ps1` (Windows) and
+  `scripts/format-check.sh` (macOS/Linux) report drift; `-Fix`/`--fix` rewrites. The CI `format` job
+  installs 18.1.8 and runs with `AVATAR_REQUIRE_FORMAT=1`, so a missing tool is a failure there but a
+  skip on a developer machine.
+- `.clang-tidy` is pinned to clang-tidy 18 and runs in the nightly `clang-tidy` job with
+  `CMAKE_CXX_CLANG_TIDY`. The check set is narrow and `bugprone-*`/`performance-*` findings are
+  errors. Formatting is not clang-tidy's job; style checks that fight `.clang-format` are disabled.
+- The compiler warning policy is unchanged and blocking in every build: MSVC `/W4 /WX`,
+  GCC/Clang `-Wall -Wextra -Wpedantic -Werror`.
+
+### Licence and dependency manifest (T06)
+
+`native/licenses.json` is the source of truth for third-party components: name, version, SPDX
+licence, upstream URL, modified flag, shipping status and include prefixes. `scripts/check-licenses.mjs`
+is a build gate, not a report:
+
+- an angle-bracket include from an unknown third-party prefix fails (quoted includes are project-local;
+  standard and platform headers are allow-listed in the script),
+- a manifest entry missing name/version/licence/url/modified fails,
+- a GPL/AGPL/SSPL/LGPL/non-commercial/proprietary licence fails unless the component has a reviewed
+  exception (reason plus ADR) in `policy.exceptions`.
+
+The current entries are nlohmann/json, Godot and godot-cpp (active) and Eigen, MediaPipe, ONNX Runtime,
+Spout2 and Syphon (planned). CTest registers `license_manifest_check` under `fast;task_T06`.
 
 The shared-memory header is a versioned binary interface shared with a process we do not control. It
 gets the same fuzzing treatment as a file parser, including truncated, oversized, and

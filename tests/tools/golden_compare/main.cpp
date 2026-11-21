@@ -72,12 +72,8 @@ int run_self_test(const std::filesystem::path& directory) {
 
     std::string error;
     const Image identical_diff = avatar::golden::make_diff(gradient, identical);
-    expect(avatar::golden::write_artifacts(directory / "identical",
-                                           "frame",
-                                           gradient,
-                                           identical,
-                                           identical_diff,
-                                           error),
+    expect(avatar::golden::write_artifacts(directory / "identical", "frame", gradient, identical,
+                                           identical_diff, error),
            "identical artifacts written");
     expect(std::filesystem::exists(directory / "identical" / "frame.actual.ppm") &&
                std::filesystem::exists(directory / "identical" / "frame.baseline.ppm") &&
@@ -90,12 +86,8 @@ int run_self_test(const std::filesystem::path& directory) {
     expect(!different_result.pass, "visibly different images fail");
     expect(different_result.metrics.ssim < 0.995, "visibly different SSIM is below the threshold");
     expect(different_result.metrics.max_delta > 8, "visibly different max delta exceeds the guard");
-    expect(avatar::golden::write_artifacts(directory / "different",
-                                           "frame",
-                                           black,
-                                           white,
-                                           avatar::golden::make_diff(black, white),
-                                           error),
+    expect(avatar::golden::write_artifacts(directory / "different", "frame", black, white,
+                                           avatar::golden::make_diff(black, white), error),
            "different artifacts written");
     expect(std::filesystem::exists(directory / "different" / "frame.actual.ppm") &&
                std::filesystem::exists(directory / "different" / "frame.baseline.ppm") &&
@@ -103,7 +95,8 @@ int run_self_test(const std::filesystem::path& directory) {
            "different run writes all three artifacts");
 
     Image one_pixel = gradient;
-    one_pixel.rgb[0] = static_cast<std::uint8_t>(std::min(255, static_cast<int>(one_pixel.rgb[0]) + 50));
+    one_pixel.rgb[0] =
+        static_cast<std::uint8_t>(std::min(255, static_cast<int>(one_pixel.rgb[0]) + 50));
     const Result guard_result = avatar::golden::compare(gradient, one_pixel, Options{});
     expect(!guard_result.pass, "max-delta guard rejects a single large pixel change");
     expect(guard_result.metrics.max_delta >= 50, "max-delta guard reports the local delta");
@@ -225,19 +218,14 @@ int main(int argc, char** argv) {
     const Result result = avatar::golden::compare(actual, baseline, options);
     std::cout << "golden_compare: actual=" << actual_path.string()
               << " baseline=" << baseline_path.string() << '\n';
-    std::cout << "  ssim=" << result.metrics.ssim
-              << " max_delta=" << result.metrics.max_delta
+    std::cout << "  ssim=" << result.metrics.ssim << " max_delta=" << result.metrics.max_delta
               << " mean_delta=" << result.metrics.mean_delta
-              << " differing_pixels=" << result.metrics.differing_pixels
-              << '/' << result.metrics.total_pixels << '\n';
+              << " differing_pixels=" << result.metrics.differing_pixels << '/'
+              << result.metrics.total_pixels << '\n';
 
     if (!artifacts.empty()) {
-        if (!avatar::golden::write_artifacts(artifacts,
-                                             name,
-                                             actual,
-                                             baseline,
-                                             avatar::golden::make_diff(actual, baseline),
-                                             error)) {
+        if (!avatar::golden::write_artifacts(artifacts, name, actual, baseline,
+                                             avatar::golden::make_diff(actual, baseline), error)) {
             std::cerr << "golden_compare: " << error << '\n';
             return 2;
         }

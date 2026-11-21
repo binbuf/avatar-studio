@@ -229,6 +229,43 @@ if(AVATAR_TESTS)
 endif()
 
 # ---------------------------------------------------------------------------
+# Licence and diagnostics gates (T06)
+#
+# Both are Node scripts so the same implementation runs in the local CI script
+# and on every matrix runner. The licence check is a build gate: a third-party
+# include without a native/licenses.json entry fails. The diagnostics scan is
+# advisory until T41 wires the string table, but its self-test exercises the
+# strict mode the future gate will use.
+# ---------------------------------------------------------------------------
+if(AVATAR_TESTS)
+    find_program(AVATAR_NODE_EXECUTABLE NAMES node)
+    if(AVATAR_NODE_EXECUTABLE)
+        add_test(NAME license_manifest_check
+            COMMAND "${AVATAR_NODE_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-licenses.mjs"
+                --root "${CMAKE_CURRENT_SOURCE_DIR}" --self-test
+        )
+        set_tests_properties(license_manifest_check PROPERTIES
+            LABELS "fast;task_T06"
+            TIMEOUT 120
+        )
+
+        add_test(NAME diagnostics_source_scan
+            COMMAND "${AVATAR_NODE_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-diagnostics.mjs"
+                --root "${CMAKE_CURRENT_SOURCE_DIR}" --self-test
+        )
+        set_tests_properties(diagnostics_source_scan PROPERTIES
+            LABELS "fast;task_T06"
+            TIMEOUT 120
+        )
+    else()
+        message(STATUS
+            "avatar: node not found; licence and diagnostics CTest checks are skipped")
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Microbenchmarks
 #
 # Numbers are reported, not gated: a tight nanosecond threshold on shared CI

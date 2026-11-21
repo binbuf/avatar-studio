@@ -8,11 +8,11 @@
 
 namespace {
 
+using avatar::capture::frame_content_hash;
 using avatar::capture::PixelFormat;
 using avatar::capture::TestPatternConfig;
 using avatar::capture::TestPatternSource;
 using avatar::capture::VideoFrame;
-using avatar::capture::frame_content_hash;
 using avatar::core::FrameClock;
 using avatar::core::ManualTimeSource;
 
@@ -101,8 +101,7 @@ void check_pattern(std::uint32_t width, std::uint32_t height, PixelFormat format
         const std::uint32_t bottom = (height * 7u) / 10u;
         for (std::uint32_t y = bottom; y < height; ++y) {
             for (std::uint32_t x = 0; x < width; ++x) {
-                const std::uint8_t alpha =
-                    frame.plane(0)[y * frame.stride(0) + x * 4u + 3u];
+                const std::uint8_t alpha = frame.plane(0)[y * frame.stride(0) + x * 4u + 3u];
                 if (alpha == 0) {
                     ++transparent;
                 } else if (alpha == 255) {
@@ -159,7 +158,8 @@ TEST_CASE(test_pattern_is_deterministic) {
     CHECK(first_lease.has_value());
     CHECK(second_lease.has_value());
     if (first_lease && second_lease) {
-        CHECK(frame_content_hash(first_lease->frame()) == frame_content_hash(second_lease->frame()));
+        CHECK(frame_content_hash(first_lease->frame()) ==
+              frame_content_hash(second_lease->frame()));
     }
 }
 

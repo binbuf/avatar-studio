@@ -38,6 +38,6 @@ void AvatarRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("reset_frame_count"), &AvatarRuntime::reset_frame_count);
 
     ADD_PROPERTY(
-            PropertyInfo(Variant::INT, "frame_count", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_READ_ONLY),
-            "", "get_frame_count");
+        PropertyInfo(Variant::INT, "frame_count", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_READ_ONLY),
+        "", "get_frame_count");
 }

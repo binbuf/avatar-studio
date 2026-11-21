@@ -62,8 +62,7 @@ public:
     /// Writer side. Returns false only when every reusable slot is held by a
     /// reader; the new value is then dropped (the previous value stays
     /// readable) and `dropped()` is incremented.
-    [[nodiscard]] bool publish(const T& value) noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool publish(const T& value) noexcept(std::is_nothrow_copy_assignable_v<T>) {
         const std::uint32_t current = latest_.load(std::memory_order_acquire);
         for (std::uint32_t index = 0; index < SlotCount; ++index) {
             if (index == current) {
@@ -82,8 +81,7 @@ public:
         return false;
     }
 
-    [[nodiscard]] bool publish(T&& value) noexcept(
-        std::is_nothrow_move_assignable_v<T>) {
+    [[nodiscard]] bool publish(T&& value) noexcept(std::is_nothrow_move_assignable_v<T>) {
         const std::uint32_t current = latest_.load(std::memory_order_acquire);
         for (std::uint32_t index = 0; index < SlotCount; ++index) {
             if (index == current) {
@@ -104,8 +102,7 @@ public:
 
     /// Reader side. Copies the newest complete value, or the previous one if a
     /// publish raced the selection. Returns false before the first publish.
-    [[nodiscard]] bool read(T& out) const noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool read(T& out) const noexcept(std::is_nothrow_copy_assignable_v<T>) {
         // A fast writer can flip latest_ between the load and the reader
         // count increment. Retry a few times; a reader that keeps losing the
         // race returns false rather than spinning indefinitely.

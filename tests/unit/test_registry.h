@@ -43,10 +43,7 @@ inline void report_failure(const char* file, int line, const std::string& messag
 }
 
 template <typename Actual, typename Expected>
-void report_eq_failure(const char* file,
-                       int line,
-                       const char* expression,
-                       const Actual& actual,
+void report_eq_failure(const char* file, int line, const char* expression, const Actual& actual,
                        const Expected& expected) {
     std::ostringstream stream;
     stream << expression << " (actual: " << actual << ", expected: " << expected << ')';
@@ -66,36 +63,31 @@ inline int run_all() {
             std::printf("[  FAILED  ] %s\n", test.name);
         }
     }
-    std::printf("%zu test case(s), %d failed, %d check failure(s)\n",
-                registry().size(),
-                failed_tests,
-                failure_count());
+    std::printf("%zu test case(s), %d failed, %d check failure(s)\n", registry().size(),
+                failed_tests, failure_count());
     return failed_tests == 0 ? 0 : 1;
 }
 
 } // namespace avatar::test
 
-#define TEST_CASE(name)                                                     \
-    static void name();                                                     \
-    static ::avatar::test::Registrar name##_registrar{#name, &name};        \
+#define TEST_CASE(name)                                                                            \
+    static void name();                                                                            \
+    static ::avatar::test::Registrar name##_registrar{#name, &name};                               \
     static void name()
 
-#define CHECK(expr)                                                         \
-    do {                                                                    \
-        if (!(expr)) {                                                      \
-            ::avatar::test::report_failure(__FILE__, __LINE__,              \
-                                           "CHECK failed: " #expr);         \
-        }                                                                   \
+#define CHECK(expr)                                                                                \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            ::avatar::test::report_failure(__FILE__, __LINE__, "CHECK failed: " #expr);            \
+        }                                                                                          \
     } while (false)
 
-#define CHECK_EQ(actual, expected)                                          \
-    do {                                                                    \
-        const auto& avatar_test_actual = (actual);                          \
-        const auto& avatar_test_expected = (expected);                      \
-        if (!(avatar_test_actual == avatar_test_expected)) {                \
-            ::avatar::test::report_eq_failure(__FILE__, __LINE__,           \
-                                              #actual " == " #expected,     \
-                                              avatar_test_actual,           \
-                                              avatar_test_expected);        \
-        }                                                                   \
+#define CHECK_EQ(actual, expected)                                                                 \
+    do {                                                                                           \
+        const auto& avatar_test_actual = (actual);                                                 \
+        const auto& avatar_test_expected = (expected);                                             \
+        if (!(avatar_test_actual == avatar_test_expected)) {                                       \
+            ::avatar::test::report_eq_failure(__FILE__, __LINE__, #actual " == " #expected,        \
+                                              avatar_test_actual, avatar_test_expected);           \
+        }                                                                                          \
     } while (false)

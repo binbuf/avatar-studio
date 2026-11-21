@@ -2,8 +2,9 @@
 
 **Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02,
 data-plane primitives and diagnostics registry T03, deterministic sources, scripted tracker, replay
-fixtures and golden comparator T04, performance harness and local baseline T05). Rendering, real
-capture, tracking, the editor and output remain `Planned` unless explicitly marked otherwise.
+fixtures and golden comparator T04, performance harness and local baseline T05, CI/format/licence
+gates T06). Rendering, real capture, tracking, the editor and output remain `Planned` unless explicitly
+marked otherwise.
 **Last updated:** 2026-11-20
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
@@ -59,11 +60,12 @@ Used consistently in every document:
 
 Current reality: the foundation is implemented — the framework-free C++20 core (including the SPSC
 ring, latest-value slot, `FrameClock` and diagnostics registry from T03), the pinned
-bootstrap/verification contract, the headless Godot shell with a loadable GDExtension (T01–T03), and
-the deterministic capture/tracking sources with their golden comparator (T04). The avatar pipeline,
-real capture, real tracking, the editor and output subsystems are still `Planned`; the first spike
-is M0 in [`roadmap.md`](roadmap.md). The only concrete prior art is the original research
-conversation and the third-party projects reviewed in
+bootstrap/verification contract, the headless Godot shell with a loadable GDExtension (T01–T03), the
+deterministic capture/tracking sources with their golden comparator (T04), the performance harness and
+local baseline (T05), and the three-platform CI matrix with formatting and licence gates (T06). The
+avatar pipeline, real capture, real tracking, the editor and output subsystems are still `Planned`;
+the first spike is M0 in [`roadmap.md`](roadmap.md). The only concrete prior art is the original
+research conversation and the third-party projects reviewed in
 [`product-overview.md`](product-overview.md#prior-art-reviewed).
 
 ---

@@ -9,10 +9,10 @@
 
 namespace {
 
+using avatar::capture::frame_content_hash;
 using avatar::capture::FrameRing;
 using avatar::capture::PixelFormat;
 using avatar::capture::VideoFrame;
-using avatar::capture::frame_content_hash;
 
 void fill_plane(avatar::capture::FrameWrite& write, std::uint8_t seed) {
     std::uint8_t* plane = write.plane(0);

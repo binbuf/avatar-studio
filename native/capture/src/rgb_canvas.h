@@ -27,7 +27,8 @@ struct Rgb8 {
 class RgbCanvas {
 public:
     RgbCanvas(std::uint32_t width, std::uint32_t height)
-        : width_(width), height_(height), pixels_(static_cast<std::size_t>(width) * height * 3u, 0) {}
+        : width_(width), height_(height),
+          pixels_(static_cast<std::size_t>(width) * height * 3u, 0) {}
 
     [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
@@ -68,15 +69,15 @@ public:
             return false;
         }
         switch (frame.format) {
-        case PixelFormat::bgra8:
-            return write_bgra(frame, false);
-        case PixelFormat::rgba8:
-            return write_bgra(frame, true);
-        case PixelFormat::nv12:
-            return write_nv12(frame);
-        case PixelFormat::yuy2:
-        case PixelFormat::mjpeg:
-            return false;
+            case PixelFormat::bgra8:
+                return write_bgra(frame, false);
+            case PixelFormat::rgba8:
+                return write_bgra(frame, true);
+            case PixelFormat::nv12:
+                return write_nv12(frame);
+            case PixelFormat::yuy2:
+            case PixelFormat::mjpeg:
+                return false;
         }
         return false;
     }
@@ -127,7 +128,8 @@ private:
                 const float r = source[x * 3u];
                 const float g = source[x * 3u + 1];
                 const float b = source[x * 3u + 2];
-                const float luma = 16.0f + (0.2126f * r + 0.7152f * g + 0.0722f * b) * (219.0f / 255.0f);
+                const float luma =
+                    16.0f + (0.2126f * r + 0.7152f * g + 0.0722f * b) * (219.0f / 255.0f);
                 row[x] = clamp_u8(static_cast<int>(luma + 0.5f));
             }
         }
@@ -150,8 +152,10 @@ private:
                 r *= 0.25f;
                 g *= 0.25f;
                 b *= 0.25f;
-                const float u = 128.0f + (-0.1146f * r - 0.3854f * g + 0.5000f * b) * (224.0f / 255.0f);
-                const float v = 128.0f + (0.5000f * r - 0.4542f * g - 0.0458f * b) * (224.0f / 255.0f);
+                const float u =
+                    128.0f + (-0.1146f * r - 0.3854f * g + 0.5000f * b) * (224.0f / 255.0f);
+                const float v =
+                    128.0f + (0.5000f * r - 0.4542f * g - 0.0458f * b) * (224.0f / 255.0f);
                 row[x] = clamp_u8(static_cast<int>(u + 0.5f));
                 row[x + 1] = clamp_u8(static_cast<int>(v + 0.5f));
             }

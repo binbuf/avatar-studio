@@ -42,14 +42,10 @@ struct SyntheticFaceConfig {
 
 /// Pose and homography for one instant of the scripted path.
 struct FacePoseSample {
-    std::array<float, 16> camera_from_head{1.0f, 0.0f, 0.0f, 0.0f,
-                                           0.0f, 1.0f, 0.0f, 0.0f,
-                                           0.0f, 0.0f, 1.0f, 0.0f,
-                                           0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> camera_from_head{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                           0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     /// Canonical (u,v) -> normalised image (x,y), row-major 3x3, pinhole only.
-    std::array<float, 9> canonical_to_image{1.0f, 0.0f, 0.0f,
-                                            0.0f, 1.0f, 0.0f,
-                                            0.0f, 0.0f, 1.0f};
+    std::array<float, 9> canonical_to_image{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     float mouth_open = 0.0f;
     float blink = 0.0f;
 };
@@ -90,13 +86,11 @@ public:
 
     /// Applies the pinhole homography to a canonical point. Returns normalised
     /// image coordinates.
-    [[nodiscard]] static std::array<float, 2> project_canonical(const FacePoseSample& pose,
-                                                                float u,
+    [[nodiscard]] static std::array<float, 2> project_canonical(const FacePoseSample& pose, float u,
                                                                 float v) noexcept;
 
     /// Forward barrel distortion in normalised image coordinates.
-    [[nodiscard]] static std::array<float, 2> distort(std::array<float, 2> ideal,
-                                                      float k1,
+    [[nodiscard]] static std::array<float, 2> distort(std::array<float, 2> ideal, float k1,
                                                       float aspect) noexcept;
 
 private:

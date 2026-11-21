@@ -82,9 +82,10 @@ bool inside_circle(float u, float v, float cx, float cy, float radius) noexcept 
 }
 
 detail::Rgb8 scale(detail::Rgb8 colour, float factor) noexcept {
-    return detail::Rgb8{detail::clamp_u8(static_cast<int>(static_cast<float>(colour.r) * factor + 0.5f)),
-                        detail::clamp_u8(static_cast<int>(static_cast<float>(colour.g) * factor + 0.5f)),
-                        detail::clamp_u8(static_cast<int>(static_cast<float>(colour.b) * factor + 0.5f))};
+    return detail::Rgb8{
+        detail::clamp_u8(static_cast<int>(static_cast<float>(colour.r) * factor + 0.5f)),
+        detail::clamp_u8(static_cast<int>(static_cast<float>(colour.g) * factor + 0.5f)),
+        detail::clamp_u8(static_cast<int>(static_cast<float>(colour.b) * factor + 0.5f))};
 }
 
 constexpr detail::Rgb8 kBackground{30, 30, 30};
@@ -98,7 +99,8 @@ constexpr detail::Rgb8 kLips{120, 40, 45};
 constexpr detail::Rgb8 kMouthInner{40, 10, 15};
 constexpr detail::Rgb8 kMarker{0, 255, 0};
 
-detail::Rgb8 sample_face(float u, float v, float mouth_open, float blink, bool draw_marker) noexcept {
+detail::Rgb8 sample_face(float u, float v, float mouth_open, float blink,
+                         bool draw_marker) noexcept {
     if (!inside_ellipse(u, v, 0.0f, 0.30f, 0.95f, 1.25f)) {
         return kBackground;
     }
@@ -137,7 +139,8 @@ detail::Rgb8 sample_face(float u, float v, float mouth_open, float blink, bool d
     if (inside_ellipse(u, v, 0.0f, -0.78f, 0.30f, 0.10f + 0.10f * mouth_open)) {
         colour = kLips;
     }
-    if (mouth_open > 0.05f && inside_ellipse(u, v, 0.0f, -0.78f, 0.20f, 0.04f + 0.08f * mouth_open)) {
+    if (mouth_open > 0.05f &&
+        inside_ellipse(u, v, 0.0f, -0.78f, 0.20f, 0.04f + 0.08f * mouth_open)) {
         colour = kMouthInner;
     }
 
@@ -147,11 +150,7 @@ detail::Rgb8 sample_face(float u, float v, float mouth_open, float blink, bool d
     return colour;
 }
 
-void undistort_point(float distorted_x,
-                     float distorted_y,
-                     float k1,
-                     float aspect,
-                     float& ideal_x,
+void undistort_point(float distorted_x, float distorted_y, float k1, float aspect, float& ideal_x,
                      float& ideal_y) noexcept {
     const float dx = (distorted_x - 0.5f) * aspect;
     const float dy = distorted_y - 0.5f;
@@ -199,8 +198,7 @@ constexpr std::array<CanonicalPoint, kGroundTruthLandmarkCount> kCanonicalPoints
     {GroundTruthLandmark::marker_right_cheek, 0.62f, -0.25f},
 }};
 
-void render_face(const SyntheticFaceConfig& config,
-                 const FacePoseSample& pose,
+void render_face(const SyntheticFaceConfig& config, const FacePoseSample& pose,
                  detail::RgbCanvas& canvas) noexcept {
     canvas.fill(kBackground);
 
@@ -231,31 +229,33 @@ void render_face(const SyntheticFaceConfig& config,
         max_y = std::max(max_y, distorted[1]);
     }
 
-    const auto clamp_x = [width = config.width, margin = 2 + static_cast<int>(k1 * 40.0f)](float value) {
+    const auto clamp_x = [width = config.width,
+                          margin = 2 + static_cast<int>(k1 * 40.0f)](float value) {
         const int pixel = static_cast<int>(std::floor(value * static_cast<float>(width))) - margin;
         return std::clamp(pixel, 0, static_cast<int>(width));
     };
-    const auto clamp_y = [height = config.height, margin = 2 + static_cast<int>(k1 * 40.0f)](float value) {
+    const auto clamp_y = [height = config.height,
+                          margin = 2 + static_cast<int>(k1 * 40.0f)](float value) {
         const int pixel = static_cast<int>(std::floor(value * static_cast<float>(height))) - margin;
         return std::clamp(pixel, 0, static_cast<int>(height));
     };
     const std::uint32_t x0 = static_cast<std::uint32_t>(clamp_x(min_x));
     const std::uint32_t y0 = static_cast<std::uint32_t>(clamp_y(min_y));
-    const std::uint32_t x1 = static_cast<std::uint32_t>(std::clamp(
-        static_cast<int>(std::ceil(max_x * static_cast<float>(config.width))) + 2 +
-            static_cast<int>(k1 * 40.0f),
-        0,
-        static_cast<int>(config.width)));
-    const std::uint32_t y1 = static_cast<std::uint32_t>(std::clamp(
-        static_cast<int>(std::ceil(max_y * static_cast<float>(config.height))) + 2 +
-            static_cast<int>(k1 * 40.0f),
-        0,
-        static_cast<int>(config.height)));
+    const std::uint32_t x1 = static_cast<std::uint32_t>(
+        std::clamp(static_cast<int>(std::ceil(max_x * static_cast<float>(config.width))) + 2 +
+                       static_cast<int>(k1 * 40.0f),
+                   0, static_cast<int>(config.width)));
+    const std::uint32_t y1 = static_cast<std::uint32_t>(
+        std::clamp(static_cast<int>(std::ceil(max_y * static_cast<float>(config.height))) + 2 +
+                       static_cast<int>(k1 * 40.0f),
+                   0, static_cast<int>(config.height)));
 
     for (std::uint32_t py = y0; py < y1; ++py) {
-        const float distorted_y = (static_cast<float>(py) + 0.5f) / static_cast<float>(config.height);
+        const float distorted_y =
+            (static_cast<float>(py) + 0.5f) / static_cast<float>(config.height);
         for (std::uint32_t px = x0; px < x1; ++px) {
-            const float distorted_x = (static_cast<float>(px) + 0.5f) / static_cast<float>(config.width);
+            const float distorted_x =
+                (static_cast<float>(px) + 0.5f) / static_cast<float>(config.width);
             float ideal_x = distorted_x;
             float ideal_y = distorted_y;
             if (k1 > 0.0f) {
@@ -270,9 +270,7 @@ void render_face(const SyntheticFaceConfig& config,
             if (u < -1.15f || u > 1.15f || v < -1.15f || v > 1.75f) {
                 continue;
             }
-            canvas.set(px,
-                       py,
-                       sample_face(u, v, pose.mouth_open, pose.blink, config.draw_marker));
+            canvas.set(px, py, sample_face(u, v, pose.mouth_open, pose.blink, config.draw_marker));
         }
     }
 }
@@ -282,22 +280,17 @@ void render_face(const SyntheticFaceConfig& config,
 std::vector<FaceMotionKeyframe> default_face_motion_path() {
     return {
         FaceMotionKeyframe{0ull, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f},
-        FaceMotionKeyframe{1'000'000'000ull,
-                           {0.010f, 0.004f, 0.000f},
-                           {20.0f, 8.0f, 4.0f},
-                           0.15f,
-                           0.0f},
-        FaceMotionKeyframe{2'000'000'000ull,
-                           {-0.012f, -0.005f, 0.010f},
-                           {-18.0f, -10.0f, -5.0f},
-                           0.55f,
-                           0.0f},
+        FaceMotionKeyframe{
+            1'000'000'000ull, {0.010f, 0.004f, 0.000f}, {20.0f, 8.0f, 4.0f}, 0.15f, 0.0f},
+        FaceMotionKeyframe{
+            2'000'000'000ull, {-0.012f, -0.005f, 0.010f}, {-18.0f, -10.0f, -5.0f}, 0.55f, 0.0f},
         FaceMotionKeyframe{3'000'000'000ull, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 0.0f, 0.0f},
     };
 }
 
 SyntheticFaceSource::SyntheticFaceSource(core::FrameClock& clock, SyntheticFaceConfig config)
-    : clock_(clock), config_(std::move(config)), ring_(config_.width, config_.height, config_.format) {
+    : clock_(clock), config_(std::move(config)),
+      ring_(config_.width, config_.height, config_.format) {
     if (config_.path.empty()) {
         config_.path = default_face_motion_path();
     }
@@ -369,13 +362,14 @@ FacePoseSample SyntheticFaceSource::evaluate_pose(const SyntheticFaceConfig& con
         second = first;
     } else {
         for (std::size_t index = 0; index + 1 < config.path.size(); ++index) {
-            if (elapsed_ns >= config.path[index].time_ns && elapsed_ns <= config.path[index + 1].time_ns) {
+            if (elapsed_ns >= config.path[index].time_ns &&
+                elapsed_ns <= config.path[index + 1].time_ns) {
                 first = &config.path[index];
                 second = &config.path[index + 1];
-                const double span = static_cast<double>(second->time_ns) -
-                                    static_cast<double>(first->time_ns);
-                const double offset = static_cast<double>(elapsed_ns) -
-                                      static_cast<double>(first->time_ns);
+                const double span =
+                    static_cast<double>(second->time_ns) - static_cast<double>(first->time_ns);
+                const double offset =
+                    static_cast<double>(elapsed_ns) - static_cast<double>(first->time_ns);
                 blend = span > 0.0 ? smoothstep01(static_cast<float>(offset / span)) : 0.0f;
                 break;
             }
@@ -403,13 +397,12 @@ FacePoseSample SyntheticFaceSource::evaluate_pose(const SyntheticFaceConfig& con
 
     const float tx = lerp(first->translation_m[0], second->translation_m[0], blend);
     const float ty = lerp(first->translation_m[1], second->translation_m[1], blend);
-    const float tz = -config.base_distance_m +
-                     lerp(first->translation_m[2], second->translation_m[2], blend);
+    const float tz =
+        -config.base_distance_m + lerp(first->translation_m[2], second->translation_m[2], blend);
 
-    pose.camera_from_head = {rotation[0], rotation[1], rotation[2], tx,
-                             rotation[3], rotation[4], rotation[5], ty,
-                             rotation[6], rotation[7], rotation[8], tz,
-                             0.0f, 0.0f, 0.0f, 1.0f};
+    pose.camera_from_head = {
+        rotation[0], rotation[1], rotation[2], tx, rotation[3], rotation[4], rotation[5], ty,
+        rotation[6], rotation[7], rotation[8], tz, 0.0f,        0.0f,        0.0f,        1.0f};
 
     const float fy = 0.5f / std::tan(degrees_to_radians(config.vfov_deg) * 0.5f);
     const float fx = fy * static_cast<float>(config.height) / static_cast<float>(config.width);
@@ -425,8 +418,7 @@ FacePoseSample SyntheticFaceSource::evaluate_pose(const SyntheticFaceConfig& con
     return pose;
 }
 
-std::array<float, 2> SyntheticFaceSource::project_canonical(const FacePoseSample& pose,
-                                                            float u,
+std::array<float, 2> SyntheticFaceSource::project_canonical(const FacePoseSample& pose, float u,
                                                             float v) noexcept {
     const auto point = apply(pose.canonical_to_image, u, v, 1.0f);
     if (std::fabs(point[2]) < 1e-9f) {
@@ -435,8 +427,7 @@ std::array<float, 2> SyntheticFaceSource::project_canonical(const FacePoseSample
     return {point[0] / point[2], point[1] / point[2]};
 }
 
-std::array<float, 2> SyntheticFaceSource::distort(std::array<float, 2> ideal,
-                                                  float k1,
+std::array<float, 2> SyntheticFaceSource::distort(std::array<float, 2> ideal, float k1,
                                                   float aspect) noexcept {
     if (k1 == 0.0f) {
         return ideal;

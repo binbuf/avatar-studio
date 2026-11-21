@@ -61,8 +61,7 @@ public:
     SpscRing& operator=(SpscRing&&) = delete;
 
     /// Producer side. Returns false and increments `dropped()` when full.
-    [[nodiscard]] bool try_push(const T& value) noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool try_push(const T& value) noexcept(std::is_nothrow_copy_assignable_v<T>) {
         const std::size_t head = head_.load(std::memory_order_relaxed);
         const std::size_t tail = tail_.load(std::memory_order_acquire);
         if (head - tail >= Capacity) {
@@ -75,8 +74,7 @@ public:
     }
 
     /// Producer side. Returns false and increments `dropped()` when full.
-    [[nodiscard]] bool try_push(T&& value) noexcept(
-        std::is_nothrow_move_assignable_v<T>) {
+    [[nodiscard]] bool try_push(T&& value) noexcept(std::is_nothrow_move_assignable_v<T>) {
         const std::size_t head = head_.load(std::memory_order_relaxed);
         const std::size_t tail = tail_.load(std::memory_order_acquire);
         if (head - tail >= Capacity) {
@@ -89,8 +87,7 @@ public:
     }
 
     /// Consumer side. Returns false when empty.
-    [[nodiscard]] bool try_pop(T& out) noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool try_pop(T& out) noexcept(std::is_nothrow_copy_assignable_v<T>) {
         const std::size_t tail = tail_.load(std::memory_order_relaxed);
         const std::size_t head = head_.load(std::memory_order_acquire);
         if (tail == head) {
@@ -173,8 +170,7 @@ class DropOldestRing {
 public:
     static_assert(Capacity >= 2, "a drop-oldest ring needs at least two slots");
 
-    [[nodiscard]] bool push(const T& value) noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool push(const T& value) noexcept(std::is_nothrow_copy_assignable_v<T>) {
         if (ring_.try_push(value)) {
             return true;
         }
@@ -190,8 +186,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool push(T&& value) noexcept(
-        std::is_nothrow_move_assignable_v<T>) {
+    [[nodiscard]] bool push(T&& value) noexcept(std::is_nothrow_move_assignable_v<T>) {
         if (ring_.try_push(std::move(value))) {
             return true;
         }
@@ -207,17 +202,14 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool pop(T& out) noexcept(
-        std::is_nothrow_copy_assignable_v<T>) {
+    [[nodiscard]] bool pop(T& out) noexcept(std::is_nothrow_copy_assignable_v<T>) {
         return ring_.try_pop(out);
     }
 
     [[nodiscard]] std::size_t size() const noexcept { return ring_.size(); }
     [[nodiscard]] bool empty() const noexcept { return ring_.empty(); }
     [[nodiscard]] bool full() const noexcept { return ring_.full(); }
-    [[nodiscard]] static constexpr std::size_t capacity() noexcept {
-        return Capacity;
-    }
+    [[nodiscard]] static constexpr std::size_t capacity() noexcept { return Capacity; }
 
     /// Items evicted by the drop-oldest policy.
     [[nodiscard]] std::uint64_t dropped() const noexcept {

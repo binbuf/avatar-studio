@@ -86,18 +86,18 @@ constexpr std::array<std::array<float, 2>, ScriptedTracker::kScriptedLandmarkCou
 
 const char* scripted_scenario_name(ScriptedScenario scenario) noexcept {
     switch (scenario) {
-    case ScriptedScenario::valid_tracking:
-        return "valid_tracking";
-    case ScriptedScenario::dropouts:
-        return "dropouts";
-    case ScriptedScenario::jitter:
-        return "jitter";
-    case ScriptedScenario::outliers:
-        return "outliers";
-    case ScriptedScenario::missing_mouth:
-        return "missing_mouth";
-    case ScriptedScenario::left_right_swap:
-        return "left_right_swap";
+        case ScriptedScenario::valid_tracking:
+            return "valid_tracking";
+        case ScriptedScenario::dropouts:
+            return "dropouts";
+        case ScriptedScenario::jitter:
+            return "jitter";
+        case ScriptedScenario::outliers:
+            return "outliers";
+        case ScriptedScenario::missing_mouth:
+            return "missing_mouth";
+        case ScriptedScenario::left_right_swap:
+            return "left_right_swap";
     }
     return "unknown";
 }
@@ -150,69 +150,65 @@ void ScriptedTracker::build_script() {
 
 void ScriptedTracker::apply_scenario(std::uint32_t index, TrackingResult& result) {
     switch (config_.scenario) {
-    case ScriptedScenario::valid_tracking:
-        break;
-    case ScriptedScenario::dropouts:
-        if ((index % 40u) >= 30u) {
-            result.valid = false;
-            result.features_valid = false;
-            result.confidence = 0.0f;
-        }
-        break;
-    case ScriptedScenario::jitter:
-        if (result.valid) {
-            result.pose.translation[0] += random_signed(random_state_, 0.002f);
-            result.pose.translation[1] += random_signed(random_state_, 0.002f);
-            Quaternion rotation{result.pose.rotation[0],
-                                result.pose.rotation[1] + random_signed(random_state_, 0.004f),
-                                result.pose.rotation[2],
-                                result.pose.rotation[3]};
-            normalise(rotation);
-            result.pose.rotation = {rotation.x, rotation.y, rotation.z, rotation.w};
-            for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
-                result.landmarks.points[landmark].x += random_signed(random_state_, 0.002f);
-                result.landmarks.points[landmark].y += random_signed(random_state_, 0.002f);
+        case ScriptedScenario::valid_tracking:
+            break;
+        case ScriptedScenario::dropouts:
+            if ((index % 40u) >= 30u) {
+                result.valid = false;
+                result.features_valid = false;
+                result.confidence = 0.0f;
             }
-        }
-        break;
-    case ScriptedScenario::outliers:
-        if (index > 0 && (index % 17u) == 0u) {
-            const Quaternion jump = from_euler_degrees(60.0f, 0.0f, 0.0f);
-            const Quaternion current{result.pose.rotation[0],
-                                     result.pose.rotation[1],
-                                     result.pose.rotation[2],
-                                     result.pose.rotation[3]};
-            const Quaternion combined = multiply(jump, current);
-            result.pose.rotation = {combined.x, combined.y, combined.z, combined.w};
-            for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
-                result.landmarks.points[landmark].x += 0.15f;
+            break;
+        case ScriptedScenario::jitter:
+            if (result.valid) {
+                result.pose.translation[0] += random_signed(random_state_, 0.002f);
+                result.pose.translation[1] += random_signed(random_state_, 0.002f);
+                Quaternion rotation{result.pose.rotation[0],
+                                    result.pose.rotation[1] + random_signed(random_state_, 0.004f),
+                                    result.pose.rotation[2], result.pose.rotation[3]};
+                normalise(rotation);
+                result.pose.rotation = {rotation.x, rotation.y, rotation.z, rotation.w};
+                for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
+                    result.landmarks.points[landmark].x += random_signed(random_state_, 0.002f);
+                    result.landmarks.points[landmark].y += random_signed(random_state_, 0.002f);
+                }
             }
-            result.confidence = 0.25f;
-        }
-        break;
-    case ScriptedScenario::missing_mouth:
-        if ((index % 25u) >= 20u) {
-            result.features_valid = false;
-            for (std::size_t landmark = mouth_corner_r; landmark <= mouth_lower_center; ++landmark) {
-                result.landmarks.points[landmark] = Landmark{0.0f, 0.0f, 0.0f};
+            break;
+        case ScriptedScenario::outliers:
+            if (index > 0 && (index % 17u) == 0u) {
+                const Quaternion jump = from_euler_degrees(60.0f, 0.0f, 0.0f);
+                const Quaternion current{result.pose.rotation[0], result.pose.rotation[1],
+                                         result.pose.rotation[2], result.pose.rotation[3]};
+                const Quaternion combined = multiply(jump, current);
+                result.pose.rotation = {combined.x, combined.y, combined.z, combined.w};
+                for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
+                    result.landmarks.points[landmark].x += 0.15f;
+                }
+                result.confidence = 0.25f;
             }
-        }
-        break;
-    case ScriptedScenario::left_right_swap:
-        if ((index % 40u) >= 20u) {
-            for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
-                result.landmarks.points[landmark].x =
-                    1.0f - result.landmarks.points[landmark].x;
+            break;
+        case ScriptedScenario::missing_mouth:
+            if ((index % 25u) >= 20u) {
+                result.features_valid = false;
+                for (std::size_t landmark = mouth_corner_r; landmark <= mouth_lower_center;
+                     ++landmark) {
+                    result.landmarks.points[landmark] = Landmark{0.0f, 0.0f, 0.0f};
+                }
             }
-            result.pose.rotation[1] = -result.pose.rotation[1];
-            Quaternion rotation{result.pose.rotation[0],
-                                result.pose.rotation[1],
-                                result.pose.rotation[2],
-                                result.pose.rotation[3]};
-            normalise(rotation);
-            result.pose.rotation = {rotation.x, rotation.y, rotation.z, rotation.w};
-        }
-        break;
+            break;
+        case ScriptedScenario::left_right_swap:
+            if ((index % 40u) >= 20u) {
+                for (std::size_t landmark = 0; landmark < result.landmarks.count; ++landmark) {
+                    result.landmarks.points[landmark].x =
+                        1.0f - result.landmarks.points[landmark].x;
+                }
+                result.pose.rotation[1] = -result.pose.rotation[1];
+                Quaternion rotation{result.pose.rotation[0], result.pose.rotation[1],
+                                    result.pose.rotation[2], result.pose.rotation[3]};
+                normalise(rotation);
+                result.pose.rotation = {rotation.x, rotation.y, rotation.z, rotation.w};
+            }
+            break;
     }
 }
 

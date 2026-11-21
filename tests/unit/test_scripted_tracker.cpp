@@ -36,8 +36,8 @@ std::vector<TrackingResult> run_script(ScriptedTracker& tracker, std::uint32_t c
     std::vector<TrackingResult> results;
     results.reserve(count);
     for (std::uint32_t index = 0; index < count; ++index) {
-        tracker.submit(make_frame(static_cast<avatar::core::TimestampNs>(index) * kInterval,
-                                  index + 1));
+        tracker.submit(
+            make_frame(static_cast<avatar::core::TimestampNs>(index) * kInterval, index + 1));
         const auto latest = tracker.latest();
         if (latest) {
             results.push_back(*latest);
@@ -64,7 +64,8 @@ TEST_CASE(scripted_tracker_replays_valid_tracking) {
         CHECK(results[index].valid);
         CHECK(results[index].features_valid);
         CHECK(results[index].confidence >= 0.9f);
-        CHECK(results[index].source_timestamp_ns == static_cast<avatar::core::TimestampNs>(index) * kInterval);
+        CHECK(results[index].source_timestamp_ns ==
+              static_cast<avatar::core::TimestampNs>(index) * kInterval);
         CHECK(results[index] == tracker.script()[index]);
     }
 }
@@ -136,8 +137,7 @@ TEST_CASE(scripted_tracker_reports_missing_mouth) {
         if (!result.features_valid) {
             ++missing;
             for (std::size_t landmark = ScriptedTracker::mouth_corner_r;
-                 landmark <= ScriptedTracker::mouth_lower_center;
-                 ++landmark) {
+                 landmark <= ScriptedTracker::mouth_lower_center; ++landmark) {
                 CHECK(result.landmarks.points[landmark].x == 0.0f);
                 CHECK(result.landmarks.points[landmark].y == 0.0f);
             }
@@ -184,8 +184,8 @@ TEST_CASE(scripted_tracker_reset_and_overrun) {
 TEST_CASE(scripted_scenario_names_are_stable) {
     CHECK(std::string(avatar::tracking::scripted_scenario_name(ScriptedScenario::valid_tracking)) ==
           std::string("valid_tracking"));
-    CHECK(std::string(avatar::tracking::scripted_scenario_name(ScriptedScenario::left_right_swap)) ==
-          std::string("left_right_swap"));
+    CHECK(std::string(avatar::tracking::scripted_scenario_name(
+              ScriptedScenario::left_right_swap)) == std::string("left_right_swap"));
     CHECK(std::string(avatar::tracking::scripted_scenario_name(ScriptedScenario::missing_mouth)) ==
           std::string("missing_mouth"));
 }

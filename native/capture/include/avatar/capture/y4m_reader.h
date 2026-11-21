@@ -40,8 +40,7 @@ public:
 
     [[nodiscard]] core::Status open(const std::filesystem::path& path);
     [[nodiscard]] const Y4mHeader& header() const noexcept { return header_; }
-    [[nodiscard]] ReadResult read_frame(std::vector<std::uint8_t>& y,
-                                        std::vector<std::uint8_t>& u,
+    [[nodiscard]] ReadResult read_frame(std::vector<std::uint8_t>& y, std::vector<std::uint8_t>& u,
                                         std::vector<std::uint8_t>& v);
     [[nodiscard]] std::uint32_t frames_read() const noexcept { return frames_read_; }
     [[nodiscard]] const std::string& last_error() const noexcept { return last_error_; }

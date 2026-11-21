@@ -16,8 +16,8 @@ using avatar::core::DiagnosticCode;
 using avatar::core::Error;
 using avatar::core::FrameClock;
 using avatar::core::LogField;
-using avatar::core::LogRecord;
 using avatar::core::Logger;
+using avatar::core::LogRecord;
 using avatar::core::LogSink;
 using avatar::core::ManualTimeSource;
 using avatar::core::Severity;
@@ -71,16 +71,12 @@ TEST_CASE(diagnostic_registry_covers_every_area) {
 }
 
 TEST_CASE(diagnostic_codes_format_and_parse_canonically) {
-    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::cap_001),
-             std::string("CAP-001"));
-    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::trk_002),
-             std::string("TRK-002"));
-    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::avt_101),
-             std::string("AVT-101"));
+    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::cap_001), std::string("CAP-001"));
+    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::trk_002), std::string("TRK-002"));
+    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::avt_101), std::string("AVT-101"));
     CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::vcam_007),
              std::string("VCAM-007"));
-    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::unknown),
-             std::string("UNKNOWN"));
+    CHECK_EQ(avatar::core::format_diagnostic_code(DiagnosticCode::unknown), std::string("UNKNOWN"));
 
     const auto parsed = avatar::core::parse_diagnostic_code("TRK-002");
     CHECK(parsed.has_value());
@@ -94,18 +90,12 @@ TEST_CASE(diagnostic_codes_format_and_parse_canonically) {
 }
 
 TEST_CASE(diagnostic_severities_match_the_registry) {
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::cap_003) ==
-          Severity::warning);
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::cap_008) ==
-          Severity::info);
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::trk_007) ==
-          Severity::fatal);
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::gpu_002) ==
-          Severity::fatal);
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::avt_111) ==
-          Severity::info);
-    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::sec_004) ==
-          Severity::fatal);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::cap_003) == Severity::warning);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::cap_008) == Severity::info);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::trk_007) == Severity::fatal);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::gpu_002) == Severity::fatal);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::avt_111) == Severity::info);
+    CHECK(avatar::core::diagnostic_severity(DiagnosticCode::sec_004) == Severity::fatal);
 }
 
 TEST_CASE(logger_emits_the_code_severity_timestamp_and_structured_fields) {
@@ -115,8 +105,7 @@ TEST_CASE(logger_emits_the_code_severity_timestamp_and_structured_fields) {
     Logger logger(clock, capture_sink, &captured);
 
     logger.log(DiagnosticCode::cap_002,
-               {LogField{"device", "Cam Link"},
-                LogField{"state", "busy"}});
+               {LogField{"device", "Cam Link"}, LogField{"state", "busy"}});
 
     CHECK(captured.called);
     CHECK_EQ(captured.record.timestamp_ns, avatar::core::TimestampNs{1234});
@@ -136,10 +125,8 @@ TEST_CASE(logger_redacts_forbidden_payload_keys) {
     CapturedLog captured;
     Logger logger(capture_sink, &captured);
 
-    logger.log_at(42,
-                  DiagnosticCode::trk_002,
-                  {LogField{"landmarks", "478 points"},
-                   LogField{"device", "Cam Link"}});
+    logger.log_at(42, DiagnosticCode::trk_002,
+                  {LogField{"landmarks", "478 points"}, LogField{"device", "Cam Link"}});
 
     CHECK(captured.called);
     CHECK_EQ(captured.record.timestamp_ns, avatar::core::TimestampNs{42});
@@ -158,10 +145,9 @@ TEST_CASE(logger_counts_fields_beyond_the_fixed_capacity) {
     Logger logger(capture_sink, &captured);
 
     const std::initializer_list<LogField> fields = {
-        LogField{"f0", "v0"}, LogField{"f1", "v1"}, LogField{"f2", "v2"},
-        LogField{"f3", "v3"}, LogField{"f4", "v4"}, LogField{"f5", "v5"},
-        LogField{"f6", "v6"}, LogField{"f7", "v7"}, LogField{"f8", "v8"},
-        LogField{"f9", "v9"}};
+        LogField{"f0", "v0"}, LogField{"f1", "v1"}, LogField{"f2", "v2"}, LogField{"f3", "v3"},
+        LogField{"f4", "v4"}, LogField{"f5", "v5"}, LogField{"f6", "v6"}, LogField{"f7", "v7"},
+        LogField{"f8", "v8"}, LogField{"f9", "v9"}};
     logger.log_at(0, DiagnosticCode::out_006, fields);
 
     CHECK(captured.called);
@@ -179,17 +165,15 @@ TEST_CASE(logger_without_a_sink_counts_the_record_as_dropped) {
 
 TEST_CASE(error_carries_a_stable_code_message_and_optional_detail) {
     const Error error{DiagnosticCode::trk_002, "Face lost", "hold_ms=150"};
-    CHECK_EQ(error.to_string(),
-             std::string("TRK-002: Face lost (detail: hold_ms=150)"));
+    CHECK_EQ(error.to_string(), std::string("TRK-002: Face lost (detail: hold_ms=150)"));
 
     const Error brief{DiagnosticCode::cap_008, "No camera", {}};
     CHECK_EQ(brief.to_string(), std::string("CAP-008: No camera"));
 }
 
 TEST_CASE(status_detail_is_optional_and_formatted) {
-    const Status status = Status::error(StatusCode::internal_error,
-                                        "ring publish failed",
-                                        "capacity=4");
+    const Status status =
+        Status::error(StatusCode::internal_error, "ring publish failed", "capacity=4");
     CHECK(!status.ok());
     CHECK_EQ(status.detail(), std::string("capacity=4"));
     CHECK_EQ(status.to_string(),

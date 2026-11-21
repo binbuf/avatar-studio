@@ -7,14 +7,12 @@ namespace avatar::core {
 namespace {
 
 constexpr std::array<std::string_view, 15> kForbiddenLogKeys = {
-    "frame",           "frame_data",     "frame_pixels",  "pixels",
-    "pixel_data",      "image",          "image_data",    "landmark",
-    "landmarks",       "landmark_values", "face_profile",  "profile_contents",
-    "file_contents",   "window_title",   "raw_payload",
+    "frame",        "frame_data",       "frame_pixels",  "pixels",       "pixel_data",
+    "image",        "image_data",       "landmark",      "landmarks",    "landmark_values",
+    "face_profile", "profile_contents", "file_contents", "window_title", "raw_payload",
 };
 
-[[nodiscard]] constexpr DiagnosticArea area_from_prefix(
-    std::string_view prefix) noexcept {
+[[nodiscard]] constexpr DiagnosticArea area_from_prefix(std::string_view prefix) noexcept {
     for (std::uint32_t value = 1; value <= 9; ++value) {
         const auto area = static_cast<DiagnosticArea>(value);
         if (area_prefix(area) == prefix) {
@@ -27,8 +25,7 @@ constexpr std::array<std::string_view, 15> kForbiddenLogKeys = {
 } // namespace
 
 std::span<const DiagnosticInfo> diagnostics() noexcept {
-    return std::span<const DiagnosticInfo>(kDiagnosticRegistry.data(),
-                                           kDiagnosticRegistry.size());
+    return std::span<const DiagnosticInfo>(kDiagnosticRegistry.data(), kDiagnosticRegistry.size());
 }
 
 std::string format_diagnostic_code(DiagnosticCode code) {
@@ -37,12 +34,8 @@ std::string format_diagnostic_code(DiagnosticCode code) {
     }
     const std::string_view prefix = area_prefix(diagnostic_area(code));
     std::array<char, 16> buffer{};
-    std::snprintf(buffer.data(),
-                  buffer.size(),
-                  "%.*s-%03u",
-                  static_cast<int>(prefix.size()),
-                  prefix.data(),
-                  diagnostic_number(code));
+    std::snprintf(buffer.data(), buffer.size(), "%.*s-%03u", static_cast<int>(prefix.size()),
+                  prefix.data(), diagnostic_number(code));
     return std::string(buffer.data());
 }
 
@@ -67,8 +60,8 @@ std::optional<DiagnosticCode> parse_diagnostic_code(std::string_view text) noexc
     if (area == DiagnosticArea::unknown) {
         return std::nullopt;
     }
-    const auto code = static_cast<DiagnosticCode>(
-        static_cast<std::uint32_t>(area) * 1000U + number);
+    const auto code =
+        static_cast<DiagnosticCode>(static_cast<std::uint32_t>(area) * 1000U + number);
     if (find_diagnostic(code) == nullptr) {
         return std::nullopt;
     }
@@ -99,8 +92,7 @@ bool is_forbidden_log_key(std::string_view key) noexcept {
     // `frame_pixels` without banning useful metadata keys such as `frame_id`
     // or `frame_time`.
     constexpr std::array<std::string_view, 6> kForbiddenFragments = {
-        "landmark",     "pixel",      "image",
-        "frame_data",   "face_profile", "raw_payload",
+        "landmark", "pixel", "image", "frame_data", "face_profile", "raw_payload",
     };
     for (std::string_view fragment : kForbiddenFragments) {
         if (key.find(fragment) != std::string_view::npos) {
@@ -115,13 +107,11 @@ Logger::Logger(LogSink sink, void* context) noexcept : sink_(sink), context_(con
 Logger::Logger(FrameClock& clock, LogSink sink, void* context) noexcept
     : clock_(&clock), sink_(sink), context_(context) {}
 
-void Logger::log(DiagnosticCode code,
-                 std::initializer_list<LogField> fields) noexcept {
+void Logger::log(DiagnosticCode code, std::initializer_list<LogField> fields) noexcept {
     log_at(clock_ != nullptr ? clock_->now_ns() : 0, code, fields);
 }
 
-void Logger::log_at(TimestampNs timestamp_ns,
-                    DiagnosticCode code,
+void Logger::log_at(TimestampNs timestamp_ns, DiagnosticCode code,
                     std::initializer_list<LogField> fields) noexcept {
     LogRecord record;
     record.timestamp_ns = timestamp_ns;

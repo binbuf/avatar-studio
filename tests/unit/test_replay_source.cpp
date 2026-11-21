@@ -17,10 +17,10 @@
 
 namespace {
 
+using avatar::capture::frame_content_hash;
 using avatar::capture::PixelFormat;
 using avatar::capture::ReplaySource;
 using avatar::capture::ReplaySourceConfig;
-using avatar::capture::frame_content_hash;
 using avatar::core::FrameClock;
 using avatar::core::ManualTimeSource;
 using avatar::core::TimestampNs;

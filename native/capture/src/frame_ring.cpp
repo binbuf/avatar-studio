@@ -38,10 +38,7 @@ void FrameLease::release() noexcept {
 }
 
 FrameWrite::FrameWrite(FrameWrite&& other) noexcept
-    : ring_(other.ring_),
-      frame_(other.frame_),
-      slot_(other.slot_),
-      active_(other.active_),
+    : ring_(other.ring_), frame_(other.frame_), slot_(other.slot_), active_(other.active_),
       was_published_(other.was_published_) {
     other.ring_ = nullptr;
     other.frame_ = nullptr;
@@ -89,13 +86,9 @@ std::uint32_t FrameWrite::stride(std::size_t index) const noexcept {
     return frame_->strides[index];
 }
 
-FrameRing::FrameRing(std::uint32_t width,
-                     std::uint32_t height,
-                     PixelFormat format,
+FrameRing::FrameRing(std::uint32_t width, std::uint32_t height, PixelFormat format,
                      std::uint32_t capacity)
-    : width_(width),
-      height_(height),
-      format_(format),
+    : width_(width), height_(height), format_(format),
       capacity_(std::max<std::uint32_t>(capacity, 1)),
       slots_(std::max<std::uint32_t>(capacity, 1)) {
     if (!compute_plane_layout(format, width, height, plane_layouts_)) {
@@ -122,9 +115,8 @@ FrameRing::FrameRing(std::uint32_t width,
                                          : ColorSpace::srgb;
             slot.frame.storage = FrameStorage::cpu;
             slot.frame.strides[plane] = plane_layouts_[plane].stride;
-            slot.frame.planes[plane] = plane_layouts_[plane].size > 0
-                                           ? slot.storage.data() + offset
-                                           : nullptr;
+            slot.frame.planes[plane] =
+                plane_layouts_[plane].size > 0 ? slot.storage.data() + offset : nullptr;
             offset += plane_layouts_[plane].size;
         }
     }
@@ -191,8 +183,7 @@ std::optional<FrameWrite> FrameRing::begin_write() noexcept {
 
     Slot& slot = slots_[best];
     SlotState expected = best_unpublished ? SlotState::unpublished : SlotState::published;
-    if (!slot.state.compare_exchange_strong(expected, SlotState::writing,
-                                            std::memory_order_acq_rel,
+    if (!slot.state.compare_exchange_strong(expected, SlotState::writing, std::memory_order_acq_rel,
                                             std::memory_order_acquire)) {
         // Another producer (or a stale view) changed the slot; retry once by
         // simply reporting no slot this frame. Single-producer callers never
@@ -218,9 +209,7 @@ std::optional<FrameWrite> FrameRing::begin_write() noexcept {
     return write;
 }
 
-bool FrameRing::publish(FrameWrite& write,
-                        TimestampNs timestamp_ns,
-                        TimestampNs arrival_ns,
+bool FrameRing::publish(FrameWrite& write, TimestampNs timestamp_ns, TimestampNs arrival_ns,
                         bool mirrored) noexcept {
     if (write.ring_ != this || !write.active_ || write.slot_ >= capacity_) {
         return false;

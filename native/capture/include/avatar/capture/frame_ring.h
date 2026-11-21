@@ -90,9 +90,7 @@ private:
 /// 2 or more. The default is 4.
 class FrameRing {
 public:
-    FrameRing(std::uint32_t width,
-              std::uint32_t height,
-              PixelFormat format,
+    FrameRing(std::uint32_t width, std::uint32_t height, PixelFormat format,
               std::uint32_t capacity = 4);
     ~FrameRing();
 
@@ -107,9 +105,7 @@ public:
     [[nodiscard]] std::optional<FrameWrite> begin_write() noexcept;
 
     /// Commits a reserved write. `write` is consumed (deactivated) on success.
-    [[nodiscard]] bool publish(FrameWrite& write,
-                               TimestampNs timestamp_ns,
-                               TimestampNs arrival_ns,
+    [[nodiscard]] bool publish(FrameWrite& write, TimestampNs timestamp_ns, TimestampNs arrival_ns,
                                bool mirrored = false) noexcept;
 
     /// Drops a reservation without publishing. The slot keeps its previous
@@ -128,7 +124,9 @@ public:
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] PixelFormat format() const noexcept { return format_; }
     [[nodiscard]] std::uint32_t capacity() const noexcept { return capacity_; }
-    [[nodiscard]] std::uint64_t dropped() const noexcept { return dropped_.load(std::memory_order_relaxed); }
+    [[nodiscard]] std::uint64_t dropped() const noexcept {
+        return dropped_.load(std::memory_order_relaxed);
+    }
     [[nodiscard]] std::uint64_t published_count() const noexcept {
         return published_count_.load(std::memory_order_relaxed);
     }

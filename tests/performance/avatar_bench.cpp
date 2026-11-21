@@ -177,25 +177,25 @@ struct Options {
 [[nodiscard]] std::string read_registry_string(const wchar_t* subkey, const wchar_t* name) {
     wchar_t buffer[512] = {};
     DWORD size = static_cast<DWORD>(sizeof(buffer));
-    const LSTATUS status = RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_SZ, nullptr,
-                                        buffer, &size);
+    const LSTATUS status =
+        RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_SZ, nullptr, buffer, &size);
     if (status != ERROR_SUCCESS) {
         return {};
     }
     return narrow(buffer);
 }
 
-[[nodiscard]] DWORD read_registry_dword(const wchar_t* subkey, const wchar_t* name, DWORD fallback) {
+[[nodiscard]] DWORD read_registry_dword(const wchar_t* subkey, const wchar_t* name,
+                                        DWORD fallback) {
     DWORD value = fallback;
     DWORD size = static_cast<DWORD>(sizeof(value));
-    const LSTATUS status = RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_DWORD, nullptr,
-                                        &value, &size);
+    const LSTATUS status =
+        RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_DWORD, nullptr, &value, &size);
     return status == ERROR_SUCCESS ? value : fallback;
 }
 
 [[nodiscard]] std::string os_name() {
-    constexpr const wchar_t* kCurrentVersion =
-        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+    constexpr const wchar_t* kCurrentVersion = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
     std::string product = read_registry_string(kCurrentVersion, L"ProductName");
     const std::string display = read_registry_string(kCurrentVersion, L"DisplayVersion");
     const std::string build_text = read_registry_string(kCurrentVersion, L"CurrentBuildNumber");
@@ -381,8 +381,8 @@ public:
         }
         DWORD size = 0;
         DWORD count = 0;
-        PDH_STATUS status = PdhGetFormattedCounterArrayW(counter_, PDH_FMT_DOUBLE, &size, &count,
-                                                         nullptr);
+        PDH_STATUS status =
+            PdhGetFormattedCounterArrayW(counter_, PDH_FMT_DOUBLE, &size, &count, nullptr);
         if (status != PDH_MORE_DATA || size == 0) {
             return std::nullopt;
         }
@@ -392,8 +392,7 @@ public:
         if (status != ERROR_SUCCESS) {
             return std::nullopt;
         }
-        const std::wstring process_tag =
-            L"pid_" + std::to_wstring(GetCurrentProcessId()) + L"_";
+        const std::wstring process_tag = L"pid_" + std::to_wstring(GetCurrentProcessId()) + L"_";
         double total = 0.0;
         bool found = false;
         for (DWORD index = 0; index < count; ++index) {
@@ -600,8 +599,8 @@ public:
 [[nodiscard]] std::uint64_t process_rss_bytes() {
     mach_task_basic_info_data_t info{};
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
-                  reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS) {
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&info),
+                  &count) != KERN_SUCCESS) {
         return 0;
     }
     return static_cast<std::uint64_t>(info.resident_size);
@@ -627,14 +626,30 @@ public:
 
 #else
 
-[[nodiscard]] std::string os_name() { return "unknown"; }
-[[nodiscard]] std::string cpu_brand() { return "unknown"; }
-[[nodiscard]] int physical_cores() { return 1; }
-[[nodiscard]] int logical_cores() { return 1; }
-[[nodiscard]] std::uint64_t total_memory_bytes() { return 0; }
-[[nodiscard]] std::string gpu_name() { return "unknown"; }
-[[nodiscard]] std::uint64_t process_rss_bytes() { return 0; }
-[[nodiscard]] std::uint64_t process_cpu_ns() { return 0; }
+[[nodiscard]] std::string os_name() {
+    return "unknown";
+}
+[[nodiscard]] std::string cpu_brand() {
+    return "unknown";
+}
+[[nodiscard]] int physical_cores() {
+    return 1;
+}
+[[nodiscard]] int logical_cores() {
+    return 1;
+}
+[[nodiscard]] std::uint64_t total_memory_bytes() {
+    return 0;
+}
+[[nodiscard]] std::string gpu_name() {
+    return "unknown";
+}
+[[nodiscard]] std::uint64_t process_rss_bytes() {
+    return 0;
+}
+[[nodiscard]] std::uint64_t process_cpu_ns() {
+    return 0;
+}
 
 class GpuMonitor {
 public:
@@ -663,8 +678,7 @@ public:
         hash *= 1099511628211ull;
     }
     char buffer[32] = {};
-    std::snprintf(buffer, sizeof(buffer), "%016llx",
-                  static_cast<unsigned long long>(hash));
+    std::snprintf(buffer, sizeof(buffer), "%016llx", static_cast<unsigned long long>(hash));
     return buffer;
 }
 
@@ -814,10 +828,9 @@ struct Distribution {
     }
     std::sort(values.begin(), values.end());
     const auto percentile = [&values](double percent) -> double {
-        const double rank =
-            std::ceil((percent / 100.0) * static_cast<double>(values.size())) - 1.0;
-        const std::size_t index = static_cast<std::size_t>(
-            std::clamp(rank, 0.0, static_cast<double>(values.size() - 1)));
+        const double rank = std::ceil((percent / 100.0) * static_cast<double>(values.size())) - 1.0;
+        const std::size_t index =
+            static_cast<std::size_t>(std::clamp(rank, 0.0, static_cast<double>(values.size() - 1)));
         return values[index];
     };
     double total = 0.0;
@@ -833,12 +846,9 @@ struct Distribution {
 }
 
 [[nodiscard]] json distribution_json(const Distribution& distribution) {
-    return json{{"p50", round_to(distribution.p50, 4)},
-                {"p95", round_to(distribution.p95, 4)},
-                {"p99", round_to(distribution.p99, 4)},
-                {"mean", round_to(distribution.mean, 4)},
-                {"max", round_to(distribution.max, 4)},
-                {"samples", distribution.samples}};
+    return json{{"p50", round_to(distribution.p50, 4)}, {"p95", round_to(distribution.p95, 4)},
+                {"p99", round_to(distribution.p99, 4)}, {"mean", round_to(distribution.mean, 4)},
+                {"max", round_to(distribution.max, 4)}, {"samples", distribution.samples}};
 }
 
 // ---------------------------------------------------------------------------
@@ -852,10 +862,8 @@ struct Distribution {
 struct RigStage {
     std::array<float, 4> rotation{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> translation{0.0f, 0.0f, 0.0f};
-    std::array<float, 16> matrix{1.0f, 0.0f, 0.0f, 0.0f,
-                                 0.0f, 1.0f, 0.0f, 0.0f,
-                                 0.0f, 0.0f, 1.0f, 0.0f,
-                                 0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> matrix{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     double sink = 0.0;
 
     void step(const tracking::TrackingResult& result) noexcept {
@@ -881,14 +889,22 @@ struct RigStage {
         const float y = rotation[1];
         const float z = rotation[2];
         const float w = rotation[3];
-        matrix = {1.0f - 2.0f * (y * y + z * z), 2.0f * (x * y - z * w),
-                  2.0f * (x * z + y * w),          translation[0],
-                  2.0f * (x * y + z * w),         1.0f - 2.0f * (x * x + z * z),
-                  2.0f * (y * z - x * w),         translation[1],
-                  2.0f * (x * z - y * w),         2.0f * (y * z + x * w),
-                  1.0f - 2.0f * (x * x + y * y),  translation[2],
-                  0.0f,                           0.0f,
-                  0.0f,                           1.0f};
+        matrix = {1.0f - 2.0f * (y * y + z * z),
+                  2.0f * (x * y - z * w),
+                  2.0f * (x * z + y * w),
+                  translation[0],
+                  2.0f * (x * y + z * w),
+                  1.0f - 2.0f * (x * x + z * z),
+                  2.0f * (y * z - x * w),
+                  translation[1],
+                  2.0f * (x * z - y * w),
+                  2.0f * (y * z + x * w),
+                  1.0f - 2.0f * (x * x + y * y),
+                  translation[2],
+                  0.0f,
+                  0.0f,
+                  0.0f,
+                  1.0f};
 
         const auto* points = result.landmarks.points.data();
         const std::size_t count = std::min<std::size_t>(result.landmarks.count, 64);
@@ -896,10 +912,10 @@ struct RigStage {
             const float px = points[index].x;
             const float py = points[index].y;
             const float pz = points[index].z;
-            sink += static_cast<double>(matrix[0] * px + matrix[1] * py + matrix[2] * pz +
-                                        matrix[3]);
-            sink += static_cast<double>(matrix[4] * px + matrix[5] * py + matrix[6] * pz +
-                                        matrix[7]);
+            sink +=
+                static_cast<double>(matrix[0] * px + matrix[1] * py + matrix[2] * pz + matrix[3]);
+            sink +=
+                static_cast<double>(matrix[4] * px + matrix[5] * py + matrix[6] * pz + matrix[7]);
         }
     }
 };
@@ -924,7 +940,8 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
             const std::uint32_t red = row[x * 4 + 2];
             const std::uint32_t alpha = row[x * 4 + 3];
             const std::uint32_t inverse = 255u - alpha;
-            destination[x * 4 + 0] = static_cast<std::uint8_t>((red * alpha + 16u * inverse) / 255u);
+            destination[x * 4 + 0] =
+                static_cast<std::uint8_t>((red * alpha + 16u * inverse) / 255u);
             destination[x * 4 + 1] =
                 static_cast<std::uint8_t>((green * alpha + 18u * inverse) / 255u);
             destination[x * 4 + 2] =
@@ -1006,8 +1023,7 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
 
     tracking::ScriptedTrackerConfig tracker_config;
     tracker_config.scenario = tracking::ScriptedScenario::valid_tracking;
-    tracker_config.frame_count =
-        static_cast<std::uint32_t>(options.warmup + options.frames + 16);
+    tracker_config.frame_count = static_cast<std::uint32_t>(options.warmup + options.frames + 16);
     tracker_config.frame_interval_ns = frame_period_ns;
     tracking::ScriptedTracker tracker(tracker_config);
 
@@ -1172,19 +1188,17 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
     metrics["frame_interval_ms"] = distribution_json(frame_interval);
     metrics["app_latency_ms"] = distribution_json(app_latency);
     metrics["end_to_end_latency_ms"] = nullptr;
-    metrics["stage_ms"] = json{{"capture", distribution_json(capture_stage)},
-                               {"ring", distribution_json(ring_stage)},
-                               {"tracker", options.scenario == Scenario::rig ||
-                                                   options.scenario == Scenario::render
-                                               ? distribution_json(tracker_stage)
-                                               : json(nullptr)},
-                               {"rig", options.scenario == Scenario::rig ||
-                                               options.scenario == Scenario::render
-                                           ? distribution_json(rig_stage)
-                                           : json(nullptr)},
-                               {"render", options.scenario == Scenario::render
-                                              ? distribution_json(render_stage)
-                                              : json(nullptr)}};
+    metrics["stage_ms"] =
+        json{{"capture", distribution_json(capture_stage)},
+             {"ring", distribution_json(ring_stage)},
+             {"tracker", options.scenario == Scenario::rig || options.scenario == Scenario::render
+                             ? distribution_json(tracker_stage)
+                             : json(nullptr)},
+             {"rig", options.scenario == Scenario::rig || options.scenario == Scenario::render
+                         ? distribution_json(rig_stage)
+                         : json(nullptr)},
+             {"render", options.scenario == Scenario::render ? distribution_json(render_stage)
+                                                             : json(nullptr)}};
     metrics["rss_bytes"] = rss_bytes;
     metrics["cpu_percent_one_core"] = round_to(cpu_percent, 3);
     if (gpu_percent.has_value()) {
@@ -1195,9 +1209,8 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
 
     std::vector<std::string> notes;
     if (options.scenario == Scenario::capture) {
-        notes.emplace_back(
-            "capture isolates the deterministic source render and ring publish; "
-            "ring/rig add the consumer stages.");
+        notes.emplace_back("capture isolates the deterministic source render and ring publish; "
+                           "ring/rig add the consumer stages.");
     }
     if (options.scenario == Scenario::render) {
         notes.emplace_back(
@@ -1323,10 +1336,9 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
         return false;
     }
     const json& metrics = result["metrics"];
-    for (const char* key :
-         {"frames", "dropped_frames", "dropped_tracking_frames", "frame_time_ms",
-          "frame_interval_ms", "app_latency_ms", "rss_bytes", "cpu_percent_one_core",
-          "gpu_percent", "stage_ms"}) {
+    for (const char* key : {"frames", "dropped_frames", "dropped_tracking_frames", "frame_time_ms",
+                            "frame_interval_ms", "app_latency_ms", "rss_bytes",
+                            "cpu_percent_one_core", "gpu_percent", "stage_ms"}) {
         if (!metrics.contains(key)) {
             error = std::string("metrics.") + key + " is missing";
             return false;
@@ -1340,8 +1352,7 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
     if (!validate_distribution(metrics["frame_time_ms"], "metrics.frame_time_ms", error)) {
         return false;
     }
-    if (!validate_distribution(metrics["frame_interval_ms"], "metrics.frame_interval_ms",
-                               error)) {
+    if (!validate_distribution(metrics["frame_interval_ms"], "metrics.frame_interval_ms", error)) {
         return false;
     }
     if (!validate_distribution(metrics["app_latency_ms"], "metrics.app_latency_ms", error)) {
@@ -1357,8 +1368,8 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
             return false;
         }
         if (!metrics["stage_ms"][key].is_null() &&
-            !validate_distribution(metrics["stage_ms"][key],
-                                   std::string("metrics.stage_ms.") + key, error)) {
+            !validate_distribution(metrics["stage_ms"][key], std::string("metrics.stage_ms.") + key,
+                                   error)) {
             return false;
         }
     }
@@ -1412,8 +1423,8 @@ void render_proxy(const capture::VideoFrame& frame, std::vector<std::uint8_t>& o
                             result["metrics"]["frames"]["measured"].get<std::uint64_t>()),
                         result["metrics"]["frame_time_ms"]["p50"].get<double>());
         } catch (const std::exception& exception) {
-            std::fprintf(stderr, "avatar_bench self-test: %s threw: %s\n",
-                         scenario_name(scenario), exception.what());
+            std::fprintf(stderr, "avatar_bench self-test: %s threw: %s\n", scenario_name(scenario),
+                         exception.what());
             failed = true;
         }
     }
@@ -1517,8 +1528,7 @@ int main(int argc, char** argv) {
                 continue;
             }
             if (argument.rfind("--", 0) != 0) {
-                std::fprintf(stderr, "avatar_bench: unexpected argument '%s'\n",
-                             argument.c_str());
+                std::fprintf(stderr, "avatar_bench: unexpected argument '%s'\n", argument.c_str());
                 return 2;
             }
             const std::size_t equals = argument.find('=');
@@ -1581,11 +1591,10 @@ int main(int argc, char** argv) {
 
     try {
         if (!options.quiet) {
-            std::fprintf(stderr,
-                         "avatar_bench: scenario=%s tracker=%s %dx%d frames=%d warmup=%d fps=%d\n",
-                         scenario_name(options.scenario), tracker_name(options.tracker),
-                         options.width, options.height, options.frames, options.warmup,
-                         options.fps);
+            std::fprintf(
+                stderr, "avatar_bench: scenario=%s tracker=%s %dx%d frames=%d warmup=%d fps=%d\n",
+                scenario_name(options.scenario), tracker_name(options.tracker), options.width,
+                options.height, options.frames, options.warmup, options.fps);
         }
         const json result = run_benchmark(options);
         std::string error;

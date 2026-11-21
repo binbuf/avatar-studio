@@ -17,35 +17,20 @@ constexpr std::uint32_t kBarCount = 8;
 
 // 5x7 bitmapped digits, one byte per row, five low bits used (bit 4 = left).
 constexpr std::uint8_t kDigits[10][7] = {
-    {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},
-    {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
-    {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F},
-    {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E},
-    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02},
-    {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E},
-    {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E},
-    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
-    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},
-    {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C},
+    {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}, {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
+    {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}, {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E},
+    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}, {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E},
+    {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E}, {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
+    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C},
 };
 
 constexpr detail::Rgb8 kBarColours[kBarCount] = {
-    {235, 235, 235},
-    {235, 235, 16},
-    {16, 235, 235},
-    {16, 235, 16},
-    {235, 16, 235},
-    {235, 16, 16},
-    {16, 16, 235},
-    {16, 16, 16},
+    {235, 235, 235}, {235, 235, 16}, {16, 235, 235}, {16, 235, 16},
+    {235, 16, 235},  {235, 16, 16},  {16, 16, 235},  {16, 16, 16},
 };
 
-void draw_text(detail::RgbCanvas& canvas,
-               std::uint32_t x,
-               std::uint32_t y,
-               const std::string& text,
-               std::uint32_t scale,
-               detail::Rgb8 colour) noexcept {
+void draw_text(detail::RgbCanvas& canvas, std::uint32_t x, std::uint32_t y, const std::string& text,
+               std::uint32_t scale, detail::Rgb8 colour) noexcept {
     const std::uint32_t advance = 6u * scale;
     for (std::size_t character = 0; character < text.size(); ++character) {
         const char value = text[character];
@@ -62,9 +47,7 @@ void draw_text(detail::RgbCanvas& canvas,
                 }
                 for (std::uint32_t sy = 0; sy < scale; ++sy) {
                     for (std::uint32_t sx = 0; sx < scale; ++sx) {
-                        canvas.set(origin_x + column * scale + sx,
-                                   y + row * scale + sy,
-                                   colour);
+                        canvas.set(origin_x + column * scale + sx, y + row * scale + sy, colour);
                     }
                 }
             }
@@ -72,10 +55,8 @@ void draw_text(detail::RgbCanvas& canvas,
     }
 }
 
-void render_pattern(const TestPatternConfig& config,
-                    detail::RgbCanvas& canvas,
-                    TimestampNs timestamp_ns,
-                    FrameRect marker) noexcept {
+void render_pattern(const TestPatternConfig& config, detail::RgbCanvas& canvas,
+                    TimestampNs timestamp_ns, FrameRect marker) noexcept {
     const std::uint32_t width = config.width;
     const std::uint32_t height = config.height;
     const std::uint32_t bars_bottom = config.alpha_checkerboard ? (height * 7u) / 10u : height;
@@ -111,8 +92,7 @@ void render_pattern(const TestPatternConfig& config,
     if (config.timestamp_burnin) {
         const std::uint32_t scale = std::max<std::uint32_t>(2u, width / 640u);
         const std::string text = std::to_string(timestamp_ns);
-        const std::uint32_t text_width =
-            static_cast<std::uint32_t>(text.size()) * 6u * scale;
+        const std::uint32_t text_width = static_cast<std::uint32_t>(text.size()) * 6u * scale;
         const std::uint32_t text_height = 7u * scale;
         const std::uint32_t pad = 2u * scale;
         const std::uint32_t box_x = std::max<std::uint32_t>(4u, width / 32u);
@@ -137,9 +117,7 @@ void render_pattern(const TestPatternConfig& config,
 } // namespace
 
 TestPatternSource::TestPatternSource(core::FrameClock& clock, TestPatternConfig config)
-    : clock_(clock),
-      config_(config),
-      ring_(config.width, config.height, config.format) {}
+    : clock_(clock), config_(config), ring_(config.width, config.height, config.format) {}
 
 core::Status TestPatternSource::start() {
     std::array<PlaneLayout, kMaxFramePlanes> layout{};

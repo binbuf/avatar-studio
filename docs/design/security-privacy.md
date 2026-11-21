@@ -97,6 +97,16 @@ CI fails when:
 The deny list has one deliberate exception process: a GPL component may be used as a *separate
 process* (never linked) with legal sign-off, recorded in an ADR.
 
+**Implemented (T06).** `scripts/check-licenses.mjs` is the build gate. It scans C++ include directives:
+an angle-bracket third-party include with no matching `include_prefixes` entry fails, as does a
+manifest entry missing name/version/licence/url/modified or carrying a licence on the deny list.
+Reviewed exceptions are `{id, reason, adr}` entries in `policy.exceptions`; the gate warns and allows
+only those. Standard-library and platform headers are allow-listed in the script so a new SDK header is
+a reviewed change. The manifest currently records nlohmann/json, Godot and godot-cpp as active, and
+Eigen, MediaPipe, ONNX Runtime, Spout2 and Syphon as planned. CTest runs the gate as
+`license_manifest_check`; `scripts/ci.ps1|sh` runs it before configure. Asset provenance and model
+hashes remain later tasks (`assets.json`, tracker model checks).
+
 ---
 
 ## Privileges

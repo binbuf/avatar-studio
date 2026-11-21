@@ -78,10 +78,8 @@ struct CanonicalCorrespondence {
 struct FaceGroundTruth {
     TimestampNs timestamp_ns = 0;
     std::uint32_t sequence = 0;
-    std::array<float, 16> camera_from_head{1.0f, 0.0f, 0.0f, 0.0f,
-                                           0.0f, 1.0f, 0.0f, 0.0f,
-                                           0.0f, 0.0f, 1.0f, 0.0f,
-                                           0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 16> camera_from_head{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                           0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     std::array<CanonicalCorrespondence, kGroundTruthLandmarkCount> correspondences{};
     std::size_t correspondence_count = 0;
     bool features_valid = false;
@@ -97,7 +95,8 @@ struct FaceGroundTruth {
     }
 };
 
-[[nodiscard]] inline float pose_at(const std::array<float, 16>& matrix, int row, int column) noexcept {
+[[nodiscard]] inline float pose_at(const std::array<float, 16>& matrix, int row,
+                                   int column) noexcept {
     return matrix[static_cast<std::size_t>(row) * 4u + static_cast<std::size_t>(column)];
 }
 

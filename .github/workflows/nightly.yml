@@ -1,0 +1,306 @@
+# Nightly suite: the slow, GPU-dependent and static-analysis work that is too
+# expensive for every push.
+#
+# Release-blocking jobs (marked "[release-blocking]" in the job name and with a
+# `# release-blocking: true` comment):
+#   - full-suite-*        complete CTest suite on Windows, macOS and Linux
+#   - sanitizers          ASan+UBSan and TSan over the fast suite
+#   - clang-tidy          pinned .clang-tidy over native/ and tests/
+#   - golden-lavapipe     golden images on software Vulkan (lavapipe)
+#
+# Advisory until the reference runner and the first real render exist:
+#   - performance         self-hosted reference hardware is required for the
+#                         release gate; until then this job reports and uploads
+#                         results without blocking (T26/T46 tighten it).
+#
+# Branch-protection expectations are recorded in docs/progress/T06.md.
+name: Nightly
+
+on:
+  schedule:
+    # 04:17 UTC daily; avoid the top-of-hour stampede on shared runners.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_BUILD_TYPE: RelWithDebInfo
+
+jobs:
+  full-suite:
+    # release-blocking: true
+    name: full-suite-${{ matrix.name }} (release-blocking)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc
+            os: windows-latest
+          - name: macos-arm64
+            os: macos-latest
+          - name: linux-gcc
+            os: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Linux runtime libraries (headless Godot)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2t64 libdbus-1-3 libfontconfig1 libfreetype6 libgl1 \
+            libpulse0 libwayland-client0 libx11-6 libxcursor1 libxinerama1 \
+            libxi6 libxrandr2
+
+      - name: Bootstrap pinned dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/bootstrap.ps1 -Fast
+
+      - name: Bootstrap pinned dependencies (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=ON
+
+      - name: Build RelWithDebInfo
+        shell: bash
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Complete CTest suite
+        shell: bash
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure
+
+      - name: Headless shell smoke
+        shell: pwsh
+        run: ./scripts/smoke.ps1 -Required
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.name }}-${{ github.run_id }}
+          path: |
+            build/Testing
+            build/CMakeCache.txt
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/perf
+            tests/performance/results
+            app/.godot
+          if-no-files-found: ignore
+          retention-days: 14
+
+  sanitizers:
+    # release-blocking: true
+    name: sanitizers-asan-ubsan-tsan (release-blocking)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Linux runtime libraries (headless Godot)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2t64 libdbus-1-3 libfontconfig1 libfreetype6 libgl1 \
+            libpulse0 libwayland-client0 libx11-6 libxcursor1 libxinerama1 \
+            libxi6 libxrandr2
+
+      - name: Bootstrap pinned dependencies
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure ASan + UBSan
+        run: |
+          cmake -S . -B build-asan -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=OFF \
+            -DAVATAR_GODEXTENSION=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build ASan + UBSan
+        run: cmake --build build-asan --parallel
+
+      - name: Fast tests under ASan + UBSan
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-asan -L fast -LE perf --output-on-failure
+
+      - name: Configure TSan
+        run: |
+          cmake -S . -B build-tsan -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=OFF \
+            -DAVATAR_GODEXTENSION=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+
+      - name: Build TSan
+        run: cmake --build build-tsan --parallel
+
+      - name: Fast tests under TSan
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ctest --test-dir build-tsan -L fast -LE perf --output-on-failure
+
+      - name: Upload sanitizer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-sanitizers-${{ github.run_id }}
+          path: |
+            build-asan/Testing
+            build-tsan/Testing
+            build-asan/CMakeFiles/CMakeConfigureLog.yaml
+            build-tsan/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  clang-tidy:
+    # release-blocking: true
+    name: clang-tidy (release-blocking)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-tidy 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-tidy-18
+          sudo ln -sf /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy
+
+      - name: Bootstrap pinned dependencies
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure with clang-tidy
+        run: |
+          cmake -S . -B build-tidy -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=ON \
+            -DAVATAR_GODEXTENSION=OFF \
+            -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+
+      - name: Build with clang-tidy
+        run: cmake --build build-tidy --parallel
+
+      - name: Upload clang-tidy output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-clang-tidy-${{ github.run_id }}
+          path: |
+            build-tidy/CMakeFiles
+            build-tidy/CMakeCache.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  golden-lavapipe:
+    # release-blocking: true once T26 registers golden tests.
+    name: golden-lavapipe (release-blocking after T26)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install software Vulkan (lavapipe)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers vulkan-tools libvulkan1
+
+      - name: Report Vulkan devices
+        run: vulkaninfo --summary
+
+      - name: Bootstrap pinned dependencies
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: cmake -S . -B build -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=OFF
+
+      - name: Build RelWithDebInfo
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Golden images on lavapipe
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: |
+          # No golden test is registered until T26; --no-tests=ignore keeps the
+          # job honest (it reports zero tests) instead of failing on an empty
+          # label. Remove the flag when T26 lands the first golden.
+          ctest --test-dir build -C RelWithDebInfo -L golden --output-on-failure --no-tests=ignore
+
+      - name: Upload golden artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-golden-${{ github.run_id }}
+          path: |
+            build/Testing
+            tests/golden/artifacts
+          if-no-files-found: ignore
+          retention-days: 14
+
+  performance:
+    # release-blocking: false until the self-hosted reference runner exists.
+    name: performance-advisory (self-hosted reference runner pending)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bootstrap pinned dependencies
+        run: bash scripts/bootstrap.sh --fast
+
+      - name: Configure
+        run: cmake -S . -B build -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=ON
+
+      - name: Build RelWithDebInfo
+        run: cmake --build build --config RelWithDebInfo --parallel
+
+      - name: Performance harness self-test
+        run: ./build/avatar_bench --self-test
+
+      - name: Performance measurement
+        run: |
+          mkdir -p tests/performance/results
+          ./build/avatar_bench --scenario rig --frames 300 --warmup 30 \
+            --width 1280 --height 720 --fps 60 --quiet \
+            --output tests/performance/results/nightly-rig.json
+
+      - name: Compare against the local baseline (advisory)
+        run: |
+          node tests/performance/check.mjs \
+            --baseline tests/performance/baselines/foundation-local.json \
+            --result tests/performance/results/nightly-rig.json
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-performance-${{ github.run_id }}
+          path: tests/performance/results
+          if-no-files-found: ignore
+          retention-days: 30
