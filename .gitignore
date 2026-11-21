@@ -27,6 +27,7 @@ docs/design/adr/0000-template.md
 /.tools/
 /out/
 /artifacts/
+/Testing/
 /tests/performance/results/
 /tests/golden/artifacts/
 *.user

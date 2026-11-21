@@ -15,6 +15,7 @@ tell the difference between "we chose this" and "this happened".
 | [0008](0008-eigen-for-rig-math.md) | Eigen for native rig math | Proposed |
 | [0009](0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | Proposed |
 | [0010](0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | Proposed |
+| [0011](0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | Proposed |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

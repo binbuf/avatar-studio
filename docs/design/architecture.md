@@ -442,6 +442,30 @@ Build rules:
 - **Dependency licenses are audited at build time.** A CI step fails the build if a new dependency
   appears without an entry in the manifest.
 
+### Local development build
+
+The native core builds without Godot:
+
+- `scripts/bootstrap.ps1` (Windows) and `scripts/bootstrap.sh` (macOS/Linux) download every
+  third-party native dependency into `.tools/`, pinned by version and SHA256. Both scripts are
+  idempotent and verify the installed copy; `.tools/` is gitignored.
+- CMake consumes `.tools/` and fails configuration with an actionable message when a pinned
+  dependency is missing. Configure and build never touch the network.
+- Targets: `avatar_core` (static library, C++20, framework-free) and `avatar_core_tests`.
+  Options: `AVATAR_TESTS` (default ON) and `AVATAR_WARNINGS_AS_ERRORS` (default ON; MSVC
+  `/W4 /WX`, GCC/Clang `-Wall -Wextra -Wpedantic -Werror`).
+- Windows uses the default Visual Studio generator; Linux/macOS use the default CMake generator.
+  Ninja is not required.
+- `scripts/verify.ps1` / `scripts/verify.sh` are the verification contract. `-Fast` bootstraps,
+  configures, builds RelWithDebInfo and runs CTest label `fast`; `-Full` adds the complete native
+  suite and `tests/gates/TNN.ps1`; `-Task TNN` selects the task label and gate. From T02 the
+  contract also requires Godot for tasks that touch the adapter.
+- The core reads time only through `FrameClock` over an injected `TimeSource`; tests drive a fake
+  source and no core code reads wall-clock time.
+
+See [ADR-0011](adr/0011-pinned-local-dependencies.md).
+
+
 ### Install and uninstall contract
 
 The installer's application-specific writes are exactly this; standard OS bookkeeping (MSI installer
