@@ -285,9 +285,9 @@ Rules:
 | `node` | string \| null | Node name for `mode: "node"`. Must be an ancestor of the face surface origin |
 | `cut.origin` | `[x,y,z]` | A point on the neck plane, in rest model space |
 | `cut.normal` | `[x,y,z]` | Unit vector toward the top of the head |
-| `cut.falloff` | number > 0 | Distance below the plane over which rotation blends to zero |
+| `cut.falloff` | number > 0 | Distance above the plane over which rotation blends from zero to full |
 
-`mode: "cut"` is the default for a one-piece mesh: vertices above the plane rotate, the neck blends,
+`mode: "cut"` is the default for a one-piece mesh: vertices at or below the plane stay still, the band above blends to full rotation,
 and the body stays still. The editor's head-region gizmo sets the plane and falloff. When the object
 is omitted, the importer uses a single node named `head` if it exists, otherwise it derives a cut
 plane from the face surface and raises `RIG-006`. Invalid geometry (plane above the face origin, node
@@ -594,3 +594,16 @@ Details and the threat model: [`security-privacy.md`](security-privacy.md#untrus
 | Should outfits be embedded in the package or always user-level? | Ship embedded defaults + user overrides; revisit after M2 |
 | Do authors need a "face mask texture" escape hatch instead of parametric regions? | If M2 calibration proves too coarse for organic shapes |
 | VRM import: worth it? | Deferred; only if avatar-author demand is demonstrated |
+
+
+### Head-region runtime adapter (T19)
+
+The package head-region geometry is implemented by `AvatarModel.configure_head_region` (Godot
+Dictionary vectors in realised rest model metres); package JSON decoding remains the package-loader
+task. The cut band is `[0, falloff]` **above** the origin along its normal, exactly as in the
+weight formula. Validation rejects nonfinite/zero falloff, nonunit or downward cut normals, a plane
+at/above the face origin, missing/ambiguous nodes and subtrees whose descendant bounds do not
+contain the face. If face_submesh is explicit it must belong to the selected subtree. Invalid edits
+expose AVT-117 and keep the last valid configuration; a derived cut reports RIG-006. See
+[face-compositing.md](face-compositing.md#implemented-head-deformation-t19) and
+[ADR-0029](adr/0029-shared-cpu-head-deformation.md) for the CPU path and its measured budget overrun.

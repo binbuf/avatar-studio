@@ -158,7 +158,7 @@ The head region is authored per avatar (`model.head_region`) and picked in the e
 | Mode | When | How it deforms |
 |---|---|---|
 | `node` | The GLB already has a separate head node or subtree | The node is rotated; the seam is the model's own |
-| `cut` | A single mesh, the normal case for a downloaded character | Vertices above a neck plane rotate; a falloff band blends to zero below it |
+| `cut` | A single mesh, the normal case for a downloaded character | Vertices above a neck plane rotate; a falloff band blends from zero above it |
 
 For `cut`, the weight of a rest-space vertex is:
 
@@ -182,6 +182,37 @@ If `model.head_region` is absent, the importer uses a node named `head` when exa
 otherwise it derives a cut plane from the face surface and raises `RIG-006` so the user confirms it.
 An invalid region (cut plane above the face origin, or a node that is not an ancestor of the face) is
 a validation error, `AVT-117`.
+
+### Implemented head deformation (T19)
+
+`AvatarModel.configure_head_region(region, face, pivot)` accepts realised rest model-space vectors
+and validates before replacing the active region. `face` supplies origin, outward normal, up and
+scale. A cut must have a finite positive falloff, a unit normal pointing up and strictly positive
+face-origin distance. Node names must be unique; the descendant mesh AABB must contain the face
+origin (1% of face scale tolerance). An explicit `face_submesh` must belong to that subtree.
+Invalid edits return false and expose AVT-117 while preserving the model and last valid region.
+Omitted regions choose one case-insensitive `head` node or derive `origin - 1.5*scale*up`,
+normal `up`, falloff `0.5*scale`, reporting RIG-006. Before calibration, import uses an AABB-derived
+provisional face; callers must reconfigure with their calibrated surface. The pivot is the explicit
+cut override or `face.origin - 0.75*face.scale*normal`; node mode ignores that override.
+
+[ADR-0029](adr/0029-shared-cpu-head-deformation.md) selects retained CPU vertex buffers with
+precomputed weights, rotated/renormalised normals and rotated tangents; no full mesh rebuild occurs
+on pose updates. `set_head_rotation(Quaternion)` receives the rig's head rotation in realised model
+axes; presentation is unchanged. Node mode updates only the selected subtree about its own origin.
+Dynamic meshes carry conservative swept bounds around the pivot.
+
+`create_decal_pass(ShaderMaterial)` creates children of the imported mesh instances referencing
+**the same live ArrayMesh**. It respects face_submesh, replaces the previous pass and returns the
+first instance for inspection; AvatarModel owns all instances. `clear_decal_pass()` removes them.
+CUSTOM0 is reserved for immutable rest model positions. Include `app/shaders/head_decal.gdshaderinc`,
+assign `head_rest_position = CUSTOM0.xyz` in vertex(), and project that varying in fragment().
+`get_decal_vertices()` remains rest space. The diagnostic target shader and independent render oracle
+are in `app/tests/`; camera face sampling is still T20/T21, tracker-to-engine wiring T24.
+
+The 20k-triangle cut fixture measures 0.463 ms median / 0.541 ms p95 for CPU deformation plus submission: the
+0.15 ms target is **not met**, explicitly retained as performance debt in ADR-0029. Indexed synthetic
+goldens cover six angles per mode; they do not establish real-model neck quality (T43).
 
 ### Presentation
 

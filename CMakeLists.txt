@@ -635,3 +635,13 @@ if(AVATAR_GODEXTENSION)
             "skipping the GDExtension adapter (run scripts/bootstrap.ps1|sh)")
     endif()
 endif()
+
+# T19: framework-free head-region reference math.
+if(AVATAR_TESTS)
+    add_executable(avatar_head_tests tests/unit/test_main.cpp tests/unit/test_head_region.cpp)
+    target_include_directories(avatar_head_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_head_tests PRIVATE avatar::rig)
+    avatar_enable_warnings(avatar_head_tests)
+    add_test(NAME avatar_head_unit COMMAND avatar_head_tests)
+    set_tests_properties(avatar_head_unit PROPERTIES LABELS "fast;task_T19" TIMEOUT 60)
+endif()

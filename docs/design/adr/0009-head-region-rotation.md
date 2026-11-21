@@ -1,6 +1,6 @@
 # ADR-0009: Head-region rotation instead of whole-model rotation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Related:** [`../face-compositing.md`](../face-compositing.md), [`../avatar-package-format.md`](../avatar-package-format.md), [`../editor-ux.md`](../editor-ux.md)
 
@@ -45,6 +45,9 @@ plane from the face surface and warns (`RIG-006`).
 | **Require a split head mesh** | Same problem; a user cannot split a mesh in the app, and asking them to open Blender contradicts the product |
 | **Full vertex-weight painting** | More control, but a new editor mode and a new class of calibration failure for a ±30° rotation |
 | **No head rotation at all** | Removes the defining motion |
+
+T19 keeps this decision. The measured rendering mechanism and explicit CPU budget overrun are
+recorded separately in [ADR-0029](0029-shared-cpu-head-deformation.md).
 
 ## Consequences
 

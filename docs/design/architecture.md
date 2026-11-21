@@ -260,8 +260,10 @@ provide pure-data diagnostics. `configure(profile)` and `reset()` clear temporal
 state; `update(result, render_time_ns)` consumes only newer source timestamps;
 `sample(render_time_ns)` predicts between tracker updates without refreshing loss.
 Only complete accepted samples extend the 150 ms hold; after it the output gate
-must blank. No decay to neutral occurs. Head-region rotation, avatar calibration,
-framing and GDExtension binding remain T19/T22/T24. Exact constants and transform
+must blank. No decay to neutral occurs. T19 implements cut/node head-region rotation in
+AvatarModel, sharing live geometry and immutable rest positions with the decal pass
+([ADR-0029](adr/0029-shared-cpu-head-deformation.md)); CPU cut cost exceeds the 0.15 ms target.
+Avatar calibration, framing and tracker-to-engine binding remain T22/T24. Exact constants and transform
 conventions are fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 The math is the heart of the product: [`face-compositing.md`](face-compositing.md).

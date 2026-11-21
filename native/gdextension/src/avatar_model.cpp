@@ -129,6 +129,7 @@ String AvatarModel::get_face_submesh() const {
 }
 
 void AvatarModel::clear() {
+    clear_decal_pass();
     if (container_ != nullptr) {
         if (container_->get_parent() != nullptr) {
             container_->get_parent()->remove_child(container_);
@@ -136,6 +137,10 @@ void AvatarModel::clear() {
         memdelete(container_);
         container_ = nullptr;
     }
+    head_surfaces_.clear();
+    head_region_.clear();
+    head_node_ = -1;
+    head_rotation_ = Quaternion();
     nodes_.clear();
     node_objects_.clear();
     reset_reported_state();
@@ -363,6 +368,12 @@ int32_t AvatarModel::import_glb(const String& path) {
     build_decal_data();
     build_candidate_heads();
     loaded_ = true;
+    Dictionary face;
+    face["origin"] = model_aabb_.position + model_aabb_.size * Vector3(0.5, 0.75, 0.0);
+    face["normal"] = Vector3(0, 0, -1);
+    face["up"] = Vector3(0, 1, 0);
+    face["scale"] = model_aabb_.size.y * 0.2;
+    configure_head_region(Dictionary(), face, Variant());
     return finish(OK);
 }
 
@@ -531,8 +542,21 @@ bool AvatarModel::build_scene(const String& path) {
             // for a Skeleton3D that this importer never creates.
             arrays[Mesh::ARRAY_BONES] = Variant();
             arrays[Mesh::ARRAY_WEIGHTS] = Variant();
+            // CUSTOM0 is reserved for immutable rest model position, even when vertices move.
+            const PackedVector3Array rest = arrays[Mesh::ARRAY_VERTEX];
+            PackedFloat32Array rest_bytes;
+            rest_bytes.resize(rest.size() * 3);
+            for (int64_t v = 0; v < rest.size(); ++v) {
+                const Vector3 p = record.model_xform.xform(rest[v]);
+                const float xyz[3] = {p.x, p.y, p.z};
+                std::memcpy(rest_bytes.ptrw() + v * 3, xyz, 12);
+            }
+            arrays[Mesh::ARRAY_CUSTOM0] = rest_bytes;
             array_mesh->add_surface_from_arrays(
-                importer_mesh->get_surface_primitive_type(surface_index), arrays);
+                importer_mesh->get_surface_primitive_type(surface_index), arrays, Array(),
+                Dictionary(),
+                Mesh::ARRAY_FLAG_USE_DYNAMIC_UPDATE |
+                    (uint64_t(Mesh::ARRAY_CUSTOM_RGB_FLOAT) << Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT));
             array_mesh->surface_set_material(surface_index, material);
 
             if (include_in_decal) {
@@ -543,6 +567,9 @@ bool AvatarModel::build_scene(const String& path) {
         MeshInstance3D* instance = Object::cast_to<MeshInstance3D>(node_objects_[i]);
         if (instance != nullptr) {
             instance->set_mesh(array_mesh);
+            for (int32_t surface = 0; surface < array_mesh->get_surface_count(); ++surface)
+                cache_head_surface(array_mesh, surface, static_cast<size_t>(i), include_in_decal,
+                                   array_mesh->surface_get_arrays(surface));
             instance->set_skeleton_path(NodePath());
         }
 
@@ -891,6 +918,15 @@ String AvatarModel::get_decal_source() const {
 }
 
 void AvatarModel::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("configure_head_region", "region", "face", "pivot"),
+                         &AvatarModel::configure_head_region);
+    ClassDB::bind_method(D_METHOD("set_head_rotation", "rotation"),
+                         &AvatarModel::set_head_rotation);
+    ClassDB::bind_method(D_METHOD("get_head_region"), &AvatarModel::get_head_region);
+    ClassDB::bind_method(D_METHOD("create_decal_pass", "material"),
+                         &AvatarModel::create_decal_pass);
+    ClassDB::bind_method(D_METHOD("clear_decal_pass"), &AvatarModel::clear_decal_pass);
+    ClassDB::bind_method(D_METHOD("get_head_surface_data"), &AvatarModel::get_head_surface_data);
     ClassDB::bind_method(D_METHOD("set_units", "units"), &AvatarModel::set_units);
     ClassDB::bind_method(D_METHOD("get_units"), &AvatarModel::get_units);
     ClassDB::bind_method(D_METHOD("set_forward_axis", "forward"), &AvatarModel::set_forward_axis);

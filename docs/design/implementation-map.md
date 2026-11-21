@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T18 (pure FaceRig math, numerical tests and CPU gate implemented; runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
+**Status:** current as of T19 (head-region cut/node geometry and shared rest-space decal buffers implemented; CPU budget overrun documented; pure FaceRig math, numerical tests and CPU gate implemented; runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -71,8 +71,8 @@ AABB, candidate head nodes and rest-position/normal/index decal arrays are expos
 model-check panel and the decal pass. `AvatarRuntime` attaches the model under `Presentation` and
 frames the app camera. `app/tests/model_import.gd` imports the avocado and tracked fixtures
 (feet-origin, Z-up/+Y-forward, animated/skinned, invalid) and `tests/gates/T17.ps1` re-checks the
-result, `AVT-102`, the measured import time/memory and the design documents. Decals, head-region
-deformation, framing and package loading remain T19/T21/T22/T29.
+result, `AVT-102`, the measured import time/memory and the design documents. Decal
+surface projection, framing and package loading remain T21/T22/T29.
 
 T18 implements `avatar::rig::FaceRig`: named stable correspondences, normalised DLT,
 Gauss–Newton and deterministic RANSAC, region centroids through H inverse, One Euro
@@ -80,8 +80,11 @@ pose channels, deadband, bounded prediction, source timestamps and the 150 ms lo
 hold. The public API uses plain float arrays and private double-precision Eigen
 math. `avatar_rig_unit` compares synthetic ground truth and failure paths;
 `avatar_rig_perf` asserts the local <0.1 ms mean budget for normal/outlier updates.
-`tests/gates/T18.ps1` runs both even in fast task verification. Shaders, head-region
-application, engine wiring and transport blanking remain T19–T24.
+`tests/gates/T18.ps1` runs both even in fast task verification. T19 implements cut/node application
+in `AvatarModel`, shared model/decal buffers and immutable CUSTOM0 rest positions. The indexed
+20k-triangle cut path exceeds 0.15 ms (ADR-0029); node mode changes one subtree transform. T19's
+unit/engine suite and twelve independent rendered goldens are gated by `tests/gates/T19.ps1`.
+Face sampling shaders, tracker engine wiring and transport blanking remain T20–T24.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -140,7 +143,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Real tracker builds on macOS/Linux | `native/tracking/mediapipe/` | T52, T55 |
 | macOS AVFoundation capture | `native/capture/macos/` | T52 |
 | Linux V4L2/PipeWire capture | `native/capture/linux/` | T55 |
-| FaceRig head-region deformation and avatar framing (core estimator exists) | `native/rig/` | T19, T22 |
+| Avatar framing (core estimator and head-region deformation exist) | `native/rig/` | T22 |
 | Avatar package load/save/validate/migrate, anchors, presets | `native/avatar/` | T29, T32 |
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
@@ -190,7 +193,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — tracking backend (`ITrackingBackend`, C ABI) | `native/tracking/` | T09 | `Implemented` |
 | Subsystem contract — real Windows tracker backend | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Subsystem contract — pure FaceRig output, estimator, filtering, loss hold | `native/rig/` | T18 | `Implemented` |
-| Subsystem contract — head-region deformation and framing | `native/rig/` | T19, T22 | `Planned` |
+| Subsystem contract — head-region deformation | `native/gdextension/src/avatar_head.cpp`, `native/rig/include/avatar/rig/head_region.h` | T19 | `Implemented; cut CPU budget overrun (ADR-0029)` |
+| Subsystem contract — framing | `native/rig/` | T22 | `Planned` |
 | Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
@@ -223,7 +227,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Coordinate spaces: canonical face space and face-frame estimation | `native/rig/`, `native/tracking/` | T18 | `Implemented` |
 | Region centroid tracking, inverse H, filtering and clamp | `native/rig/` | T18 | `Implemented` |
 | Avatar region shape authoring and shader consumption | `native/avatar/`, `app/` | T21, T32, T34 | `Planned` |
-| Head motion and placement: rotation scope (node/cut) | `native/rig/`, `app/` | T19 | `Planned` |
+| Head motion and placement: rotation scope (node/cut) | `native/gdextension/src/avatar_head.cpp`, `app/shaders/head_decal.gdshaderinc` | T19 | `Implemented; CPU overrun documented` |
 | Head motion and placement: presentation and framing | `native/rig/`, `app/` | T22 | `Planned` |
 | Projection mode `flat` | `app/shaders/` | T20 | `Planned` |
 | Projection mode `surface` | `app/shaders/` | T21 | `Planned` |
@@ -433,7 +437,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0006](adr/0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | T29 | Proposed |
 | [ADR-0007](adr/0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | T43a, T60 | Proposed |
 | [ADR-0008](adr/0008-eigen-for-rig-math.md) | Eigen for native rig math, confined to `native/rig/` | T18 | Accepted |
-| [ADR-0009](adr/0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | T19 | Proposed |
+| [ADR-0009](adr/0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | T19 | Accepted |
 | [ADR-0010](adr/0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | T23 | Proposed |
 | [ADR-0011](adr/0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | T01, T06 | Accepted |
 | [ADR-0012](adr/0012-godot-shell-bootstrap.md) | Godot shell bootstrap, godot-cpp 10 pinning, and CMake build | T02 | Accepted |
@@ -470,3 +474,6 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 
 Phase 5 is sequenced after the MVP gate by
 [ADR-0017](adr/0017-windows-first-mvp-sequencing.md); it is not optional and not out of 1.0.
+
+T19 mechanism: [ADR-0029](adr/0029-shared-cpu-head-deformation.md), shared CPU vertex buffers,
+rest-position decal attribute, measured performance debt. Tracker wiring remains T24.

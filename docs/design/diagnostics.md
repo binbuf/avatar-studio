@@ -141,7 +141,7 @@ diagnostic condition.
 | `AVT-114` | Error | Invalid background type, path, or decode limit | Point at the field; refuse |
 | `AVT-115` | Error | Invalid appearance preset or override value | Point at the field; refuse |
 | `AVT-116` | Warning | No face-like region detected on the model | Open calibration with the surface gizmo; continue |
-| `AVT-117` | Error | Invalid head region: plane above the chin, or a node that does not contain the face | Point at the field; refuse |
+| `AVT-117` | Error | Invalid head region: plane at/above the face, nonpositive falloff, invalid normal, or node not containing the face | Point at the field; refuse |
 | `AVT-120` | Error | Package version newer than the app | Name the app version that wrote it |
 
 ## OUT — Output and transports

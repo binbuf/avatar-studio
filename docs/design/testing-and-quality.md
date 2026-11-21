@@ -769,3 +769,25 @@ A feature is done when:
 6. It does not regress any performance gate.
 
 Point 5 is the one that is usually skipped. It is the one that keeps this document set honest.
+
+
+### T19 head-region regression gate
+
+`ctest --test-dir build -C RelWithDebInfo -R ^avatar_head_unit$ --output-on-failure` checks rest-space
+smoothstep, face-surface pivot derivation and shortest-arc rotation. `tests/gates/T19.ps1` also runs
+`app/tests/head_region.gd` headlessly and through a hidden real OpenGL Compatibility window using the
+pinned Windows Godot. Dummy rendering cannot satisfy the image gate. Engine checks cover atomic
+AVT-117 rejection, RIG-006 derivation, cut/node mode switching, unchanged body vertices, coincident
+neck seams, normal lengths and nonuniform nested transforms. Six angles per mode (yaw ±30°, pitch
+and roll ±20°) compare the live CPU-updated mesh/decal pair to independently generated Quaternion.slerp
+reference geometry and committed 320×320 PNGs in `tests/golden/head-region/`. RGB mean absolute error
+must be <0.002; the rest-space decal must be visibly present. These synthetic fixtures prove continuity
+and attachment, not T43 corpus quality.
+
+Regenerate GLBs with `python scripts/gen_head_fixtures.py`. To regenerate image references intentionally,
+run the script in a real render process with `-- --render --update-goldens`; that flag renders the
+independent reference rather than blessing the live implementation. Inspect the PNGs before committing.
+The gate never updates references. Cut and node benchmarks each use 20k triangles and report CPU plus
+buffer submission median/p95 in `.tools/T19-head-region-render.json` (300 measured updates, 30 warmup,
+one update per rendered frame). GPU completion and other draw cost are excluded. ADR-0029 explicitly
+records the cut path's overrun of 0.15 ms; the gate does not pretend that the budget was met.
