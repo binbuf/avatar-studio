@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T13 · **Last updated:** 2026-11-21
+**Status:** current as of T14 (M0 remains open) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -33,7 +33,11 @@ latency, frame age, drop reasons, confidence, RSS/handles, thread CPU and pose a
 no renderer, editor or output yet; seeing an avatar remains planned.
 The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
 Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
-planned; the five-function ABI has no introspection query. The M0 pass/pivot decision is T14.
+planned; the five-function ABI has no introspection query. T14 retains the Windows MediaPipe
+backend, but does not close M0: three-platform real-backend CI and human pose approval remain
+unproven. The local machine exceeds the documented Reference tier; its numeric pass cannot
+certify slower Reference/Minimum hardware. [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md)
+records the evidence boundary and keeps rendering gated pending completion or an explicit replan.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -193,11 +197,12 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Filtering, motion model, tracking rate vs render rate | `native/rig/` | T18, T24 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Planned` |
-| Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x) |
+| Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x or the pinned backend cannot be built reproducibly) |
 | Instrumentation: `TrackerStats` and latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
 | Instrumentation: real backend private inference/preprocessing timing, drop counters and confidence distribution | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Instrumentation: M0 headless harness (submit-to-poll latency, frame age, drop reasons, confidence, RSS/handles, thread CPU) | `tests/m0/` | T13 | `Implemented` |
 | Instrumentation: pose-stability trace, chart and review clip | `tests/m0/` | T13 | `Implemented` |
+| M0 exit decision: platform builds, hardware interpretation and human pose approval | gates and review package; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | T14 | `Planned` (local numeric evidence alone does not close M0) |
 | Instrumentation: app-facing real tracker stats (HUD) and reprojection error | `native/tracking/`, `tests/performance/` | T26 | `Planned` |
 
 ## [camera-capture.md](camera-capture.md)
@@ -382,6 +387,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0021](adr/0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | T11 | Accepted |
 | [ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | T12 | Accepted |
 | [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | T13 | Accepted |
+| [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | Retain the Windows tracker while the full M0 gate remains open | T14 | Accepted |
 
 ---
 

@@ -72,6 +72,13 @@ crisis.
 
 **Explicitly not in M0:** rendering, UI, output.
 
+**T14 gate state:** local Windows numeric evidence supports retaining MediaPipe, but M0 is
+still open. The test host exceeds Reference hardware, hosted CI has not established the
+three-platform real-backend build requirement, and human pose approval is outstanding.
+[ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records why a local numeric pass is
+not a milestone pass. The Phase 5 platform schedule does not waive this exit criterion;
+resolve the evidence gap or explicitly replan the gate before rendering starts.
+
 ---
 
 ## M1 — Vertical slice

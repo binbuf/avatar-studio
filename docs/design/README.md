@@ -9,6 +9,8 @@ checkout by the T08 audit (ADR-0018), the real Windows CPU tracker is implemente
 named landmark map with its asymmetric-marker gate is implemented (T12), and the headless M0
 harness with its 30-minute soak is implemented (T13). Rendering, the editor, output and the
 macOS/Linux capture backends remain `Planned` unless explicitly marked otherwise.
+T14 retains the Windows tracker but leaves M0 open pending platform-build and pose-review
+evidence; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records the gate boundary.
 **Last updated:** 2026-11-21
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in

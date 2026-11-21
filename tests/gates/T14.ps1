@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    T14 gate: apply the M0 feasibility thresholds to the latest M0 soak JSON.
+    T14 numeric gate: apply M0 feasibility thresholds to the latest M0 soak JSON.
 
 .DESCRIPTION
     Reads tests/performance/results/latest-m0-full.json (written by
@@ -20,6 +20,9 @@
 
     A synthetic or short run fails the gate: it is not M0 evidence. T13 owns the
     harness smoke; T14 owns the pass/pivot decision.
+    This checks the numeric soak subset only. CI builds, hardware equivalence,
+    long-term pose interpretation and subjective pose approval belong in the
+    T14 decision record; this script does not certify them.
 
 .PARAMETER ResultPath
     Combined M0 JSON. Defaults to the latest full soak.
@@ -184,7 +187,7 @@ foreach ($run in $runs) {
         $(if ($run.metrics.leak.passed -eq $true) { 'pass' } else { 'FAIL' })))
 }
 
-Write-Host 'T14 gate: M0 thresholds'
+Write-Host 'T14 gate: numeric M0 thresholds (platform builds and human pose approval are separate)'
 Write-Host ("  input: $inputPath")
 Write-Host ("  mode: $mode | synthetic: $synthetic | total: $totalDuration s")
 foreach ($line in $table) {
@@ -202,6 +205,6 @@ if ($failures.Count -gt 0) {
 if ($AllowShort) {
     Write-Host 'T14 gate: PASS (short harness evidence; this is not the M0 gate)' -ForegroundColor Yellow
 } else {
-    Write-Host 'T14 gate: PASS (M0 thresholds met on real soak evidence)' -ForegroundColor Green
+    Write-Host 'T14 gate: PASS (numeric M0 thresholds met on real soak evidence; full M0 decision requires platform and human review evidence)' -ForegroundColor Green
 }
 exit 0

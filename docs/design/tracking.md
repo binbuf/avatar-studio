@@ -405,6 +405,31 @@ actionable without a screen recording.
 
 ## Alternative backends
 
+### T14 feasibility decision
+
+[ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) retains the pinned Windows MediaPipe
+backend without declaring M0 complete. T14's fresh real replay soak passed the local numeric
+thresholds (p95 10.012 ms at 192x192 and 11.510 ms at 256x256). The Ryzen 9 7900X3D / RTX 4080 /
+63.2 GiB host exceeds the documented Reference tier; the automatic `reference` label merely
+selects the stricter 15 ms limit. These measurements do not certify slower Reference or
+Minimum hardware, and the two prepared input sizes still use the same fixed graph tensors.
+
+Valid poses were returned for 16,730/27,000 frames at 192x192 and 16,969/27,000 at
+256x256. Zero dropped submissions does not mean continuous valid tracking. This short,
+unground-truthed replay leaves a material tracking-loss risk for the planned blank-on-loss
+policy; it cannot establish quality across a deliberate stationary and motion corpus.
+
+Real macOS/Linux backends and successful three-platform real-backend CI remain unproven.
+The numeric gate does not automate the subjective rest-jitter, motion-swimming or handedness
+judgment. A contiguous, timestamp-paired diagnostic clip is required for human review; the
+48 BMPs sampled across each 15-minute soak are a contact sheet, not a normal-speed video.
+Loop-boundary pose jumps, reacquisition and no-face intervals must be labelled rather than
+mistaken for stationary jitter or silently removed. Repeated replay phases can help detect
+long-term change, but do not replace stationary ground truth or a human stability decision.
+Rendering remains gated on the outstanding M0 evidence or an explicit recorded replan.
+
+### Backend choices
+
 The seam exists so this table can be reordered by measurement, not by preference:
 
 | Backend | License | Provides | Trade-off |
