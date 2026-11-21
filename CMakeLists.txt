@@ -156,13 +156,16 @@ avatar_enable_warnings(avatar_list_cameras)
 add_library(avatar_tracking STATIC
     native/tracking/src/scripted_tracker.cpp
     native/tracking/src/tracker_c_api.cpp
+    native/tracking/src/landmark_map.cpp
+    native/tracking/src/canonical_face_frame.cpp
+    native/tracking/src/profile_correspondence.cpp
 )
 add_library(avatar::tracking ALIAS avatar_tracking)
 target_include_directories(avatar_tracking
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/tracking/include"
 )
 target_compile_features(avatar_tracking PUBLIC cxx_std_20)
-target_link_libraries(avatar_tracking PUBLIC avatar::core avatar::capture)
+target_link_libraries(avatar_tracking PUBLIC avatar::core avatar::capture PRIVATE avatar_json)
 avatar_enable_warnings(avatar_tracking)
 
 # The vendor graph is built separately by scripts/build-tracker.ps1. The app
@@ -277,6 +280,7 @@ if(AVATAR_TESTS)
         tests/unit/test_tracking_main.cpp
         tests/unit/test_tracker_contract.cpp
         tests/unit/test_latency_histogram.cpp
+        tests/unit/test_landmark_map.cpp
     )
     target_include_directories(avatar_tracking_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit"
@@ -291,7 +295,7 @@ if(AVATAR_TESTS)
 
     add_test(NAME avatar_tracking_unit COMMAND avatar_tracking_tests)
     set_tests_properties(avatar_tracking_unit PROPERTIES
-        LABELS "fast;task_T09"
+        LABELS "fast;task_T09;task_T12"
         TIMEOUT 180
     )
 

@@ -1,9 +1,12 @@
 # Face Tracking
 
-**Status:** Windows CPU backend implemented and measured (T11); filtering, the app integration,
-and wider quality/platform validation remain planned. **Last updated:** 2026-11-20
+**Status:** Windows CPU backend implemented and measured (T11); the named landmark map, the
+asymmetric-marker gate and profile correspondences are implemented (T12). Filtering, the app
+integration, and wider quality/platform validation remain planned. **Last updated:** 2026-11-20
 **Decision records:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
-[ADR-0019](adr/0019-tracker-c-abi-v1.md), [ADR-0021](adr/0021-real-mediapipe-windows-backend.md)
+[ADR-0019](adr/0019-tracker-c-abi-v1.md),
+[ADR-0021](adr/0021-real-mediapipe-windows-backend.md),
+[ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md)
 
 
 Tracking turns a camera frame into a head pose and 478 landmarks. It is the only component with a
@@ -166,13 +169,49 @@ swapped.
 Requirements:
 
 - Every name resolves to a distinct index, or the adapter reports it as unavailable.
-- The homography requires at least 8 inliers. A backend that provides fewer than 8 of these names is
-  unsupported for sampling; it may still drive rotation.
+- The solver requires at least 8 usable correspondences before RANSAC; T18's post-estimation inlier
+  gate uses `RIG-002`. A backend that provides fewer than 8 of these names is unsupported for
+  sampling; it may still drive rotation.
 - Unknown names are ignored. A profile missing names falls back to the available subset and raises
   `RIG-003`.
 - Adding a name is additive: existing profiles lack it and the solver uses the subset.
 - The package's `landmark_anchor` values (`eye_l_centroid`, `eye_r_centroid`, `mouth_centroid`) are
   computed from this set, never stored as indices.
+
+### Realised map and marker gate (T12)
+
+`native/tracking/include/avatar/tracking/landmark_map.h` implements the stable
+`LandmarkName` set above and `LandmarkMap`, which resolves a name to the active backend's
+index. `kMediaPipeFaceLandmarkerTable` is pinned to MediaPipe 0.10.21 with the
+`face_landmarker/face_landmarker/float16/1` bundle; `kOnnxFaceMeshV2Table` is a separate
+pinned table for the evaluated `senty-au/face_landmarks_detector-ONNX` conversion
+(`337d582…`, 478 points). The ONNX table is not used by a shipping backend yet, and the
+tables are deliberately separate so a future adapter opts into the topology it actually
+runs.
+
+`resolve` returns `nullopt` for an unknown name or a name the backend cannot provide; the
+rig treats that as unavailable and never guesses an index. A table that binds two names to
+one index reports the duplicate and ignores the later binding. `LandmarkMap::for_backend`
+is the adapter-facing selector.
+
+`canonical_face_frame.h` implements the canonical plane as a 2-D similarity: origin at the
+eye midpoint, +u toward the subject's right eye, +v toward the forehead, inter-ocular
+distance 1.0, image x scaled by `width / height`. The frame follows head roll instead of
+assuming a level eye line. `check_handedness` is the asymmetric-marker assertion: the
+subject-right cheek must be left of the eye midpoint and have positive canonical u. The
+test places a marker at canonical `(0.62, -0.25)` on a synthetic face, passes with both
+real tables, and fails with a table whose `_l`/`_r` indices are swapped. On the T11
+recorded C920 clip, indices `33/133/468`, `129`, `50`, `234`, `127` and `61` appeared on
+the viewer's left, while `263/362/473`, `358`, `280`, `454`, `356` and `291` appeared on
+the viewer's right, which is the expected subject-right/viewer-left mapping.
+
+`profile_correspondence.h` joins a `FaceProfile` landmark array to a live result by name.
+At least 8 usable correspondences are required for sampling; T18's RANSAC inlier gate is a
+separate post-estimation check. A profile name this backend cannot provide falls back to
+the remaining subset and raises `RIG-003`; unknown names are ignored for forward
+compatibility; duplicate backend indices are reported and used once. Profiles serialize
+and parse the named `(u,v)` array through JSON without losing names, so a backend swap
+does not rewrite the profile. The full profile document, capture and storage remain T31.
 
 ## Why MediaPipe first
 
@@ -415,4 +454,4 @@ real inference measurements; the task findings remain in the gitignored progress
 | Does MediaPipe's Windows build survive MSVC + C++20 in one process? | Proven by T11 real DLL contract tests; preserve isolated symbols |
 | Is the facial transformation matrix stable enough to drive rotation directly, or does it need the PnP/homography cross-check? | M1 A/B on recorded clips |
 | Do we need 60 Hz tracking for fast head turns, or is 30 Hz plus prediction sufficient? | M1 usability test |
-| Is the MediaPipe landmark index mapping stable across the pinned model versions? | M0 harness with an asymmetric marker; fail the build on drift |
+| Is the MediaPipe landmark index mapping stable across the pinned model versions? | M0 harness with an asymmetric marker is implemented in T12; rerun the marker test and review the pinned table whenever the model bundle changes |

@@ -1,6 +1,8 @@
 # User Data, Profiles, and Library
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal; the FaceProfile named-landmark subset, canonical correspondence
+validation and JSON round-trip are implemented (T12). Capture, storage and lifecycle remain
+planned (T31). **Last updated:** 2026-11-20
 
 This document defines everything the application persists outside an `.avatar` package: the managed
 avatar library, per-person face profiles, shows, settings, and the migration, permission, and
@@ -146,6 +148,13 @@ profile is where it is measured:
 
 The profile stores canonical `(u,v)` per named landmark, not raw pixels and not backend indices.
 `LandmarkMap` in [`tracking.md`](tracking.md#landmark-map) resolves names to the active backend.
+
+The named landmark subset and its JSON round-trip are implemented in
+`native/tracking/include/avatar/tracking/profile_correspondence.h` (T12). A profile that
+names a landmark the active backend cannot provide falls back to the available subset and
+raises `RIG-003`; unknown names survive the round-trip and are ignored by the solver.
+T31 owns the full profile document, capture and storage, and embeds this `landmarks` array
+unchanged.
 
 ### Schema
 

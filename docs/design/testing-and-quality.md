@@ -1,9 +1,10 @@
 # Testing and Quality
 
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
-comparator, foundation performance harness (T05), the CI/format/licence gates (T06) and the tracker
-C ABI contract harness (T09) are implemented. Rendering, real capture/tracking, the 10-minute soak and
-the first avatar goldens remain `Planned`. ·
+comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
+C ABI contract harness (T09), the real Windows tracker contracts (T11) and the landmark-map/profile
+tests (T12) are implemented. Rendering, the 10-minute soak and the first avatar goldens remain
+`Planned`. ·
 **Last updated:** 2026-11-20
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
@@ -284,6 +285,28 @@ and confidence bins. 192/256 refer to prepared images; the upstream landmark net
 fixed 256 tensor. These are feasibility observations, not a replacement for T13's 30-minute soak,
 T14's M0 gate or real-corpus pose/occlusion validation. The app HUD has no real-statistics query in
 ABI v1; it remains planned.
+
+## Landmark map and profile correspondences (T12)
+
+`avatar_tracking_unit` also carries the T12 cases under `fast;task_T12`:
+
+- every documented `LandmarkName` resolves through both pinned tables, and unknown names
+  return `nullopt` instead of a guessed index;
+- the critical subject-left/right indices are pinned, and a table with duplicate indices
+  reports them;
+- the asymmetric-marker test places a dot at canonical `(0.62, -0.25)` on the synthetic
+  face, asserts it is left of the eye midpoint and has positive canonical u, and asserts
+  the same check fails with a swapped `_l`/`_r` table;
+- the canonical frame maps +u toward the subject's right eye and +v toward the forehead,
+  including a rolled eye line;
+- profile correspondences require eight usable points, fall back to the available subset
+  with `RIG-003` when a backend cannot provide a named point, report duplicate indices,
+  ignore unknown names, and round-trip the named `(u,v)` array through JSON.
+
+The tests use the deterministic synthetic face source for geometry and the real pinned
+tables for resolution; they do not require a camera or the MediaPipe DLL. The T11 recorded
+clip independently confirmed the viewer-left/viewer-right side of the critical indices.
+Homography estimation and the post-RANSAC inlier gate remain T18.
 
 ## Performance harness
 

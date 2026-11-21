@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T11 · **Last updated:** 2026-11-20
+**Status:** current as of T12 · **Last updated:** 2026-11-20
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,9 +24,11 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T11 the foundation, tracker seam, Windows capture and real Windows CPU tracker are
-implemented.** The isolated MediaPipe DLL consumes real camera pixels and produces landmarks,
-pose and blendshapes. There is no renderer, editor or output yet; seeing an avatar remains planned.
+**At T12 the foundation, tracker seam, Windows capture, real Windows CPU tracker and the
+named landmark map are implemented.** The isolated MediaPipe DLL consumes real camera pixels and
+produces landmarks, pose and blendshapes; the rig-facing map resolves anatomical names to pinned
+backend tables and the asymmetric-marker test fails a swapped table. There is no renderer, editor
+or output yet; seeing an avatar remains planned.
 The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
 Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
 planned; the five-function ABI has no introspection query.
@@ -41,7 +43,9 @@ verified by `tests/gates/T10.ps1`: the state machine runs against a fake backend
 866 NV12 frames over 60 s with monotonic timestamps and a p50 callback-to-publish latency of 27 us
 (`docs/progress/T10.md`). T11 adds the real tracker contracts, runtime model tamper rejection and
 five-symbol PE export validation under `fast;task_T11`; its recorded-camera measurements are in
-the local `docs/progress/T11-tracker-results.md` workspace.
+the local `docs/progress/T11-tracker-results.md` workspace. T12 adds the named landmark map,
+canonical frame and profile correspondence tests under `fast;task_T12`, including the
+asymmetric-marker gate that passes with the real tables and fails with a swapped table.
 Rows that name `.github/workflows/` are verified as workflow definitions by `tests/gates/T06.ps1`;
 they have not been executed on hosted runners from this machine, which is the one residual
 foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
@@ -177,7 +181,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 |---|---|---|---|
 | Backend contract (five-function C ABI, versioned) | `native/tracking/` | T09 | `Implemented` |
 | `TrackingResult` and the scripted tracker | `native/tracking/` | T04 | `Implemented` |
-| Landmark map, asymmetric marker, profile correspondences | `native/tracking/` | T12 | `Planned` |
+| Landmark map, asymmetric marker, profile correspondences | `native/tracking/` | T12 | `Implemented` |
 | MediaPipe Face Landmarker Windows CPU backend and pinned model | `native/tracking/mediapipe/`, `.tools/tracker-sdk/` | T11 | `Implemented` |
 | Worker, letterbox/unprojection, geometric confidence and feature validity | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Reprojection/pose confidence and real-corpus occlusion validation | `native/tracking/` | T13, T18 | `Planned` |
@@ -367,6 +371,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0019](adr/0019-tracker-c-abi-v1.md) | Tracker C ABI v1: five functions, POD-only, latest-only | T09 | Accepted |
 | [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | T10, T52, T55 | Accepted |
 | [ADR-0021](adr/0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | T11 | Accepted |
+| [ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | T12 | Accepted |
 
 ---
 
