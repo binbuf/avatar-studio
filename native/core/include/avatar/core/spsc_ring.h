@@ -119,8 +119,11 @@ public:
     }
 
     [[nodiscard]] std::size_t size() const noexcept {
-        const std::size_t head = head_.load(std::memory_order_acquire);
+        // Load the consumer index first: it can only advance, and head is
+        // always >= tail, so the subtraction cannot underflow even if the
+        // producer advances head between the two loads.
         const std::size_t tail = tail_.load(std::memory_order_acquire);
+        const std::size_t head = head_.load(std::memory_order_acquire);
         return head - tail;
     }
 
