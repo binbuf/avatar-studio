@@ -20,15 +20,28 @@ if (-not (Test-Path -LiteralPath $Bash)) { throw "MSYS2 bash missing: $Bash" }
 if ($Jobs -lt 1) { throw 'Jobs must be positive' }
 New-Item -ItemType Directory -Force -Path $work, $sdk | Out-Null
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+# Get-FileHash is unavailable on some verification hosts. Keep SHA256 checks
+# independent of PowerShell module availability, as in bootstrap.ps1.
+function Get-TrackerSha256([string]$Path) {
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        return ([BitConverter]::ToString($algorithm.ComputeHash($stream)) -replace '-', '')
+    } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        $algorithm.Dispose()
+    }
+}
 function Fetch([string]$Name, [string]$Url, [string]$Hash) {
     $path = Join-Path $work $Name
-    if ((Test-Path -LiteralPath $path) -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $Hash) {
+    if ((Test-Path -LiteralPath $path) -and (Get-TrackerSha256 $path) -eq $Hash) {
         return $path
     }
     Write-Host "tracker: downloading $Name"
     $partial = "$path.part"
     Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $partial
-    if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ne $Hash) { throw "SHA256 mismatch: $Name" }
+    if ((Get-TrackerSha256 $partial) -ne $Hash) { throw "SHA256 mismatch: $Name" }
     Move-Item -LiteralPath $partial -Destination $path -Force
     return $path
 }
