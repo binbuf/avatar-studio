@@ -63,7 +63,7 @@ latency?
 |---|---|
 | Inference p95 | ≤ 15 ms on Reference, ≤ 30 ms on Minimum |
 | Tracker runs 30 min without leak or drift | Required |
-| All three platforms build in CI from a clean checkout | Required |
+| All three platforms build in CI from a clean checkout | Required for 1.0; the macOS/Linux real-backend rows are owned by T52/T55 and deferred from the Windows MVP gate by ADR-0025 |
 | Pose is stable enough to drive rotation without visible jitter | Subjective, recorded clip reviewed |
 
 **Retires:** the largest risk in the project. If M0 fails, [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md)
@@ -72,12 +72,14 @@ crisis.
 
 **Explicitly not in M0:** rendering, UI, output.
 
-**T14 gate state:** local Windows numeric evidence supports retaining MediaPipe, but M0 is
-still open. The test host exceeds Reference hardware, hosted CI has not established the
-three-platform real-backend build requirement, and human pose approval is outstanding.
-[ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records why a local numeric pass is
-not a milestone pass. The Phase 5 platform schedule does not waive this exit criterion;
-resolve the evidence gap or explicitly replan the gate before rendering starts.
+**T14 gate state:** M0 is **closed for the Windows 11 MVP** on the evidence below. The test host
+exceeds Reference hardware, and the macOS/Linux real backends do not exist yet, so those items
+are re-homed rather than dropped: cross-platform real-backend build and capture are exit
+criteria of T52/T55, Reference/Minimum tier measurements are T26/T64 evidence, and motion
+"swimming" is re-judged at T27 on rendered clips. No threshold was waived and ADR-0003 stands.
+[ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records the original open-gate
+decision; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) records the
+scope replan and the review method behind it.
 
 ---
 

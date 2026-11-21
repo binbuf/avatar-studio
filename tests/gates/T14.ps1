@@ -22,7 +22,8 @@
     harness smoke; T14 owns the pass/pivot decision.
     This checks the numeric soak subset only. CI builds, hardware equivalence,
     long-term pose interpretation and subjective pose approval belong in the
-    T14 decision record; this script does not certify them.
+    T14 decision record; this script does not certify them. ADR-0025 closes the
+    Windows MVP gate and defers platform and tier evidence to T52/T55/T26/T64.
 
 .PARAMETER ResultPath
     Combined M0 JSON. Defaults to the latest full soak.
@@ -187,7 +188,7 @@ foreach ($run in $runs) {
         $(if ($run.metrics.leak.passed -eq $true) { 'pass' } else { 'FAIL' })))
 }
 
-Write-Host 'T14 gate: numeric M0 thresholds (platform builds and human pose approval are separate)'
+Write-Host 'T14 gate: numeric M0 thresholds (platform and tier evidence are deferred by ADR-0025)'
 Write-Host ("  input: $inputPath")
 Write-Host ("  mode: $mode | synthetic: $synthetic | total: $totalDuration s")
 foreach ($line in $table) {
@@ -205,6 +206,6 @@ if ($failures.Count -gt 0) {
 if ($AllowShort) {
     Write-Host 'T14 gate: PASS (short harness evidence; this is not the M0 gate)' -ForegroundColor Yellow
 } else {
-    Write-Host 'T14 gate: PASS (numeric M0 thresholds met on real soak evidence; full M0 decision requires platform and human review evidence)' -ForegroundColor Green
+    Write-Host 'T14 gate: PASS (numeric M0 thresholds met on real soak evidence; platform/tier evidence deferred to T52/T55/T26/T64 per ADR-0025)' -ForegroundColor Green
 }
 exit 0

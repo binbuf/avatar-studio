@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T14 (M0 remains open) · **Last updated:** 2026-11-21
+**Status:** current as of T14 (M0 closed for the Windows MVP; platform/tier evidence deferred) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -33,11 +33,15 @@ latency, frame age, drop reasons, confidence, RSS/handles, thread CPU and pose a
 no renderer, editor or output yet; seeing an avatar remains planned.
 The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
 Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
-planned; the five-function ABI has no introspection query. T14 retains the Windows MediaPipe
-backend, but does not close M0: three-platform real-backend CI and human pose approval remain
-unproven. The local machine exceeds the documented Reference tier; its numeric pass cannot
-certify slower Reference/Minimum hardware. [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md)
-records the evidence boundary and keeps rendering gated pending completion or an explicit replan.
+planned; the five-function ABI has no introspection query. T14 accepts M0 for the Windows MVP:
+the real-backend soak passes with margin, and same-phase repeatability over 15 minutes is
+0.0222° / 0.0369° maximum. Three items are deferred rather than waived:
+three-platform real-backend CI is T52/T55 acceptance, Reference/Minimum tier measurement is
+T26/T64 evidence, and motion-swimming judgment moves to T27's rendered clips.
+[ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records the original open-gate
+decision; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) records the
+scope replan. The local machine still exceeds the documented Reference tier, so its numbers
+remain local feasibility, not tier certification.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,

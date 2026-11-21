@@ -29,6 +29,7 @@ tell the difference between "we chose this" and "this happened".
 | [0022](0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | Accepted |
 | [0023](0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | Accepted |
 | [0024](0024-m0-windows-evidence-and-open-gate.md) | Retain the Windows tracker while the full M0 gate remains open | Accepted |
+| [0025](0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.
