@@ -5,10 +5,13 @@
   - Git add and commit when a task session is completing
   - Temporary files can be checked into the non-main branches as long as they're removed before merging to `main` via squash
 
+
 ### Architecture & Documentation
 
 - Keep `docs/design/*.md` aligned with the application's current and intended architecture.
-- Don't add unnecessary files into `docs/`. Sometimes temporary docs are used like tasks, research, proposals but most of these are temporary workspace files. Permanent design files should only be in `docs/design`.
+- Don't add anything into git that isn't part of core design and ADRs. Proposals, tracks, diagnostics, logs should be gitignored.
+  - Sometimes temporary docs are used like tasks, research, proposals but most of these are temporary workspace files. 
+- Permanent design files should only be in `docs/design`.
 - Update design documents when requirements, implementation direction, or architecture change.
 - Track incomplete design goals accurately; distinguish planned functionality from implemented functionality.
 - Create or update `docs/design/adr/*.md` for significant architectural decisions and pivots.
