@@ -1,0 +1,3 @@
+# The Unix runner must keep LF endings even on a Windows checkout with
+# core.autocrlf=true; a CRLF shebang breaks bash on macOS/Linux.
+run.sh text eol=lf

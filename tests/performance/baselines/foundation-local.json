@@ -1,0 +1,187 @@
+{
+  "schema": "avatar_bench.baseline.v1",
+  "kind": "local",
+  "release_gate": false,
+  "note": "Local foundation baseline generated on the machine identified by hardware.fingerprint. Not a release gate: T06/T26 own nightly and release gates. Targets are generous local sanity ceilings; check.mjs applies each check allowance on top.",
+  "created_utc": "2026-11-21T02:35:22Z",
+  "allowance": 0.1,
+  "scenario": "rig",
+  "config": {
+    "fps": 60,
+    "frames": 300,
+    "height": 720,
+    "pixel_format": "bgra8",
+    "scenario": "rig",
+    "tracker_scenario": "valid_tracking",
+    "warmup_frames": 30,
+    "width": 1280
+  },
+  "hardware": {
+    "arch": "x86_64",
+    "cpu": "AMD Ryzen 9 7900X3D 12-Core Processor",
+    "fingerprint": "fnv1a64:6d67f080c8ef88b7",
+    "gpu": "NVIDIA GeForce RTX 4080",
+    "logical_cores": 24,
+    "memory_bytes": 67810054144,
+    "os": "Windows 11 Pro 26H2 (build 26300.10075)",
+    "physical_cores": 12
+  },
+  "checks": [
+    {
+      "metric": "metrics.frames.measured",
+      "operator": ">=",
+      "target": 300,
+      "allowance": 0
+    },
+    {
+      "metric": "metrics.dropped_frames",
+      "operator": "<=",
+      "target": 0,
+      "allowance": 0
+    },
+    {
+      "metric": "metrics.dropped_tracking_frames",
+      "operator": "<=",
+      "target": 0,
+      "allowance": 0
+    },
+    {
+      "metric": "metrics.app_latency_ms.p95",
+      "operator": "<=",
+      "target": 100,
+      "allowance": 0.1
+    },
+    {
+      "metric": "metrics.frame_time_ms.p99",
+      "operator": "<=",
+      "target": 33.4,
+      "allowance": 0.1
+    },
+    {
+      "metric": "metrics.rss_bytes",
+      "operator": "<=",
+      "target": 536870912,
+      "allowance": 0.1
+    },
+    {
+      "metric": "metrics.cpu_percent_one_core",
+      "operator": "<=",
+      "target": 25,
+      "allowance": 0.1
+    }
+  ],
+  "result": {
+    "build": {
+      "compiler": "MSVC 19.51.36260.0",
+      "git_commit": "adceb4c9383995c53db6857eb2363d0350160f72",
+      "git_dirty": true,
+      "type": "RelWithDebInfo"
+    },
+    "checksum": 18439439678174069000,
+    "config": {
+      "fps": 60,
+      "frames": 300,
+      "height": 720,
+      "pixel_format": "bgra8",
+      "scenario": "rig",
+      "tracker_scenario": "valid_tracking",
+      "warmup_frames": 30,
+      "width": 1280
+    },
+    "end_to_end_note": "photon-to-display latency is not measurable in the foundation harness; T26 instruments the render pipeline and T46 the transport.",
+    "generated_utc": "2026-11-21T02:35:22Z",
+    "hardware": {
+      "arch": "x86_64",
+      "cpu": "AMD Ryzen 9 7900X3D 12-Core Processor",
+      "fingerprint": "fnv1a64:6d67f080c8ef88b7",
+      "gpu": "NVIDIA GeForce RTX 4080",
+      "logical_cores": 24,
+      "memory_bytes": 67810054144,
+      "os": "Windows 11 Pro 26H2 (build 26300.10075)",
+      "physical_cores": 12
+    },
+    "metrics": {
+      "app_latency_ms": {
+        "max": 2.9867,
+        "mean": 2.0196,
+        "p50": 1.9733,
+        "p95": 2.2638,
+        "p99": 2.5591,
+        "samples": 300
+      },
+      "cpu_percent_one_core": 11.909,
+      "dropped_frames": 0,
+      "dropped_tracking_frames": 0,
+      "end_to_end_latency_ms": null,
+      "frame_interval_ms": {
+        "max": 18.5035,
+        "mean": 16.6684,
+        "p50": 16.6164,
+        "p95": 17.8539,
+        "p99": 18.3269,
+        "samples": 299
+      },
+      "frame_time_ms": {
+        "max": 2.9867,
+        "mean": 2.0196,
+        "p50": 1.9733,
+        "p95": 2.2638,
+        "p99": 2.5591,
+        "samples": 300
+      },
+      "frames": {
+        "measured": 300,
+        "missed": 0,
+        "produced": 300,
+        "requested": 300,
+        "warmup": 30
+      },
+      "gpu_percent": 0,
+      "rss_bytes": 29491200,
+      "stage_ms": {
+        "capture": {
+          "max": 2.9822,
+          "mean": 2.0155,
+          "p50": 1.969,
+          "p95": 2.26,
+          "p99": 2.5543,
+          "samples": 300
+        },
+        "render": null,
+        "rig": {
+          "max": 0.0016,
+          "mean": 0.0003,
+          "p50": 0.0002,
+          "p95": 0.001,
+          "p99": 0.0014,
+          "samples": 300
+        },
+        "ring": {
+          "max": 0.0143,
+          "mean": 0.0029,
+          "p50": 0.0026,
+          "p95": 0.0045,
+          "p99": 0.0076,
+          "samples": 300
+        },
+        "tracker": {
+          "max": 0.007,
+          "mean": 0.0009,
+          "p50": 0.0007,
+          "p95": 0.0017,
+          "p99": 0.0027,
+          "samples": 300
+        }
+      }
+    },
+    "notes": [
+      "The harness is synchronous: app_latency_ms and frame_time_ms measure the same interval until the render and tracking threads land (T26).",
+      "end_to_end_latency_ms (photon to display) needs a real camera and transport; T26/T46 own it."
+    ],
+    "rig_sink": 7488.034313,
+    "scenario": "rig",
+    "schema": "avatar_bench.result.v1",
+    "status": "ok",
+    "tracker": "scripted"
+  }
+}

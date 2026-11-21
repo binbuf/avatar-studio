@@ -243,8 +243,13 @@ black-on-white edges) so users can diagnose alpha problems in seconds instead of
 | Total added latency per frame | 2–4 ms |
 
 Two consumers cost two conversions. If profiling shows this matters, the conversion moves into the
-readback pass (produce BGRA directly) — one conversion for all consumers. That optimisation is
+readback pass (produce BGRA directly) - one conversion for all consumers. That optimisation is
 planned, not speculative.
+
+T05's `avatar_bench --scenario render` measures a CPU BGRA→RGBA composite/readback proxy so the
+harness has the right metric shape before the output manager exists. It is not a product number:
+T46 replaces it with the async readback and per-transport queues described above, and T26 owns the
+GPU-side frame-time gate.
 
 ## Open questions
 

@@ -60,6 +60,39 @@ add_library(nlohmann_json::nlohmann_json ALIAS avatar_json)
 target_include_directories(avatar_json SYSTEM INTERFACE "${AVATAR_NLOHMANN_JSON_INCLUDE_DIR}")
 
 # ---------------------------------------------------------------------------
+# Build provenance
+#
+# The performance harness records the commit it was built from. The runtime
+# lookup in avatar_bench is authoritative (it also detects a dirty tree); these
+# definitions are the fallback for a binary built or run without git.
+# ---------------------------------------------------------------------------
+set(AVATAR_GIT_COMMIT "unknown")
+set(AVATAR_GIT_DIRTY 0)
+find_package(Git QUIET)
+if(Git_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE AVATAR_GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT AVATAR_GIT_COMMIT)
+        set(AVATAR_GIT_COMMIT "unknown")
+    endif()
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" status --porcelain
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE AVATAR_GIT_STATUS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(AVATAR_GIT_STATUS)
+        set(AVATAR_GIT_DIRTY 1)
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Native core (framework-free; no Godot headers, no engine dependency)
 # ---------------------------------------------------------------------------
 add_library(avatar_core STATIC
@@ -213,6 +246,52 @@ if(AVATAR_BENCHMARKS)
         set_tests_properties(avatar_core_bench PROPERTIES
             LABELS "bench;task_T03"
             TIMEOUT 120
+        )
+    endif()
+
+    # -----------------------------------------------------------------------
+    # Pipeline performance harness (T05)
+    #
+    # The self-test is part of the fast suite: it runs every scenario tiny and
+    # validates the JSON contract without asserting a hardware-dependent
+    # number. The real measurement carries the "perf" label, which verify
+    # excludes from -Fast and includes in -Full.
+    # -----------------------------------------------------------------------
+    add_executable(avatar_bench tests/performance/avatar_bench.cpp)
+    target_link_libraries(avatar_bench PRIVATE
+        avatar::core
+        avatar::capture
+        avatar::tracking
+        avatar_json
+    )
+    target_compile_features(avatar_bench PRIVATE cxx_std_20)
+    target_compile_definitions(avatar_bench PRIVATE
+        AVATAR_BENCH_BUILD_TYPE="$<CONFIG>"
+        AVATAR_BENCH_GIT_COMMIT="${AVATAR_GIT_COMMIT}"
+        AVATAR_BENCH_GIT_DIRTY=${AVATAR_GIT_DIRTY}
+        AVATAR_BENCH_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    )
+    if(WIN32)
+        target_link_libraries(avatar_bench PRIVATE psapi pdh winmm)
+    endif()
+    avatar_enable_warnings(avatar_bench)
+
+    if(AVATAR_TESTS)
+        add_test(NAME avatar_bench_selftest COMMAND avatar_bench --self-test)
+        set_tests_properties(avatar_bench_selftest PROPERTIES
+            LABELS "fast;task_T05"
+            TIMEOUT 120
+        )
+
+        add_test(NAME avatar_bench_perf
+            COMMAND avatar_bench
+                --scenario rig --frames 120 --warmup 10
+                --width 1280 --height 720 --fps 60 --quiet
+                --output "${CMAKE_CURRENT_BINARY_DIR}/perf/rig.json"
+        )
+        set_tests_properties(avatar_bench_perf PROPERTIES
+            LABELS "perf;task_T05"
+            TIMEOUT 300
         )
     endif()
 endif()

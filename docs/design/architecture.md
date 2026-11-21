@@ -124,13 +124,14 @@ slowdowns into permanent latency, which is the worst failure mode for a live ava
 Interfaces are narrow and framework-free so that each subsystem is unit-testable without a window,
 a camera, or a GPU.
 
-### Foundation implementation status (T04)
+### Foundation implementation status (T05)
 
 | Module | Path | Status |
 |---|---|---|
 | Core primitives, clock, diagnostics | `native/core/` | Implemented (T01–T03) |
 | Frame model, `FrameRing`, `ICameraSource`, test/replay sources | `native/capture/` | Implemented (T04) |
 | `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04); real backend is T11 |
+| Performance harness, hardware fingerprint, local baseline | `tests/performance/` | Implemented (T05); real render/transport gates are T26/T46 |
 | Windows Media Foundation capture | `native/capture/windows/` | Planned (T10) |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
 | FaceRig math | `native/rig/` | Planned (T18) |
@@ -141,6 +142,12 @@ capabilities and the capture-thread callback arrive with T10 and must not change
 ownership contract. `TrackingResult` is implemented in
 `native/tracking/include/avatar/tracking/tracking_result.h`; `ITrackingBackend` itself lands with the
 T09 contract harness.
+
+T05 instruments the app-side latency definition in `tests/performance/avatar_bench`: frame start
+(capture callback proxy) to the transport-submit proxy at the end of the measured stage. The harness
+is synchronous until the render and tracking threads land, so `frame_time_ms` and `app_latency_ms`
+measure the same interval today; `end_to_end_latency_ms` (photon to display) is `null` with a reason
+until T26/T46 add a real camera and transport.
 
 ### Capture
 

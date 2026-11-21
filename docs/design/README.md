@@ -2,8 +2,8 @@
 
 **Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02,
 data-plane primitives and diagnostics registry T03, deterministic sources, scripted tracker, replay
-fixtures and golden comparator T04). Rendering, real capture, tracking, the editor and output remain
-`Planned` unless explicitly marked otherwise.
+fixtures and golden comparator T04, performance harness and local baseline T05). Rendering, real
+capture, tracking, the editor and output remain `Planned` unless explicitly marked otherwise.
 **Last updated:** 2026-11-20
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in

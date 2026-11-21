@@ -1,9 +1,11 @@
 # Testing and Quality
 
-**Status:** proposal; the deterministic source set, scripted tracker, replay fixtures and golden
-comparator are implemented (T04). Rendering, real capture/tracking and the first avatar goldens remain
-`Planned`. · **Last updated:** 2026-11-20
-**Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md)
+**Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
+comparator and the foundation performance harness (T05) are implemented. Rendering, real
+capture/tracking, the 10-minute soak and the first avatar goldens remain `Planned`. ·
+**Last updated:** 2026-11-20
+**Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
+[ADR-0015](adr/0015-performance-harness-and-local-baseline.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -232,9 +234,69 @@ smoke, with the pass condition recorded per model rather than as a single boolea
 | Memory | RSS after 30 min | Stable ±5%, no growth |
 | Startup | Process start → first live frame | ≤ 4 s |
 
-Runs are scripted (`tests/performance/run_*.ps1|.sh`) so that results are comparable across machines,
-and results are stored as JSON with hardware fingerprints. A regression beyond 10% on any metric
-fails the nightly.
+Runs are scripted so results are comparable across machines and stored as JSON
+with hardware fingerprints. A regression beyond 10% on any metric fails the
+nightly.
+
+### Implemented harness (T05)
+
+`avatar_bench` (`tests/performance/avatar_bench.cpp`) drives the deterministic
+foundation pipeline: test pattern source → `FrameRing` publish → pin/acquire →
+`ScriptedTracker` → bench-local rig smoothing/matrix compose. It is synchronous;
+the real render thread, capture callbacks and transport queues are T10/T11/T26/T46,
+so `end_to_end_latency_ms` is `null` with a reason and `frame_time_ms` equals
+`app_latency_ms` until those threads exist. This is deliberate: the harness
+measures the pipeline, not a synthetic loop.
+
+| Scenario | Stages |
+|---|---|
+| `capture` | source render + ring publish |
+| `ring` | capture + acquire/pin + sampled pixel read + release |
+| `rig` | ring + scripted tracker + rig stage (the full foundation pipeline) |
+| `render` | rig + CPU BGRA→RGBA compositing/readback proxy; real GPU render is T26 |
+
+Switches: `--scenario`, `--tracker scripted|real` (`real` reports unavailable
+until T11), `--frames`, `--warmup`, `--width`, `--height`, `--format`, `--fps`
+(`0` = unpaced), `--output`, `--quiet`, `--self-test`.
+
+Every scenario emits `schema: "avatar_bench.result.v1"` with:
+
+- `build`: type, git commit, dirty flag, compiler.
+- `hardware`: OS, arch, CPU brand, physical/logical cores, RAM, GPU name and a
+  stable `fnv1a64:` fingerprint over that tuple.
+- `metrics.frame_time_ms`, `metrics.frame_interval_ms`,
+  `metrics.app_latency_ms`: `p50`, `p95`, `p99`, `mean`, `max`, `samples`.
+- `metrics.dropped_frames`, `metrics.dropped_tracking_frames`,
+  `metrics.frames.{requested,warmup,produced,measured,missed}`.
+- `metrics.rss_bytes`, `metrics.cpu_percent_one_core` (100 = one full core),
+  `metrics.gpu_percent` (null when the OS counter is unavailable).
+- `metrics.stage_ms.{capture,ring,tracker,rig,render}` for stage isolation.
+
+Run it with `tests/performance/run.ps1` (Windows) or `run.sh` (macOS/Linux);
+both build RelWithDebInfo, pin process priority to Normal, discard the warmup
+frames and write to the gitignored `tests/performance/results/`. Example:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/performance/run.ps1 `
+  -Scenario rig -Frames 300 -Warmup 30
+node tests/performance/check.mjs `
+  --baseline tests/performance/baselines/foundation-local.json `
+  --result tests/performance/results/latest-rig.json
+```
+
+`check.mjs` compares explicit `{metric, operator, target, allowance}` entries and
+prints the failing metric with the result, target and allowed values. The
+checked-in `foundation-local.json` is a local baseline: marked `kind: "local"`
+and `release_gate: false`, it records this machine's hardware fingerprint and is
+a regression guard for local work, not a release gate. T06 owns the nightly
+runner, T26/T46 the real render/transport gates.
+
+CTest registers `avatar_bench_selftest` under `fast;task_T05` (tiny scenarios,
+JSON contract only) and `avatar_bench_perf` under `perf;task_T05`. `verify -Fast`
+excludes `perf` with `-LE perf`; `verify -Full` runs it. The `tests/gates/TNN.ps1`
+convention is unchanged: `verify -Task TNN` runs the gate when present, and the
+`AVATAR_VERIFY_MODE` environment variable tells the gate whether the run is fast
+or full. T14/T27/T45/T50/T64 can add gates without changing the verifier.
 
 ---
 

@@ -3,10 +3,16 @@
     The verification contract (Windows).
 
 .DESCRIPTION
-    -Fast : bootstrap, configure, build RelWithDebInfo, run CTest label "fast",
-            then run the headless Godot shell smoke test when the pinned engine
-            and app/project.godot are present.
-    -Full : -Fast plus the complete native CTest suite plus tests/gates/<Task>.ps1.
+    -Fast : bootstrap, configure, build RelWithDebInfo, run CTest label "fast"
+            (excluding the "perf" label), then run the headless Godot shell smoke
+            test when the pinned engine and app/project.godot are present.
+    -Full : -Fast plus the complete native CTest suite, including the "perf"
+            label, plus tests/gates/<Task>.ps1.
+
+    The gate script for -Task TNN is tests/gates/TNN.ps1 when present. It runs
+    in both modes; the AVATAR_VERIFY_MODE environment variable tells the gate
+    whether it is a fast or full run (T05 uses it to skip the measurement run
+    in -Fast).
 
     With -Task T01 the bootstrap runs with -NativeOnly so the framework-free
     core still verifies on a machine without Godot. With -Task T02 or later the
@@ -144,15 +150,25 @@ try {
         Invoke-Script (Join-Path $root 'scripts/bootstrap.ps1') @{ Fast = $true }
     }
 
-    Invoke-Native 'cmake' @('-S', '.', '-B', $BuildDir, '-DAVATAR_TESTS=ON')
+    Invoke-Native 'cmake' @('-S', '.', '-B', $BuildDir, '-DAVATAR_TESTS=ON', '-DAVATAR_BENCHMARKS=ON')
     Invoke-Native 'cmake' @('--build', $BuildDir, '--config', $Config, '--parallel')
 
     if ($Full) {
-        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '--output-on-failure')
+        # Full runs the non-perf suite, then the perf label explicitly. Keeping
+        # them separate makes the hardware-dependent run visible in the log and
+        # lets a future task add a perf test without touching this script.
+        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-LE', 'perf', '--output-on-failure')
+        $perfList = (& ctest --test-dir $BuildDir -C $Config -N -L perf 2>&1) -join "`n"
+        if ($LASTEXITCODE -eq 0 -and $perfList -match 'Test #') {
+            Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', 'perf', '--output-on-failure')
+        } else {
+            Write-Host "verify: no perf-labelled tests registered, skipped"
+        }
     } elseif ($Task -ne '') {
-        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', "fast|task_$Task", '--output-on-failure')
+        # Perf tests are opt-in (-Full). -LE perf keeps -Fast hardware-independent.
+        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', "fast|task_$Task", '-LE', 'perf', '--output-on-failure')
     } else {
-        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', 'fast', '--output-on-failure')
+        Invoke-Native 'ctest' @('--test-dir', $BuildDir, '-C', $Config, '-L', 'fast', '-LE', 'perf', '--output-on-failure')
     }
 
     $godot = Get-GodotExecutable $root
@@ -182,7 +198,14 @@ try {
     if ($Task -ne '') {
         $gate = Join-Path $root ("tests/gates/{0}.ps1" -f $Task)
         if (Test-Path -LiteralPath $gate) {
-            Invoke-Script $gate
+            # Gates read this to decide whether a hardware-dependent measurement
+            # is expected (T05). Older gates ignore it.
+            $env:AVATAR_VERIFY_MODE = $mode
+            try {
+                Invoke-Script $gate
+            } finally {
+                Remove-Item Env:\AVATAR_VERIFY_MODE -ErrorAction SilentlyContinue
+            }
         } else {
             Write-Host "verify: no gate script for $Task (tests/gates/$Task.ps1 not present), skipped"
         }
