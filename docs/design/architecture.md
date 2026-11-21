@@ -334,6 +334,10 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
    transitions, because those must also work headlessly in tests.
 5. **No exceptions across the boundary.** The C++ core may throw internally; the adapter converts to
    error codes and Godot `push_error`.
+6. **Engine-only adapters may parse and build engine resources.** GLB import uses
+   `GLTFDocument`/`GLTFState` because the parser is an engine API; it runs once at load, never per
+   frame, and leaves the persistent mesh and decal arrays in C++-owned state
+   ([ADR-0027](adr/0027-runtime-glb-import.md)).
 
 ## Rendering strategy
 
@@ -500,7 +504,7 @@ avatar-studio/
 │   ├── rig/                   # pose filter, face frame, homography, calibration
 │   ├── avatar/                # package load/save/validate, anchors, presets
 │   ├── output/                # manager, queue, transports/{spout,syphon,pipewire,mf,cmio,v4l2}
-│   └── gdextension/           # bindings only; no business logic
+│   └── gdextension/           # bindings + engine-only adapters (GLB import)
 ├── platform/
 │   ├── windows/vcam/          # MF media source COM DLL + registrar
 │   ├── macos/vcam/            # CMIOExtension target + host app glue
