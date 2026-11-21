@@ -27,6 +27,7 @@ tell the difference between "we chose this" and "this happened".
 | [0020](0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | Accepted |
 | [0021](0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | Accepted |
 | [0022](0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | Accepted |
+| [0023](0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

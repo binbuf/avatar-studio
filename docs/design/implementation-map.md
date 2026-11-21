@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T12 · **Last updated:** 2026-11-20
+**Status:** current as of T13 · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,14 +24,16 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T12 the foundation, tracker seam, Windows capture, real Windows CPU tracker and the
-named landmark map are implemented.** The isolated MediaPipe DLL consumes real camera pixels and
-produces landmarks, pose and blendshapes; the rig-facing map resolves anatomical names to pinned
-backend tables and the asymmetric-marker test fails a swapped table. There is no renderer, editor
-or output yet; seeing an avatar remains planned.
+**At T13 the foundation, tracker seam, Windows capture, real Windows CPU tracker, the
+named landmark map and the headless M0 harness are implemented.** The isolated MediaPipe DLL
+consumes real camera pixels and produces landmarks, pose and blendshapes; the rig-facing map
+resolves anatomical names to pinned backend tables and the asymmetric-marker test fails a swapped
+table; `avatar_m0` measures the real DLL through the C ABI at 192x192 and 256x256 and records
+latency, frame age, drop reasons, confidence, RSS/handles, thread CPU and pose artifacts. There is
+no renderer, editor or output yet; seeing an avatar remains planned.
 The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
 Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
-planned; the five-function ABI has no introspection query.
+planned; the five-function ABI has no introspection query. The M0 pass/pivot decision is T14.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -45,7 +47,10 @@ verified by `tests/gates/T10.ps1`: the state machine runs against a fake backend
 five-symbol PE export validation under `fast;task_T11`; its recorded-camera measurements are in
 the local `docs/progress/T11-tracker-results.md` workspace. T12 adds the named landmark map,
 canonical frame and profile correspondence tests under `fast;task_T12`, including the
-asymmetric-marker gate that passes with the real tables and fails with a swapped table.
+asymmetric-marker gate that passes with the real tables and fails with a swapped table. T13 adds
+the headless M0 harness (`avatar_m0`) under `fast;task_T13` plus the 30-minute soak under
+`perf;task_T13`; `tests/gates/T13.ps1` validates the report and `tests/gates/T14.ps1` applies the
+M0 thresholds. The soak evidence lives in the local `docs/progress/T13-m0-results.md` workspace.
 Rows that name `.github/workflows/` are verified as workflow definitions by `tests/gates/T06.ps1`;
 they have not been executed on hosted runners from this machine, which is the one residual
 foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
@@ -184,14 +189,16 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Landmark map, asymmetric marker, profile correspondences | `native/tracking/` | T12 | `Implemented` |
 | MediaPipe Face Landmarker Windows CPU backend and pinned model | `native/tracking/mediapipe/`, `.tools/tracker-sdk/` | T11 | `Implemented` |
 | Worker, letterbox/unprojection, geometric confidence and feature validity | `native/tracking/mediapipe/` | T11 | `Implemented` |
-| Reprojection/pose confidence and real-corpus occlusion validation | `native/tracking/` | T13, T18 | `Planned` |
+| Reprojection/pose confidence and real-corpus occlusion validation | `native/tracking/` | T18 | `Planned` |
 | Filtering, motion model, tracking rate vs render rate | `native/rig/` | T18, T24 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Planned` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x) |
 | Instrumentation: `TrackerStats` and latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
 | Instrumentation: real backend private inference/preprocessing timing, drop counters and confidence distribution | `native/tracking/mediapipe/` | T11 | `Implemented` |
-| Instrumentation: app-facing real tracker stats and reprojection error | `native/tracking/`, `tests/performance/` | T13, T26 | `Planned` |
+| Instrumentation: M0 headless harness (submit-to-poll latency, frame age, drop reasons, confidence, RSS/handles, thread CPU) | `tests/m0/` | T13 | `Implemented` |
+| Instrumentation: pose-stability trace, chart and review clip | `tests/m0/` | T13 | `Implemented` |
+| Instrumentation: app-facing real tracker stats (HUD) and reprojection error | `native/tracking/`, `tests/performance/` | T26 | `Planned` |
 
 ## [camera-capture.md](camera-capture.md)
 
@@ -210,7 +217,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Failure state machine: unplug, busy, preemption, stall, suspend/resume | `native/capture/` | T10 | `Implemented` |
 | Failure surfaces in the UI | `app/` | T41 | `Planned` |
 | Capture callback → ring publish (< 1 ms) | `native/capture/` | T10 | `Implemented` |
-| NV12 upload, downscale and long-run drop gates | `tests/performance/` | T13, T26 | `Planned` |
+| Long-run tracker drop and memory soak | `tests/m0/` | T13 | `Implemented` |
+| NV12 upload and downscale drop gates | `tests/performance/` | T26 | `Planned` |
 
 ## [output-and-virtual-camera.md](output-and-virtual-camera.md)
 
@@ -304,6 +312,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Matte tests | `tests/`, `native/` | T40 | `Planned` |
 | Real-model corpus | `tests/`, `examples/` | T43 | `Planned` |
 | Performance harness | `tests/performance/` | T05 | `Implemented` |
+| M0 headless harness, short CI run and 30-minute soak | `tests/m0/`, `tests/gates/T14.ps1` | T13 | `Implemented` |
 | Render and transport performance gates | `tests/performance/` | T26, T46 | `Planned` |
 | Integration tests per platform | `tests/integration/` | T58 | `Planned` |
 | CI matrix and workflow jobs | `.github/workflows/` | T06 | `Implemented` |
@@ -372,6 +381,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | T10, T52, T55 | Accepted |
 | [ADR-0021](adr/0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | T11 | Accepted |
 | [ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | T12 | Accepted |
+| [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | T13 | Accepted |
 
 ---
 

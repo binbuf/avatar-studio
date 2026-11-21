@@ -2,13 +2,14 @@
 
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
 comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
-C ABI contract harness (T09), the real Windows tracker contracts (T11) and the landmark-map/profile
-tests (T12) are implemented. Rendering, the 10-minute soak and the first avatar goldens remain
-`Planned`. ·
-**Last updated:** 2026-11-20
+C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
+tests (T12) and the headless M0 harness with its 30-minute soak (T13) are implemented. Rendering,
+the 10-minute app soak and the first avatar goldens remain `Planned`. ·
+**Last updated:** 2026-11-21
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
-[ADR-0016](adr/0016-ci-quality-gates.md)
+[ADR-0016](adr/0016-ci-quality-gates.md),
+[ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -307,6 +308,50 @@ The tests use the deterministic synthetic face source for geometry and the real 
 tables for resolution; they do not require a camera or the MediaPipe DLL. The T11 recorded
 clip independently confirmed the viewer-left/viewer-right side of the critical indices.
 Homography estimation and the post-RANSAC inlier gate remain T18.
+
+## M0 headless harness and 30-minute soak (T13)
+
+`avatar_m0` (`tests/m0/m0.cpp`) is the feasibility harness: a capture source (test pattern or
+an `AVCLIP1` replay) feeds either `ScriptedTracker` or the real `libavatartracker.dll` through the
+T09 C ABI, and every measured result is written to a JSON report. It does not use Godot, the
+renderer, the capture state machine, or a camera; M0 runs before those exist. The real DLL is
+loaded dynamically, so the target never links MediaPipe. The T11 recorded 640x480 NV12 clip is the
+default real source because it is deterministic and contains an actual face; the test pattern is
+the synthetic fallback.
+
+The report is `schema: avatar_m0.result.v1` and carries:
+
+- `metrics.inference_ms`: caller-visible submit-to-poll latency (p50/p95/p99/mean/max/min), not a
+  vendor-internal graph timer.
+- `metrics.frame_age_ms`: poll time minus the source timestamp, i.e. the age a consumer would see.
+- `metrics.dropped`: total and per-reason counts (`superseded`, `stalled`, `submit_error`), plus
+  `source_missed` for capture-side misses.
+- `metrics.confidence`: ten bins, samples and mean, including no-face zeros.
+- `metrics.rss` and `metrics.leak`: sampled working set and handle count after warm-up, with the
+  5% growth and monotonic-handle verdicts.
+- `metrics.cpu`: process CPU as a fraction of one core plus a per-thread CPU snapshot.
+- `metrics.pose_stability`: frame-to-frame quaternion delta and yaw/pitch/roll ranges.
+- `artifacts`: the pose CSV, SVG chart and BMP review clip paths.
+
+`tests/m0/run.ps1` has two modes. `short` is the 2-minute CI run (60 s per size, 5 s warm-up, 5 s
+RSS samples) and records but does not fail on a leak trend. `full` is the 30-minute soak (15 min
+per size, 60 s warm-up, 60 s RSS samples) and fails on more than 5% RSS growth after warm-up or a
+monotonically growing handle count. The longer warm-up moves the baseline past TFLite/XNNPACK's
+lazy first allocations, so the verdict is about the steady state, not startup. Both run 192x192 and 256x256 prepared input. Results are
+written to the gitignored `tests/performance/results/`; the human summary is
+`docs/progress/T13-m0-results.md` for the soak and `docs/progress/T13-m0-short.md` for the short
+run. Each size also records a pose trace, an SVG chart and a short BMP clip for the T14 human
+review.
+
+The M0 thresholds are applied by `tests/gates/T14.ps1`, not by the harness: inference p95 ≤ 15 ms
+(reference) / 30 ms (minimum), p99 ≤ 25/45 ms; frame age p95 ≤ 50/80 ms, p99 ≤ 100/150 ms;
+dropped frames ≤ 2%; RSS growth ≤ 5%; handles not monotonic; ≥ 1800 s total and ≥ 600 s per size.
+The gate requires a real tracker and a real replay source. A scripted run is labelled
+`synthetic: true` and can prove the harness in T13, but it is not M0 tracker evidence. CTest
+registers `avatar_m0_selftest` under `fast;task_T13`, `avatar_m0_short` under `fast;task_T13`, and
+`avatar_m0_soak` under `perf;task_T13`; `verify -Fast -Task T13` runs the first two, and
+`verify -Full -Task T13` adds the soak. [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md)
+records the measurement definitions and the threshold split.
 
 ## Performance harness
 

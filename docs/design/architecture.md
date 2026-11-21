@@ -138,6 +138,7 @@ a camera, or a GPU.
 | Windows Media Foundation capture | `native/capture/windows/` | Implemented (T10); macOS/Linux are T52/T55 |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Implemented on Windows CPU (T11); app wiring remains T16 |
 | Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC is T18 |
+| M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 pass/pivot is T14 |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
@@ -156,6 +157,12 @@ T05 instruments the app-side latency definition in `tests/performance/avatar_ben
 is synchronous until the render and tracking threads land, so `frame_time_ms` and `app_latency_ms`
 measure the same interval today; `end_to_end_latency_ms` (photon to display) is `null` with a reason
 until T26/T46 add a real camera and transport.
+
+T13 adds the separate M0 harness (`tests/m0/`, `avatar_m0`). It is not the render pipeline: it
+loads the real tracker DLL through the C ABI and measures submit-to-poll latency, frame age,
+drop reasons, confidence, RSS/handles, thread CPU and pose stability over a short CI run or a
+30-minute soak. It is the only measurement that crosses the DLL boundary before T16, and its
+`tests/gates/T14.ps1` thresholds are the M0 pass/pivot input.
 
 ### Capture
 

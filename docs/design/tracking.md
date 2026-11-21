@@ -1,12 +1,14 @@
 # Face Tracking
 
 **Status:** Windows CPU backend implemented and measured (T11); the named landmark map, the
-asymmetric-marker gate and profile correspondences are implemented (T12). Filtering, the app
-integration, and wider quality/platform validation remain planned. **Last updated:** 2026-11-20
+asymmetric-marker gate and profile correspondences are implemented (T12); the headless M0
+harness and its 30-minute soak are implemented (T13). Filtering, the app integration, and wider
+quality/platform validation remain planned. **Last updated:** 2026-11-21
 **Decision records:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
 [ADR-0019](adr/0019-tracker-c-abi-v1.md),
 [ADR-0021](adr/0021-real-mediapipe-windows-backend.md),
-[ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md)
+[ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md),
+[ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md)
 
 
 Tracking turns a camera frame into a head pose and 478 landmarks. It is the only component with a
@@ -438,6 +440,19 @@ preprocessing/inference samples. Counters cover the whole session; the bounded s
 covers its first 4096 results. `avatar_tracker_bench` reports exact sorted p50/p95 after warm-up.
 It uses the same worker/engine/preprocessing implementation as the DLL, compiled into a separate
 measurement executable; no extra instrumentation symbol is exported from the DLL.
+
+The M0 harness (`avatar_m0`, `tests/m0/`) is the app-facing measurement that T11 did not provide.
+It loads the real DLL through the five-function ABI and records **submit-to-poll** latency (the
+time from `push_frame` to the poll that returns that frame's result) and **frame age** (poll time
+minus the source timestamp). The first is not a vendor graph timer and includes worker scheduling
+and at most 1 ms of poll granularity; the second is what a consumer would experience. Frames that
+produce no result are classified after the run as `superseded` (a newer result arrived first),
+`stalled` (no later result) or `submit_error`; capture-side misses are reported separately. The
+harness also records the ten confidence bins, RSS and handle samples, thread CPU, and a pose
+trace/chart/clip for human review. `tests/m0/run.ps1 -Mode full` is the 30-minute soak and
+`tests/gates/T14.ps1` applies the M0 thresholds. A run with `ScriptedTracker` or the test pattern
+is labelled `synthetic`; it proves the harness, not tracker feasibility. ABI v1 still has no
+statistics query, so the app HUD's real-statistics interface remains T26 work.
 
 ABI v1 has no statistics query. Real counters are **not yet wired to the app's future debug HUD**;
 that requires a separate interface decision in T13/T26. Reprojection error and the normalized

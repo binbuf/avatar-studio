@@ -5,10 +5,11 @@ data-plane primitives and diagnostics registry T03, deterministic sources, scrip
 fixtures and golden comparator T04, performance harness and local baseline T05, CI/format/licence
 gates T06), the tracker C ABI and contract harness are implemented (T09), the Windows Media
 Foundation capture backend is implemented (T10), and the foundation was re-verified from a clean
-checkout by the T08 audit (ADR-0018), the real Windows CPU tracker is implemented (T11), and the
-named landmark map with its asymmetric-marker gate is implemented (T12). Rendering, the editor,
-output and the macOS/Linux capture backends remain `Planned` unless explicitly marked otherwise.
-**Last updated:** 2026-11-20
+checkout by the T08 audit (ADR-0018), the real Windows CPU tracker is implemented (T11), the
+named landmark map with its asymmetric-marker gate is implemented (T12), and the headless M0
+harness with its 30-minute soak is implemented (T13). Rendering, the editor, output and the
+macOS/Linux capture backends remain `Planned` unless explicitly marked otherwise.
+**Last updated:** 2026-11-21
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
 [Provenance and corrections](#provenance-and-corrections-to-the-original-brief) so the decision
@@ -70,7 +71,8 @@ deterministic capture and tracking sources with their golden comparator (T04), t
 harness and local baseline (T05), the three-platform CI matrix with formatting and licence gates
 (T06), the tracker C ABI with its scripted contract harness (T09), the Windows Media Foundation
 capture backend with its platform-neutral state machine (T10), the real Windows CPU tracker (T11),
-and the named landmark map with profile correspondences (T12). Every avatar capability — the face
+the named landmark map with profile correspondences (T12), and the headless M0 harness with its
+30-minute soak (T13). Every avatar capability — the face
 rig, the decal modes, the editor, the output manager and the OS virtual cameras — is `Planned`. The MVP is a Windows 11
 streamer running OBS over Spout2 or window capture; macOS/Linux parity and the OS virtual cameras
 remain 1.0 requirements and are sequenced after it by

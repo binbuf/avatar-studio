@@ -53,6 +53,8 @@ latency?
   (MSVC), macOS (universal), Linux (x86-64).
 - Native capture on all three platforms producing timestamped frames.
 - A headless harness: frames in, `TrackingResult` out, latency histogram written as JSON.
+  Implemented in T13 as `avatar_m0` with a 2-minute CI mode and a 30-minute soak; the M0
+  thresholds are applied by `tests/gates/T14.ps1`.
 - Numbers on Reference and Minimum hardware, at 256² and 192² input.
 
 **Exit criteria**

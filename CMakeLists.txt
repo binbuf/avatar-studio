@@ -439,6 +439,78 @@ add_test(NAME license_manifest_check
 endif()
 
 # ---------------------------------------------------------------------------
+# M0 headless feasibility harness (T13)
+#
+# Frames in, TrackingResult out, measured without Godot. The short mode runs in
+# CI; the soak mode is registered under the "perf" label so verify -Fast stays
+# cheap and verify -Full owns the 30-minute run. The real backend is loaded
+# dynamically through the T09 C ABI, so this target never links MediaPipe.
+# ---------------------------------------------------------------------------
+if(AVATAR_TESTS OR AVATAR_BENCHMARKS)
+    add_executable(avatar_m0 tests/m0/m0.cpp)
+    target_link_libraries(avatar_m0 PRIVATE
+        avatar::core
+        avatar::capture
+        avatar::tracking
+        avatar_json
+    )
+    target_compile_features(avatar_m0 PRIVATE cxx_std_20)
+    target_compile_definitions(avatar_m0 PRIVATE
+        AVATAR_M0_BUILD_TYPE="$<CONFIG>"
+        AVATAR_M0_GIT_COMMIT="${AVATAR_GIT_COMMIT}"
+        AVATAR_M0_GIT_DIRTY=${AVATAR_GIT_DIRTY}
+        AVATAR_M0_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    )
+    if(WIN32)
+        # psapi: working-set/handle counters; winmm: 1 ms timer resolution for
+        # the paced submission loop.
+        target_link_libraries(avatar_m0 PRIVATE psapi winmm)
+    endif()
+    if(UNIX)
+        target_link_libraries(avatar_m0 PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+    avatar_enable_warnings(avatar_m0)
+
+    if(AVATAR_TESTS)
+        add_test(NAME avatar_m0_selftest COMMAND avatar_m0 --self-test)
+        set_tests_properties(avatar_m0_selftest PROPERTIES
+            LABELS "fast;task_T13"
+            TIMEOUT 120
+        )
+
+        if(WIN32)
+            # The short mode is the documented 2-minute CI run. It writes the
+            # JSON and the human summary; tests/gates/T13.ps1 reads them.
+            add_test(NAME avatar_m0_short COMMAND powershell
+                -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/m0/run.ps1"
+                -Mode short -NoBuild
+                -BuildDir "${CMAKE_CURRENT_BINARY_DIR}"
+                -Config "$<CONFIG>"
+            )
+            set_tests_properties(avatar_m0_short PROPERTIES
+                LABELS "fast;task_T13"
+                TIMEOUT 420
+            )
+
+            # Full soak: 30 minutes across 192 and 256. Registered under "perf"
+            # so it runs only in verify -Full / nightly.
+            add_test(NAME avatar_m0_soak COMMAND powershell
+                -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/m0/run.ps1"
+                -Mode full -NoBuild
+                -BuildDir "${CMAKE_CURRENT_BINARY_DIR}"
+                -Config "$<CONFIG>"
+            )
+            set_tests_properties(avatar_m0_soak PROPERTIES
+                LABELS "perf;task_T13"
+                TIMEOUT 3000
+            )
+        endif()
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Microbenchmarks
 #
 # Numbers are reported, not gated: a tight nanosecond threshold on shared CI
