@@ -179,8 +179,10 @@ if ($userData -ne '' -and ($userData -notmatch 'T12' -or $userData -notmatch 'RI
 }
 $map = Read-Required 'docs/design/implementation-map.md'
 if ($map -ne '') {
-    if ($map -notmatch 'current as of T12') {
-        Add-Failure 'implementation-map.md is not current as of T12'
+    if ($map -notmatch 'current as of T(\d{2,3})') {
+        Add-Failure 'implementation-map.md has no "current as of TNN" marker'
+    } elseif ([int]$Matches[1] -lt 12) {
+        Add-Failure "implementation-map.md is stale (current as of T$($Matches[1]), expected T12 or later)"
     }
     if ($map -notmatch '(?m)^\|[^\r\n]*Landmark map[^\r\n]*\|\s*`Implemented`\s*\|') {
         Add-Failure 'implementation-map.md has no Implemented landmark-map row'

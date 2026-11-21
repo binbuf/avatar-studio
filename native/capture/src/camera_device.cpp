@@ -144,8 +144,7 @@ CameraFailureReason classify_camera_hresult(std::int32_t hresult) noexcept {
 
 bool camera_mode_matches(const CameraMode& left, const CameraMode& right,
                          double fps_tolerance) noexcept {
-    if (left.width != right.width || left.height != right.height ||
-        left.format != right.format) {
+    if (left.width != right.width || left.height != right.height || left.format != right.format) {
         return false;
     }
     if (left.fps() == 0.0 || right.fps() == 0.0) {
@@ -200,13 +199,12 @@ std::vector<CameraMode> select_camera_modes(const CameraCapabilities& capabiliti
                 if (preference.format != format) {
                     continue;
                 }
-                const double resolution_distance =
-                    std::abs(static_cast<double>(advertised.width) -
-                             static_cast<double>(preference.width)) +
-                    std::abs(static_cast<double>(advertised.height) -
-                             static_cast<double>(preference.height));
-                const double candidate_score = resolution_distance + 10.0 * fps_distance(
-                                                                         advertised, preference);
+                const double resolution_distance = std::abs(static_cast<double>(advertised.width) -
+                                                            static_cast<double>(preference.width)) +
+                                                   std::abs(static_cast<double>(advertised.height) -
+                                                            static_cast<double>(preference.height));
+                const double candidate_score =
+                    resolution_distance + 10.0 * fps_distance(advertised, preference);
                 score = std::min(score, candidate_score);
             }
             if (score < best_score) {

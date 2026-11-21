@@ -2,8 +2,10 @@
 
 **Status:** Windows CPU backend implemented and measured (T11); the named landmark map, the
 asymmetric-marker gate and profile correspondences are implemented (T12); the headless M0
-harness and its 30-minute soak are implemented (T13). Filtering, the app integration, and wider
-quality/platform validation remain planned. **Last updated:** 2026-11-21
+harness and its 30-minute soak are implemented (T13); M0 is closed for the Windows MVP and the
+renderer-facing tracking contract is audited (T14/T15, [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)).
+Filtering, the app integration, app-facing statistics and wider quality/platform validation remain
+planned. **Last updated:** 2026-11-21
 **Decision records:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
 [ADR-0019](adr/0019-tracker-c-abi-v1.md),
 [ADR-0021](adr/0021-real-mediapipe-windows-backend.md),
@@ -419,14 +421,29 @@ Valid poses were returned for 16,730/27,000 frames at 192x192 and 16,969/27,000 
 unground-truthed replay leaves a material tracking-loss risk for the planned blank-on-loss
 policy; it cannot establish quality across a deliberate stationary and motion corpus.
 
-Real macOS/Linux backends and successful three-platform real-backend CI remain unproven.
+Real macOS/Linux backends and successful three-platform real-backend CI remain unproven; they are
+T52/T55 acceptance under [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md).
 The numeric gate does not automate the subjective rest-jitter, motion-swimming or handedness
 judgment. A contiguous, timestamp-paired diagnostic clip is required for human review; the
 48 BMPs sampled across each 15-minute soak are a contact sheet, not a normal-speed video.
 Loop-boundary pose jumps, reacquisition and no-face intervals must be labelled rather than
 mistaken for stationary jitter or silently removed. Repeated replay phases can help detect
 long-term change, but do not replace stationary ground truth or a human stability decision.
-Rendering remains gated on the outstanding M0 evidence or an explicit recorded replan.
+ADR-0025 closes M0 for the Windows MVP on the measured repeatability plus the sampled-frame review;
+T27 re-judges motion swimming on rendered clips. T15 audited the contract below and found no
+blocker to starting the renderer, with two limits recorded rather than waived: ABI v1 exposes no
+statistics query, and ABI v1 has no distinct model-integrity error.
+
+### T15 renderer-facing contract audit
+
+| Contract | Realised behaviour | Evidence |
+|---|---|---|
+| `source_timestamp_ns` | Exactly the input frame's `timestamp_ns`; the public result is never restamped with inference-completion time. Duplicate/backwards inputs are counted and the internal graph millisecond is advanced by 1, while the public nanosecond value is preserved. | T09 contract suite, T11 real-backend tests, M0 timestamp pairing |
+| `features_valid` | Stricter than `valid`: both eye-corner pairs, both iris centres, mouth corners and lip centres must be finite, inside the source image and non-degenerate. A present face can be `valid = true` and `features_valid = false`; the output gate requires the latter. | `test_real_tracker.cpp`, T09 contract suite, T23 owns the gate |
+| Pose | Camera-space unit quaternion `[x, y, z, w]` and translation in metres, converted from the upstream metric transform. It is not camera-calibrated rig math; filtering and the homography are T18. | T11/T12, T14 repeatability, T18 filtering |
+| Landmarks | 478 normalised image coordinates plus relative depth; names resolve through the pinned T12 tables. | T12 asymmetric-marker gate |
+| Stats | `TrackerStats` is the C++/scripted instrumentation. The real DLL keeps private counters and a bounded 4096-sample reservoir, but ABI v1 has no query, so the app HUD's real statistics are T26 work. | `tracker_c_api.h`, T11 `avatar_tracker_bench` |
+| Failure codes | The DLL returns the ABI error enum (`INTERNAL`, `NOT_INITIALIZED`, ...) and does not emit `TRK-*` diagnostics itself. The T16 facade maps the enum to the registry; T23 blanks the output on any non-OK or invalid result. A missing/corrupt model and another internal failure both return `INTERNAL`, so the app verifies the staged model before `create`. | `tracker_c_api.h`, `test_real_tracker.cpp`, T16/T23/T26 |
 
 ### Backend choices
 

@@ -53,27 +53,47 @@ if (-not (Test-Path -LiteralPath $stylePath)) {
     exit 1
 }
 
+function Test-ClangFormat([string]$Path) {
+    if ($Path -eq '' -or -not (Test-Path -LiteralPath $Path)) { return $false }
+    try {
+        $null = & $Path --version 2>&1
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
 function Find-ClangFormat([string]$Requested) {
     if ($Requested -ne '') {
-        if (Test-Path -LiteralPath $Requested) { return (Resolve-Path -LiteralPath $Requested).Path }
+        if (Test-Path -LiteralPath $Requested) {
+            $resolved = (Resolve-Path -LiteralPath $Requested).Path
+            if (Test-ClangFormat $resolved) { return $resolved }
+            return ''
+        }
         $command = Get-Command $Requested -ErrorAction SilentlyContinue
-        if ($null -ne $command) { return $command.Source }
+        if ($null -ne $command -and (Test-ClangFormat $command.Source)) { return $command.Source }
         return ''
     }
     if ($env:CLANG_FORMAT -and $env:CLANG_FORMAT -ne '') {
         if (Test-Path -LiteralPath $env:CLANG_FORMAT) {
-            return (Resolve-Path -LiteralPath $env:CLANG_FORMAT).Path
+            $resolved = (Resolve-Path -LiteralPath $env:CLANG_FORMAT).Path
+            if (Test-ClangFormat $resolved) { return $resolved }
+        } else {
+            $command = Get-Command $env:CLANG_FORMAT -ErrorAction SilentlyContinue
+            if ($null -ne $command -and (Test-ClangFormat $command.Source)) { return $command.Source }
         }
-        $command = Get-Command $env:CLANG_FORMAT -ErrorAction SilentlyContinue
-        if ($null -ne $command) { return $command.Source }
     }
     $command = Get-Command clang-format -ErrorAction SilentlyContinue
-    if ($null -ne $command) { return $command.Source }
+    if ($null -ne $command -and (Test-ClangFormat $command.Source)) { return $command.Source }
+    # The pip package ships a launcher shim in bin/ that needs its module on
+    # sys.path; prefer the real binary in its data directory so a repository-local
+    # install works without activating the venv.
     foreach ($candidate in @(
+            (Join-Path $Root '.tools/clang-format/clang_format/data/bin/clang-format.exe'),
             (Join-Path $Root '.tools/clang-format/clang-format.exe'),
             (Join-Path $Root '.tools/clang-format/bin/clang-format.exe'),
             (Join-Path $Root '.tools/llvm/bin/clang-format.exe'))) {
-        if (Test-Path -LiteralPath $candidate) { return $candidate }
+        if (Test-ClangFormat $candidate) { return $candidate }
     }
     return ''
 }

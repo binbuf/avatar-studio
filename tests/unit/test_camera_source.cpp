@@ -36,6 +36,7 @@ using capture::CameraSource;
 using capture::CameraState;
 using capture::ColorSpace;
 using capture::FrameLease;
+using capture::FrameStorage;
 using capture::ICameraDeviceBackend;
 using capture::PixelFormat;
 
@@ -198,17 +199,16 @@ struct Fixture {
 
     static bool has_event(const std::vector<CameraEvent>& events, CameraEventKind kind,
                           core::DiagnosticCode code) {
-        return std::any_of(events.begin(), events.end(),
-                           [kind, code](const CameraEvent& event) {
-                               return event.kind == kind && event.code == code;
-                           });
+        return std::any_of(events.begin(), events.end(), [kind, code](const CameraEvent& event) {
+            return event.kind == kind && event.code == code;
+        });
     }
 
     static std::size_t count_event(const std::vector<CameraEvent>& events,
                                    core::DiagnosticCode code) {
-        return static_cast<std::size_t>(std::count_if(
-            events.begin(), events.end(),
-            [code](const CameraEvent& event) { return event.code == code; }));
+        return static_cast<std::size_t>(
+            std::count_if(events.begin(), events.end(),
+                          [code](const CameraEvent& event) { return event.code == code; }));
     }
 };
 
@@ -315,6 +315,7 @@ TEST_CASE(camera_reports_no_camera_with_cap_008) {
 TEST_CASE(camera_maps_source_timestamps_to_frame_clock_and_preserves_arrival) {
     Fixture fixture;
     configure_single_mode(fixture, make_mode(1280, 720, 60, PixelFormat::nv12));
+    fixture.backend.space = ColorSpace::bt601_limited;
     CHECK(fixture.source.start().ok());
 
     fixture.backend.deliver(0);
@@ -326,6 +327,11 @@ TEST_CASE(camera_maps_source_timestamps_to_frame_clock_and_preserves_arrival) {
         CHECK_EQ(first->frame().arrival_ns, kStartNs);
         CHECK_EQ(first->frame().sequence, 1u);
         CHECK(first->frame().format == PixelFormat::nv12);
+        // The renderer reads colour_space from the frame, not from a separate
+        // source accessor; the backend's negotiation must reach the slot.
+        CHECK(first->frame().color_space == ColorSpace::bt601_limited);
+        CHECK(first->frame().storage == FrameStorage::cpu);
+        CHECK(!first->frame().mirrored);
         CHECK_EQ(first->frame().stride(0), 1280u);
         CHECK(first->frame().plane(0) != nullptr);
         CHECK(first->frame().plane(1) != nullptr);
@@ -405,8 +411,8 @@ TEST_CASE(camera_watchdog_restarts_a_stalled_stream_once_then_reports) {
     CHECK_EQ(fixture.backend.start_calls, 2);
     CHECK(fixture.source.state() == CameraState::streaming);
     std::vector<CameraEvent> events = fixture.events();
-    CHECK(Fixture::has_event(events, CameraEventKind::stream_stalled,
-                             core::DiagnosticCode::cap_004));
+    CHECK(
+        Fixture::has_event(events, CameraEventKind::stream_stalled, core::DiagnosticCode::cap_004));
     CHECK(Fixture::has_event(events, CameraEventKind::stream_restarted,
                              core::DiagnosticCode::unknown));
 
@@ -414,8 +420,8 @@ TEST_CASE(camera_watchdog_restarts_a_stalled_stream_once_then_reports) {
     CHECK(!fixture.source.produce());
     CHECK(fixture.source.state() == CameraState::stalled);
     events = fixture.events();
-    CHECK(Fixture::has_event(events, CameraEventKind::stream_stalled,
-                             core::DiagnosticCode::cap_004));
+    CHECK(
+        Fixture::has_event(events, CameraEventKind::stream_stalled, core::DiagnosticCode::cap_004));
 }
 
 TEST_CASE(camera_demotes_a_mode_that_cannot_sustain_its_frame_rate) {
@@ -457,8 +463,7 @@ TEST_CASE(camera_reconnects_after_device_loss_on_the_two_second_poll) {
     CHECK(!fixture.source.produce());
     CHECK(fixture.source.state() == CameraState::device_lost);
     std::vector<CameraEvent> events = fixture.events();
-    CHECK(Fixture::has_event(events, CameraEventKind::device_lost,
-                             core::DiagnosticCode::cap_001));
+    CHECK(Fixture::has_event(events, CameraEventKind::device_lost, core::DiagnosticCode::cap_001));
     CHECK_EQ(fixture.backend.start_calls, 1);
 
     fixture.time.advance(1'900'000'000);
@@ -512,8 +517,7 @@ TEST_CASE(camera_maps_a_mid_stream_preemption_to_cap_002_and_recovers) {
     fixture.backend.deliver(0);
     CHECK(fixture.source.produce());
 
-    fixture.backend.report(CameraBackendErrorKind::busy,
-                           static_cast<std::int32_t>(0xC00D3704u));
+    fixture.backend.report(CameraBackendErrorKind::busy, static_cast<std::int32_t>(0xC00D3704u));
     CHECK(!fixture.source.produce());
     CHECK(fixture.source.state() == CameraState::busy);
     CHECK(Fixture::has_event(fixture.events(), CameraEventKind::device_busy,
@@ -642,9 +646,8 @@ TEST_CASE(camera_default_preferences_follow_the_documented_order) {
     CHECK(preferences[4].format == PixelFormat::yuy2);
     CHECK(preferences[8].format == PixelFormat::bgra8);
     const bool has_mjpeg =
-        std::any_of(preferences.begin(), preferences.end(), [](const CameraMode& mode) {
-            return mode.format == PixelFormat::mjpeg;
-        });
+        std::any_of(preferences.begin(), preferences.end(),
+                    [](const CameraMode& mode) { return mode.format == PixelFormat::mjpeg; });
     CHECK(!has_mjpeg);
 }
 

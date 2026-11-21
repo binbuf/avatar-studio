@@ -249,8 +249,10 @@ if ($tracking -ne '') {
     }
 }
 if ($map -ne '') {
-    if ($map -notmatch 'current as of T13') {
-        Add-Failure 'implementation-map.md is not current as of T13'
+    if ($map -notmatch 'current as of T(\d{2,3})') {
+        Add-Failure 'implementation-map.md has no "current as of TNN" marker'
+    } elseif ([int]$Matches[1] -lt 13) {
+        Add-Failure "implementation-map.md is stale (current as of T$($Matches[1]), expected T13 or later)"
     }
     if ($map -notmatch '(?m)^\|[^\r\n]*M0 headless harness[^\r\n]*\|\s*`Implemented`\s*\|') {
         Add-Failure 'implementation-map.md has no Implemented M0 harness row'

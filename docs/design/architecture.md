@@ -138,7 +138,7 @@ a camera, or a GPU.
 | Windows Media Foundation capture | `native/capture/windows/` | Implemented (T10); macOS/Linux are T52/T55 |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Implemented on Windows CPU (T11); app wiring remains T16 |
 | Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC is T18 |
-| M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 pass/pivot is T14 |
+| M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 Windows-scoped closure is T14/T15 ([ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)) |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
@@ -161,17 +161,20 @@ until T26/T46 add a real camera and transport.
 T13 adds the separate M0 harness (`tests/m0/`, `avatar_m0`). It is not the render pipeline: it
 loads the real tracker DLL through the C ABI and measures submit-to-poll latency, frame age,
 drop reasons, confidence, RSS/handles, thread CPU and pose stability over a short CI run or a
-30-minute soak. It is the only measurement that crosses the DLL boundary before T16, and its
-`tests/gates/T14.ps1` thresholds are the M0 pass/pivot input.
+30-minute soak. It is the only measurement that crosses the DLL boundary before T16. T14 applied
+the `tests/gates/T14.ps1` thresholds and [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
+closed M0 for the Windows MVP; T15 audited the contracts the renderer will consume and found no
+blocker to starting T16.
 
 ### Capture
 
 ```cpp
 struct VideoFrame {
-    uint64_t      timestamp_ns;   // FrameClock, at first byte available to us
+    uint64_t      timestamp_ns;   // source timestamp mapped onto FrameClock
+    uint64_t      arrival_ns;     // FrameClock at first byte available to us
     uint32_t      sequence;
     uint32_t      width, height;
-    PixelFormat   format;         // NV12, YUY2, MJPEG, BGRA8
+    PixelFormat   format;         // NV12, YUY2, MJPEG, BGRA8, RGBA8
     ColorSpace    color_space;    // BT.601 / BT.709, full / limited range
     bool          mirrored;
     FrameStorage  storage;        // CPU planes or GPU handles
@@ -233,6 +236,10 @@ public:
 The implementation is `native/tracking/include/avatar/tracking/itracking_backend.h`; the real backend
 is a shared library behind `native/tracking/include/avatar/tracker/tracker_c_api.h`
 ([ADR-0019](adr/0019-tracker-c-abi-v1.md)). `ScriptedTracker` implements both sides.
+`ITrackingBackend::stats()` is implemented for the scripted tracker; ABI v1 has no statistics query,
+so the app-facing real-tracker statistics interface remains T26 work. The DLL returns ABI error
+codes rather than `TRK-*` diagnostics; the T16 facade owns that mapping and T23 blanks the output
+on any non-OK or invalid result (T15 audit).
 
 Detail: [`tracking.md`](tracking.md).
 
@@ -279,7 +286,8 @@ Detail: [`output-and-virtual-camera.md`](output-and-virtual-camera.md).
 
 One rendered frame, end to end:
 
-1. **Capture** publishes a `VideoFrame` into the camera ring with `timestamp_ns`.
+1. **Capture** publishes a `VideoFrame` into the camera ring with the mapped source `timestamp_ns`
+   and the `arrival_ns` clock stamp.
 2. **Tracking** takes the newest frame, runs inference (CPU, ~8–12 ms), and publishes a
    `TrackingResult` carrying the *source frame's* timestamp. Results older than the last published
    one are discarded, not queued.

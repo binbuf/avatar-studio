@@ -3,13 +3,15 @@
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
 comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
 C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
-tests (T12) and the headless M0 harness with its 30-minute soak (T13) are implemented. Rendering,
-the 10-minute app soak and the first avatar goldens remain `Planned`. ·
+tests (T12), the headless M0 harness with its 30-minute soak (T13) and the Windows-scoped M0 contract
+audit (T14/T15) are implemented. Rendering, the 10-minute app soak and the first avatar goldens
+remain `Planned`. ·
 **Last updated:** 2026-11-21
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
 [ADR-0016](adr/0016-ci-quality-gates.md),
-[ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md)
+[ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md),
+[ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -352,6 +354,13 @@ registers `avatar_m0_selftest` under `fast;task_T13`, `avatar_m0_short` under `f
 `avatar_m0_soak` under `perf;task_T13`; `verify -Fast -Task T13` runs the first two, and
 `verify -Full -Task T13` adds the soak. [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md)
 records the measurement definitions and the threshold split.
+
+T15 audited the harness evidence and the contracts the renderer consumes, and added
+`tests/gates/T15.ps1` as the regression check for the audit's contract and documentation claims.
+The short run is the fast-suite evidence; the full soak remains local evidence because the clip and
+results are gitignored. The audit's gap list and M1 readiness statement are in the local
+`docs/progress/T15.md` workspace. [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
+closes M0 for the Windows MVP and defers cross-platform and hardware-tier evidence.
 
 ## Performance harness
 

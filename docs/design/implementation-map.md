@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T14 (M0 closed for the Windows MVP; platform/tier evidence deferred) · **Last updated:** 2026-11-21
+**Status:** current as of T15 (M0 audited and closed for the Windows MVP; platform/tier evidence deferred) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,13 +24,13 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T13 the foundation, tracker seam, Windows capture, real Windows CPU tracker, the
-named landmark map and the headless M0 harness are implemented.** The isolated MediaPipe DLL
-consumes real camera pixels and produces landmarks, pose and blendshapes; the rig-facing map
-resolves anatomical names to pinned backend tables and the asymmetric-marker test fails a swapped
-table; `avatar_m0` measures the real DLL through the C ABI at 192x192 and 256x256 and records
-latency, frame age, drop reasons, confidence, RSS/handles, thread CPU and pose artifacts. There is
-no renderer, editor or output yet; seeing an avatar remains planned.
+**At T15 the foundation, tracker seam, Windows capture, real Windows CPU tracker, the
+named landmark map and the headless M0 harness are implemented and audited.** The isolated
+MediaPipe DLL consumes real camera pixels and produces landmarks, pose and blendshapes; the
+rig-facing map resolves anatomical names to pinned backend tables and the asymmetric-marker test
+fails a swapped table; `avatar_m0` measures the real DLL through the C ABI at 192x192 and 256x256
+and records latency, frame age, drop reasons, confidence, RSS/handles, thread CPU and pose
+artifacts. There is no renderer, editor or output yet; seeing an avatar remains planned.
 The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
 Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
 planned; the five-function ABI has no introspection query. T14 accepts M0 for the Windows MVP:
@@ -42,6 +42,15 @@ T26/T64 evidence, and motion-swimming judgment moves to T27's rendered clips.
 decision; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) records the
 scope replan. The local machine still exceeds the documented Reference tier, so its numbers
 remain local feasibility, not tier certification.
+T15 audited every M0 deliverable and the contracts the renderer consumes: frame timestamps,
+format/colour-space fields, ring ownership, the tracking source timestamp, `features_valid`,
+stats and failure codes. It corrected this map and the realised-behaviour documents, added the
+contract regression checks in `tests/gates/T15.ps1`, and found no blocker to starting T16. The
+gap list, severity/owner assignments and M1 readiness statement live in the local
+`docs/progress/T15.md` workspace. Two limits remain visible rather than waived: the app-facing
+real-tracker statistics interface is T26 work, and the Windows MediaPipe DLL cannot distinguish a
+model-integrity failure from another `INTERNAL` error through ABI v1, so the app verifies the
+staged model before `create` and treats `INTERNAL` as a startup failure.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -206,7 +215,10 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Instrumentation: real backend private inference/preprocessing timing, drop counters and confidence distribution | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Instrumentation: M0 headless harness (submit-to-poll latency, frame age, drop reasons, confidence, RSS/handles, thread CPU) | `tests/m0/` | T13 | `Implemented` |
 | Instrumentation: pose-stability trace, chart and review clip | `tests/m0/` | T13 | `Implemented` |
-| M0 exit decision: platform builds, hardware interpretation and human pose approval | gates and review package; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | T14 | `Planned` (local numeric evidence alone does not close M0) |
+| M0 Windows exit decision: real-backend soak, measured repeatability and the T15 audit | gates and review package; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md), [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | T14, T15 | `Implemented` (Windows MVP scope; see the deferred rows below) |
+| M0 macOS/Linux real-backend build and capture evidence | `native/tracking/mediapipe/`, `native/capture/macos/`, `native/capture/linux/` | T52, T55 | `Planned` (deferred from the Windows MVP gate by ADR-0025) |
+| M0 Reference/Minimum hardware tier evidence | `tests/performance/` | T26, T64 | `Planned` (the local host exceeds Reference; numbers are local feasibility) |
+| M0 rendered motion-swimming judgment | `tests/`, review packages | T27 | `Planned` (needs the M1 renderer and decal) |
 | Instrumentation: app-facing real tracker stats (HUD) and reprojection error | `native/tracking/`, `tests/performance/` | T26 | `Planned` |
 
 ## [camera-capture.md](camera-capture.md)
@@ -322,6 +334,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Real-model corpus | `tests/`, `examples/` | T43 | `Planned` |
 | Performance harness | `tests/performance/` | T05 | `Implemented` |
 | M0 headless harness, short CI run and 30-minute soak | `tests/m0/`, `tests/gates/T14.ps1` | T13 | `Implemented` |
+| M0 contract audit, stale-doc checks and implementation-map consistency | `tests/gates/T15.ps1` | T15 | `Implemented` |
 | Render and transport performance gates | `tests/performance/` | T26, T46 | `Planned` |
 | Integration tests per platform | `tests/integration/` | T58 | `Planned` |
 | CI matrix and workflow jobs | `.github/workflows/` | T06 | `Implemented` |
@@ -351,7 +364,8 @@ code exists to emit them yet.
 
 | Section | Owning module | Tasks | Status |
 |---|---|---|---|
-| M0–M5 milestones and exit criteria | gates and review packages | T14, T27, T45, T50, T64 | `Planned` |
+| M0 exit criteria and evidence (Windows-scoped) | gates and review packages; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | T14, T15 | `Implemented` |
+| M1–M5 milestones and exit criteria | gates and review packages | T27, T45, T50, T64 | `Planned` |
 | MVP definition and sequencing | this map, [ADR-0017](adr/0017-windows-first-mvp-sequencing.md) | T07 | `Implemented` |
 | Consolidated open questions Q1–Q18 | gates and review packages | T14, T27, T45, T50 | `Planned` |
 | Risk register | gates and review packages | T14, T27, T45, T50, T64 | `Planned` |
@@ -392,6 +406,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0022](adr/0022-named-landmark-map-and-asymmetric-marker.md) | Named landmark map, pinned backend tables, and the asymmetric-marker gate | T12 | Accepted |
 | [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | T13 | Accepted |
 | [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | Retain the Windows tracker while the full M0 gate remains open | T14 | Accepted |
+| [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | T14, T15, T26, T27, T52, T55, T64 | Accepted |
 
 ---
 
@@ -400,7 +415,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | Phase | Tasks | What it flips in this map |
 |---|---|---|
 | 0 Foundation | T01–T08 | Foundation rows; this map; the guardrails |
-| 1 Feasibility (M0) | T09–T15 | Tracker backend and Windows capture rows |
+| 1 Feasibility (M0) | T09–T15 | Tracker backend, Windows capture, M0 harness and the renderer-facing contract audit; platform/tier evidence deferred to T52/T55/T26/T64 |
 | 2 Vertical slice (M1) | T16–T28 | Face rig, decal modes, framing, output gate, golden suite |
 | 3 Quality and editor (M2) | T29–T45 | Package, library, profiles, editor screens, matte, corpus |
 | 4 OBS and MVP | T46–T51 | Output manager, Spout2, alpha, OBS onboarding, MVP gate |

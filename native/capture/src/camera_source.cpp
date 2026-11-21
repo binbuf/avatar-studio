@@ -149,9 +149,9 @@ bool CameraSource::resolve_device() {
         device_name_ = devices.front().name;
         return true;
     }
-    const auto match = std::find_if(
-        devices.begin(), devices.end(),
-        [this](const CameraDevice& device) { return device.id == config_.device_id; });
+    const auto match =
+        std::find_if(devices.begin(), devices.end(),
+                     [this](const CameraDevice& device) { return device.id == config_.device_id; });
     if (match == devices.end()) {
         emit(CameraEventKind::no_camera, core::DiagnosticCode::cap_008,
              "configured device is not present: " + config_.device_id);
@@ -170,8 +170,8 @@ bool CameraSource::ensure_ring(const CameraMode& mode) {
             return active_ring_->capacity() > 0;
         }
     }
-    auto ring = std::make_unique<FrameRing>(mode.width, mode.height, mode.format,
-                                            config_.ring_capacity);
+    auto ring =
+        std::make_unique<FrameRing>(mode.width, mode.height, mode.format, config_.ring_capacity);
     if (ring->capacity() == 0) {
         return false;
     }
@@ -204,21 +204,18 @@ core::Status CameraSource::open_and_start() {
     if (candidates_.empty() || candidates_device_id_ != device_id_) {
         CameraCapabilities capabilities;
         const CameraFailure caps_failure = backend_.capabilities(device_id_, capabilities);
-        if (!caps_failure.ok() &&
-            (caps_failure.reason == CameraFailureReason::permission_denied ||
-             caps_failure.reason == CameraFailureReason::device_gone)) {
+        if (!caps_failure.ok() && (caps_failure.reason == CameraFailureReason::permission_denied ||
+                                   caps_failure.reason == CameraFailureReason::device_gone)) {
             // Do not keep probing a device the OS refused or that is gone.
             backend_.close();
             if (caps_failure.reason == CameraFailureReason::permission_denied) {
                 state_.store(CameraState::permission_denied);
                 emit(CameraEventKind::permission_denied, core::DiagnosticCode::cap_006,
                      caps_failure.message);
-                return core::Status::error(core::StatusCode::internal_error,
-                                           caps_failure.message);
+                return core::Status::error(core::StatusCode::internal_error, caps_failure.message);
             }
             state_.store(CameraState::device_lost);
-            emit(CameraEventKind::device_lost, core::DiagnosticCode::cap_001,
-                 caps_failure.message);
+            emit(CameraEventKind::device_lost, core::DiagnosticCode::cap_001, caps_failure.message);
             return core::Status::error(core::StatusCode::not_found, caps_failure.message);
         }
         candidates_ = select_camera_modes(capabilities, config_.preferences);
@@ -274,8 +271,7 @@ core::Status CameraSource::open_and_start() {
             case CameraFailureReason::device_lost:
             case CameraFailureReason::device_gone:
                 state_.store(CameraState::device_lost);
-                emit(CameraEventKind::device_lost, core::DiagnosticCode::cap_001,
-                     failure.message);
+                emit(CameraEventKind::device_lost, core::DiagnosticCode::cap_001, failure.message);
                 break;
             default:
                 if (state_.load() == CameraState::opening) {
@@ -288,8 +284,7 @@ core::Status CameraSource::open_and_start() {
             code = core::StatusCode::internal_error;
         }
         return core::Status::error(code,
-                                   failure.message.empty() ? "camera open failed"
-                                                           : failure.message,
+                                   failure.message.empty() ? "camera open failed" : failure.message,
                                    format_hresult(failure.hresult));
     }
 
@@ -341,10 +336,10 @@ core::Status CameraSource::open_and_start() {
                                                                  : start_failure.message,
                                    format_hresult(start_failure.hresult));
     }
-    watchdog_grace_until_.store(
-        now() + std::max(config_.startup_grace_ns,
-                         expected_interval_ns() * config_.watchdog_multiplier),
-        std::memory_order_release);
+    watchdog_grace_until_.store(now() +
+                                    std::max(config_.startup_grace_ns,
+                                             expected_interval_ns() * config_.watchdog_multiplier),
+                                std::memory_order_release);
     mode_start_ns_ = now();
     frames_at_mode_start_ = frames_published_.load(std::memory_order_relaxed);
     shortfall_checked_ = false;
@@ -458,11 +453,10 @@ void CameraSource::handle_sample(const CameraSample& sample) noexcept {
             continue;
         }
         const std::size_t rows = source_size / source_stride;
-        const std::size_t row_bytes =
-            std::min<std::size_t>(source_stride, destination_stride);
+        const std::size_t row_bytes = std::min<std::size_t>(source_stride, destination_stride);
         for (std::size_t row = 0; row < rows; ++row) {
-            std::memcpy(destination + row * destination_stride,
-                        source + row * source_stride, row_bytes);
+            std::memcpy(destination + row * destination_stride, source + row * source_stride,
+                        row_bytes);
         }
     }
     if (!copied) {
@@ -645,8 +639,7 @@ void CameraSource::check_shortfall(core::TimestampNs current) {
     const std::uint64_t delivered =
         frames_published_.load(std::memory_order_relaxed) - frames_at_mode_start_;
     const double actual = static_cast<double>(delivered) / elapsed_s;
-    const double threshold =
-        target * (static_cast<double>(config_.shortfall_percent) / 100.0);
+    const double threshold = target * (static_cast<double>(config_.shortfall_percent) / 100.0);
     if (target > 0.0 && actual < threshold) {
         const std::string detail = "delivered " + std::to_string(static_cast<int>(actual)) +
                                    " fps of " + std::to_string(static_cast<int>(target));
@@ -702,9 +695,9 @@ void CameraSource::maybe_reconnect(core::TimestampNs current) {
     if (!backend_.enumerate(devices).ok()) {
         return;
     }
-    const bool present = std::any_of(
-        devices.begin(), devices.end(),
-        [this](const CameraDevice& device) { return device.id == device_id_; });
+    const bool present =
+        std::any_of(devices.begin(), devices.end(),
+                    [this](const CameraDevice& device) { return device.id == device_id_; });
     if (!present) {
         return;
     }

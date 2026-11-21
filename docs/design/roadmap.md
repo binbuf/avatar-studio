@@ -50,12 +50,15 @@ latency?
 **Deliverables**
 
 - MediaPipe Face Landmarker built as a shared library behind the five-function C ABI, on Windows
-  (MSVC), macOS (universal), Linux (x86-64).
-- Native capture on all three platforms producing timestamped frames.
+  (MSVC), macOS (universal), Linux (x86-64). **Windows is delivered (T11); macOS/Linux are T52/T55
+  acceptance under ADR-0025.**
+- Native capture on all three platforms producing timestamped frames. **Windows is delivered (T10);
+  macOS/Linux are T52/T55.**
 - A headless harness: frames in, `TrackingResult` out, latency histogram written as JSON.
   Implemented in T13 as `avatar_m0` with a 2-minute CI mode and a 30-minute soak; the M0
-  thresholds are applied by `tests/gates/T14.ps1`.
-- Numbers on Reference and Minimum hardware, at 256² and 192² input.
+  thresholds are applied by `tests/gates/T14.ps1` and audited by `tests/gates/T15.ps1`.
+- Numbers on Reference and Minimum hardware, at 256² and 192² input. **T14 measured a host above
+  Reference; Reference/Minimum certification is T26/T64 evidence under ADR-0025.**
 
 **Exit criteria**
 
@@ -64,7 +67,7 @@ latency?
 | Inference p95 | ≤ 15 ms on Reference, ≤ 30 ms on Minimum |
 | Tracker runs 30 min without leak or drift | Required |
 | All three platforms build in CI from a clean checkout | Required for 1.0; the macOS/Linux real-backend rows are owned by T52/T55 and deferred from the Windows MVP gate by ADR-0025 |
-| Pose is stable enough to drive rotation without visible jitter | Subjective, recorded clip reviewed |
+| Pose is stable enough to drive rotation without visible jitter | Subjective, recorded clip reviewed. T14 used the measured repeatability series plus sampled frames (agent-assisted, not a human viewing verdict); rendered motion is re-judged at T27 |
 
 **Retires:** the largest risk in the project. If M0 fails, [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md)
 is superseded by the ONNX Runtime fallback before any UI work begins. That is a planned pivot, not a
@@ -79,7 +82,10 @@ criteria of T52/T55, Reference/Minimum tier measurements are T26/T64 evidence, a
 "swimming" is re-judged at T27 on rendered clips. No threshold was waived and ADR-0003 stands.
 [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records the original open-gate
 decision; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) records the
-scope replan and the review method behind it.
+scope replan and the review method behind it. T15 audited the deliverables and the renderer-facing
+contracts, corrected the implementation map and the realised-behaviour documents, and confirmed no
+blocker to starting M1. Its gap list and readiness statement are in the local
+`docs/progress/T15.md` workspace.
 
 ---
 

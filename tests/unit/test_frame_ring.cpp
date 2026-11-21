@@ -9,6 +9,7 @@
 
 namespace {
 
+using avatar::capture::ColorSpace;
 using avatar::capture::frame_content_hash;
 using avatar::capture::FrameRing;
 using avatar::capture::PixelFormat;
@@ -112,6 +113,22 @@ TEST_CASE(frame_ring_reset_clears_publication_state) {
     CHECK(after.has_value());
     CHECK(ring.publish(*after, 6, 6, false));
     CHECK(ring.latest_sequence() == 1);
+}
+
+TEST_CASE(frame_ring_defaults_colour_space_from_format) {
+    // A slot is published with a colour interpretation the renderer can trust
+    // even before a source overrides it. CameraSource replaces this default with
+    // the negotiated sample's value; the ring must not leave it at an unrelated
+    // default such as sRGB for an NV12 plane.
+    FrameRing nv12(64, 48, PixelFormat::nv12, 2);
+    auto nv12_write = nv12.begin_write();
+    CHECK(nv12_write.has_value());
+    CHECK(nv12_write->frame().color_space == ColorSpace::bt709_limited);
+
+    FrameRing bgra(64, 48, PixelFormat::bgra8, 2);
+    auto bgra_write = bgra.begin_write();
+    CHECK(bgra_write.has_value());
+    CHECK(bgra_write->frame().color_space == ColorSpace::srgb);
 }
 
 TEST_CASE(frame_ring_rejects_an_unsupported_layout) {

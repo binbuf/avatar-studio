@@ -226,8 +226,10 @@ if ($cameraDesign -ne '') {
 }
 $map = Read-Required 'docs/design/implementation-map.md'
 if ($map -ne '') {
-    if ($map -notmatch 'current as of T10') {
-        Add-Failure 'implementation-map.md is not current as of T10'
+    if ($map -notmatch 'current as of T(\d{2,3})') {
+        Add-Failure 'implementation-map.md has no "current as of TNN" marker'
+    } elseif ([int]$Matches[1] -lt 10) {
+        Add-Failure "implementation-map.md is stale (current as of T$($Matches[1]), expected T10 or later)"
     }
     if ($map -notmatch '(?m)^\|\s*\[ADR-0020\]\(adr/0020-capture-state-machine-and-mf-backend\.md\)[^\r\n]*\|\s*Accepted\s*\|') {
         Add-Failure 'implementation-map.md does not list ADR-0020 as Accepted'

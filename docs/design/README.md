@@ -9,8 +9,11 @@ checkout by the T08 audit (ADR-0018), the real Windows CPU tracker is implemente
 named landmark map with its asymmetric-marker gate is implemented (T12), and the headless M0
 harness with its 30-minute soak is implemented (T13). Rendering, the editor, output and the
 macOS/Linux capture backends remain `Planned` unless explicitly marked otherwise.
-T14 retains the Windows tracker but leaves M0 open pending platform-build and pose-review
-evidence; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) records the gate boundary.
+T14 retains the Windows tracker and measures M0; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
+closes M0 for the Windows 11 MVP and re-homes real macOS/Linux backend evidence (T52/T55),
+Reference/Minimum tier measurement (T26/T64) and rendered motion judgment (T27). T15 audited the
+M0 deliverables and the contracts the renderer consumes; [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md)
+remains as the original open-gate decision history.
 **Last updated:** 2026-11-21
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
@@ -73,8 +76,9 @@ deterministic capture and tracking sources with their golden comparator (T04), t
 harness and local baseline (T05), the three-platform CI matrix with formatting and licence gates
 (T06), the tracker C ABI with its scripted contract harness (T09), the Windows Media Foundation
 capture backend with its platform-neutral state machine (T10), the real Windows CPU tracker (T11),
-the named landmark map with profile correspondences (T12), and the headless M0 harness with its
-30-minute soak (T13). Every avatar capability — the face
+the named landmark map with profile correspondences (T12), the headless M0 harness with its
+30-minute soak (T13), and the audited Windows-scoped M0 gate (T14/T15, ADR-0025). Every avatar
+capability — the face
 rig, the decal modes, the editor, the output manager and the OS virtual cameras — is `Planned`. The MVP is a Windows 11
 streamer running OBS over Spout2 or window capture; macOS/Linux parity and the OS virtual cameras
 remain 1.0 requirements and are sequenced after it by

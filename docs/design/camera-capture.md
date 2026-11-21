@@ -1,7 +1,7 @@
 # Camera Capture
 
-**Status:** proposal; the Windows Media Foundation backend is implemented (T10), macOS/Linux are
-planned · **Last updated:** 2026-11-20
+**Status:** proposal; the Windows Media Foundation backend is implemented (T10) and the
+renderer-facing capture contract is audited (T15), macOS/Linux are planned · **Last updated:** 2026-11-21
 **Decision records:** [ADR-0002](adr/0002-native-camera-capture.md) (native capture),
 [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) (state machine and backend seam)
 
@@ -56,6 +56,9 @@ Rules:
   which keeps lifetime trivial and bounds memory to `4 × frame size` (~33 MB at 1080p BGRA).
 - `timestamp_ns` is the camera's own timestamp mapped onto `FrameClock` when the API provides one;
   `arrival_ns` is always available. Latency instrumentation reports both.
+- `FrameRing` does not reorder or reject timestamps. A source must publish non-decreasing
+  `timestamp_ns` values; `CameraSource` guarantees that mapping and re-anchors on a regression
+  (`CAP-005`). T24's timestamp-paired ring may rely on this ordering, not on the ring sorting for it.
 
 The T04 implementation is `native/capture/include/avatar/capture/frame_ring.h`. A `FrameRing` owns
 `capacity` (default 4) fixed slots. The producer reserves a slot that is neither the newest nor
@@ -159,7 +162,7 @@ What is true today:
 
 #### Manual smoke checklist (real camera or OBS virtual camera)
 
-Run after a change to capture, and before the M0 gate:
+Run after a change to capture, and before the M1 gate and any release gate:
 
 1. Close applications that may hold the camera (Teams, Zoom, OBS, browser tabs).
 2. `avatar_list_cameras --list-cameras --modes`: the device appears with its symbolic-link id and
@@ -312,8 +315,9 @@ frames remain readable, and the four-slot ring ages them out. A lease-safe reset
 `FrameRing`) is a follow-up for T24/T41.
 
 A camera that advertises a mode it cannot sustain is demoted, but demotion cannot fix an
-exposure-limited low-light camera. That case is visible (`CAP-004`/`CAP-003`) rather than silent; the
-M1 device survey (T13) measures how often it happens.
+exposure-limited low-light camera. That case is visible (`CAP-004`/`CAP-003`) rather than silent.
+The webcam device survey that would measure how often it happens is not yet scheduled; T15 records
+that as a gap rather than borrowing an unrelated task id.
 
 ## Performance targets
 

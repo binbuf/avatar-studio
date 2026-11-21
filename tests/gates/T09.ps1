@@ -203,8 +203,10 @@ if ($trackingDesign -ne '') {
 }
 $map = Read-Required 'docs/design/implementation-map.md'
 if ($map -ne '') {
-    if ($map -notmatch 'current as of T09') {
-        Add-Failure 'implementation-map.md is not current as of T09'
+    if ($map -notmatch 'current as of T(\d{2,3})') {
+        Add-Failure 'implementation-map.md has no "current as of TNN" marker'
+    } elseif ([int]$Matches[1] -lt 9) {
+        Add-Failure "implementation-map.md is stale (current as of T$($Matches[1]), expected T09 or later)"
     }
     if ($map -notmatch '(?m)^\|\s*\[ADR-0019\]\(adr/0019-tracker-c-abi-v1\.md\)[^\r\n]*\|\s*Accepted\s*\|') {
         Add-Failure 'implementation-map.md does not list ADR-0019 as Accepted'

@@ -22,11 +22,11 @@
 
 #include <windows.h>
 
-#include <objbase.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <objbase.h>
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
@@ -77,8 +77,8 @@ std::wstring to_wide(std::string_view text) {
     if (text.empty()) {
         return {};
     }
-    const int size = MultiByteToWideChar(CP_UTF8, 0, text.data(),
-                                         static_cast<int>(text.size()), nullptr, 0);
+    const int size =
+        MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
     if (size <= 0) {
         return {};
     }
@@ -163,8 +163,7 @@ bool format_for_subtype(const GUID& subtype, PixelFormat& format) {
         format = PixelFormat::mjpeg;
         return true;
     }
-    if (IsEqualGUID(subtype, MFVideoFormat_RGB32) ||
-        IsEqualGUID(subtype, MFVideoFormat_ARGB32)) {
+    if (IsEqualGUID(subtype, MFVideoFormat_RGB32) || IsEqualGUID(subtype, MFVideoFormat_ARGB32)) {
         format = PixelFormat::bgra8;
         return true;
     }
@@ -246,9 +245,8 @@ class MfDeviceBackend;
 /// The async source-reader callback. It holds a raw owner pointer (not a COM
 /// reference) so the backend can detach it before releasing the reader.
 class SourceReaderCallback final
-    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<
-                                              Microsoft::WRL::ClassicCom>,
-                                          IMFSourceReaderCallback> {
+    : public Microsoft::WRL::RuntimeClass<
+          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMFSourceReaderCallback> {
 public:
     explicit SourceReaderCallback(MfDeviceBackend* owner) noexcept : owner_(owner) {}
 
@@ -291,8 +289,7 @@ public:
                                      MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
         if (FAILED(result)) {
             return core::Status::error(core::StatusCode::internal_error,
-                                       "cannot configure device enumeration",
-                                       hresult_text(result));
+                                       "cannot configure device enumeration", hresult_text(result));
         }
 
         DeviceArray array;
@@ -369,7 +366,7 @@ public:
             BOOL selected = FALSE;
             ComPtr<IMFStreamDescriptor> stream;
             if (FAILED(descriptor->GetStreamDescriptorByIndex(stream_index, &selected,
-                                                             stream.GetAddressOf()))) {
+                                                              stream.GetAddressOf()))) {
                 continue;
             }
             ComPtr<IMFMediaTypeHandler> handler;
@@ -462,8 +459,7 @@ public:
         type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
         type->SetGUID(MF_MT_SUBTYPE, subtype_for(mode.format));
         MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, mode.width, mode.height);
-        MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, mode.fps_numerator,
-                            mode.fps_denominator);
+        MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, mode.fps_numerator, mode.fps_denominator);
         MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
         type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
 
@@ -494,8 +490,7 @@ public:
 
         UINT32 raw_stride = 0;
         std::uint32_t stride = default_stride(actual_mode);
-        if (actual != nullptr &&
-            SUCCEEDED(actual->GetUINT32(MF_MT_DEFAULT_STRIDE, &raw_stride))) {
+        if (actual != nullptr && SUCCEEDED(actual->GetUINT32(MF_MT_DEFAULT_STRIDE, &raw_stride))) {
             const auto signed_stride = static_cast<std::int32_t>(raw_stride);
             stride = static_cast<std::uint32_t>(signed_stride < 0 ? -signed_stride : signed_stride);
         }
@@ -504,8 +499,8 @@ public:
         }
 
         mode_ = actual_mode;
-        color_space_ = color_space_from_media_type(actual.Get(), actual_mode.format,
-                                                   actual_mode.height);
+        color_space_ =
+            color_space_from_media_type(actual.Get(), actual_mode.format, actual_mode.height);
         stride_ = stride;
         reader_ = std::move(reader);
         source_ = std::move(source);
@@ -741,8 +736,8 @@ private:
         }
         sample.strides[0] = stride;
         sample.plane_offsets[0] = 0;
-        sample.plane_sizes[0] = std::min<std::size_t>(static_cast<std::size_t>(stride) * height,
-                                                      length);
+        sample.plane_sizes[0] =
+            std::min<std::size_t>(static_cast<std::size_t>(stride) * height, length);
         if (mode_.format == PixelFormat::nv12) {
             const std::size_t luma = static_cast<std::size_t>(stride) * height;
             if (length > luma) {

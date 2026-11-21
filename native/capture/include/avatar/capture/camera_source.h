@@ -109,8 +109,7 @@ using CaptureLatencyHistogram = core::LatencyHistogram<2048, 1'000>;
 /// alive; stale frames age out of the four-slot ring instead.
 class CameraSource final : public ICameraSource {
 public:
-    CameraSource(ICameraDeviceBackend& backend, core::FrameClock& clock,
-                 CameraConfig config = {});
+    CameraSource(ICameraDeviceBackend& backend, core::FrameClock& clock, CameraConfig config = {});
     ~CameraSource() override;
 
     CameraSource(const CameraSource&) = delete;

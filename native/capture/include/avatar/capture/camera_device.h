@@ -102,8 +102,8 @@ enum class CameraBackendErrorKind : std::uint8_t {
 /// `produce()` call.
 struct CameraBackendCallbacks {
     void (*on_sample)(void* context, const CameraSample& sample) noexcept = nullptr;
-    void (*on_error)(void* context, CameraBackendErrorKind kind, std::int32_t hresult) noexcept =
-        nullptr;
+    void (*on_error)(void* context, CameraBackendErrorKind kind,
+                     std::int32_t hresult) noexcept = nullptr;
     void* context = nullptr;
 };
 
@@ -182,7 +182,8 @@ public:
 /// Exact preferred modes come first, in preference order. When none match, the
 /// closest advertised mode per supported format is returned, so the caller can
 /// still open something and report the step-down (`CAP-003`).
-[[nodiscard]] std::vector<CameraMode> select_camera_modes(
-    const CameraCapabilities& capabilities, const std::vector<CameraMode>& preferences);
+[[nodiscard]] std::vector<CameraMode>
+select_camera_modes(const CameraCapabilities& capabilities,
+                    const std::vector<CameraMode>& preferences);
 
 } // namespace avatar::capture

@@ -30,11 +30,11 @@
 namespace {
 
 using avatar::capture::CameraCapabilities;
+using avatar::capture::CameraConfig;
 using avatar::capture::CameraDevice;
 using avatar::capture::CameraEvent;
 using avatar::capture::CameraMode;
 using avatar::capture::CameraSource;
-using avatar::capture::CameraConfig;
 using avatar::capture::ColorSpace;
 using avatar::capture::ICameraDeviceBackend;
 using avatar::capture::PixelFormat;
@@ -66,8 +66,8 @@ std::string format_fps(const CameraMode& mode) {
 }
 
 std::string format_mode(const CameraMode& mode) {
-    return std::to_string(mode.width) + "x" + std::to_string(mode.height) + "@" +
-           format_fps(mode) + " " + avatar::capture::pixel_format_name(mode.format);
+    return std::to_string(mode.width) + "x" + std::to_string(mode.height) + "@" + format_fps(mode) +
+           " " + avatar::capture::pixel_format_name(mode.format);
 }
 
 std::string format_us(std::uint64_t ns) {
@@ -100,13 +100,12 @@ std::string format_event(const CameraEvent& event) {
 
 void print_usage() {
     write_line(stdout, "usage: avatar_list_cameras --list-cameras [--modes] [--device <id>]");
-    write_line(stdout,
-               "       avatar_list_cameras --capture <seconds> [--device <id>] "
-               "[--mode WxH@FPS] [--format nv12|yuy2|bgra8]");
+    write_line(stdout, "       avatar_list_cameras --capture <seconds> [--device <id>] "
+                       "[--mode WxH@FPS] [--format nv12|yuy2|bgra8]");
 }
 
-bool capture_smoke(ICameraDeviceBackend& backend, const std::string& device_id,
-                   unsigned seconds, const CameraMode& forced_mode) {
+bool capture_smoke(ICameraDeviceBackend& backend, const std::string& device_id, unsigned seconds,
+                   const CameraMode& forced_mode) {
     avatar::core::SteadyTimeSource frame_time;
     avatar::core::FrameClock clock(frame_time);
     avatar::core::SteadyTimeSource elapsed_time;
@@ -172,9 +171,8 @@ bool capture_smoke(ICameraDeviceBackend& backend, const std::string& device_id,
     write_line(stdout, "watchdog restarts: " + std::to_string(source.restarts()));
     write_line(stdout, "reconnects: " + std::to_string(source.reconnects()));
     write_line(stdout, "timestamp resets: " + std::to_string(source.timestamp_resets()));
-    write_line(stdout, "publish latency p50=" + format_us(latency.p50_ns()) +
-                           " p95=" + format_us(latency.p95_ns()) +
-                           " max=" + format_us(latency.max_ns()) +
+    write_line(stdout, "publish latency p50=" + format_us(latency.p50_ns()) + " p95=" +
+                           format_us(latency.p95_ns()) + " max=" + format_us(latency.max_ns()) +
                            " samples=" + std::to_string(latency.samples()));
     write_line(stdout, std::string("timestamps monotonic: ") + (monotonic ? "yes" : "NO"));
     write_line(stdout, std::string("frame shape matches: ") + (shape_ok ? "yes" : "NO"));
