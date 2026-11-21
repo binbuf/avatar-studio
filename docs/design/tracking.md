@@ -321,7 +321,7 @@ landmark tensor and uses a **128x128** detector. Benchmarks report all three res
   spaces must be converted to RGBA/BGRA before calling this ABI. The T11 recorder explicitly checks
   BT.601 and records the real 640x480 NV12 camera frames.
 - Pose is the upstream metric transform converted to a normalized quaternion and metres; it is
-  not camera-calibrated rig math. Pose quality and filtering remain T18.
+  not camera-calibrated rig math. Pose filtering and synthetic accuracy tests are implemented in T18; real-corpus quality remains T26/T27.
 - Tracking uses reduced pixels; eventual decal sampling still uses the full-resolution source.
   Lens distortion assumptions remain in [face-compositing](face-compositing.md#lens-distortion).
 
@@ -342,7 +342,8 @@ not a capability implied by this geometric check. Output continues to require `f
 
 ## Filtering and motion
 
-**Planned for T18.** T11 returns upstream pose and landmarks without this app-side filter stack.
+**Implemented in T18** in `native/rig`; T11 continues to return upstream pose and landmarks.
+The engine integration remains T24. See [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 Raw landmarks and pose jitter at rest and lag under motion. The filter stack:
 
@@ -360,6 +361,34 @@ notice jitter, in motion they notice lag. A fixed filter forces a single bad com
 
 **Prediction is bounded on purpose.** Extrapolating a head turn through a 200 ms tracking gap
 produces overshoot that looks worse than a freeze. Clamp, then blank.
+
+T18 uses independent unwrapped Euler channels in `Rz(roll) * Ry(yaw) * Rx(pitch)`
+order, measured in **degrees**. For each One Euro channel, raw derivative is
+`(x-x_previous)/dt`, derivative cutoff is **1 Hz**, and signal cutoff is
+`min_cutoff + beta*abs(filtered_derivative)`. Rotation has min cutoff **1 Hz**,
+beta **0.02 per degree/s**; translation has min cutoff **2 Hz**, beta **0.02 per m/s**.
+Both use `alpha = 1/(1+1/(2*pi*cutoff*dt))`. Filter dt is clamped to **[1 us,50 ms]**;
+initial state is the first measured sample. A rotation channel holds when its
+filtered increment is below **0.15 degrees** and derivative below **3 degrees/s**.
+Euler angle unwrapping avoids the ±180-degree discontinuity; ±90-degree yaw
+singularities are outside the frontal-face operating range.
+
+Pose rejection compares quaternion distance against the prediction (**35 degrees**)
+or translation distance (**0.25 m**). Three rejected poses within **5 degrees** of
+each other, consecutively, allow a new baseline through the same filters. An invalid
+input interrupts that sequence. Render prediction uses velocity between filtered
+samples divided by the actual source interval, with a horizon clamped to **[0,50 ms]**.
+The filter dt cap must not amplify prediction velocity after a long gap. It does
+not predict H while H is solving successfully. The output pose is the inverse
+camera-from-head transform; T19/T24 must apply the intended rotation convention.
+
+A successful pose/H/region sample starts the **150 ms** hold. Invalid face/features,
+rejected samples, failed solves, and repeated/older timestamps retain that deadline.
+Through exactly 150 ms, the last state can bridge a dropped frame or blink. After
+150 ms, confidence is zero and `features_valid=false`; internal pose never decays
+to neutral. Configure/reset is required for an epoch change. Reacquisition retains
+the filters with the 50 ms dt cap; a separate fixed-duration 150 ms recovery blend
+and output/UI transitions are not implemented in this core task.
 
 ### Tracking rate vs render rate
 
@@ -393,9 +422,9 @@ and backend errors; the app output gate, recovery blending and UI diagnostics re
 
 | Situation | Detection | Behaviour |
 |---|---|---|
-| No face in frame | Presence score below threshold | `valid = false`; output blanks; UI shows a hint |
-| Face leaves and returns | Re-detection | Re-acquire without a pose jump: blend from the last pose over 150 ms. Output is blank during the gap |
-| Missing eyes or mouth | Landmark subset incomplete | `features_valid = false`; output blanks. Sunglasses, a hand, or a profile view is the usual cause |
+| No face in frame | Presence score below threshold | Tracker `valid = false`; rig bridges at most 150 ms from the last complete sample, then output blanks; UI shows a hint |
+| Face leaves and returns | Re-detection | T18 retains filter state and caps the reacquisition dt at 50 ms. A fixed 150 ms recovery blend remains T24 integration work; output is blank after the loss hold |
+| Missing eyes or mouth | Landmark subset incomplete | Tracker `features_valid = false`; rig bridges at most 150 ms, then its output validity clears. Sunglasses, a hand, or a profile view is the usual cause |
 | Tracking stalls | No result for > 150 ms | Mark invalid; output blanks; keep rendering the preview |
 | Tracker crashes | C-ABI call returns error | Disable tracking; output blanks (never a static face); surface a support code |
 | Camera format change | Frame dimensions change | Reconfigure input; do not assume a fixed input size |

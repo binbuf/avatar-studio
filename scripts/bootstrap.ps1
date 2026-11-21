@@ -332,6 +332,15 @@ Write-Host "bootstrap: pinned dependencies in $toolsDir"
 if ($Fast) {
     Write-Host "bootstrap: fast profile (all pinned dependencies)"
 }
+Install-Archive -Dep ([pscustomobject]@{
+    Name = 'eigen'
+    Version = '3.4.0'
+    Url = 'https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip'
+    Sha256 = 'EBA3F3D414D2F8CBA2919C78EC6DAAB08FC71BA2BA4AE502B7E5D4D99FC02CDA'
+    File = 'eigen-3.4.0.zip'
+    Sentinel = 'Eigen/Core'
+    StripRoot = $true
+})
 foreach ($dep in $deps) {
     Install-Dependency -Dep $dep
 }

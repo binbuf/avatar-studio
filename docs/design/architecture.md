@@ -137,11 +137,11 @@ a camera, or a GPU.
 | Clean-checkout audit and implementation-map gate | `tests/gates/T08.ps1`, `docs/design/implementation-map.md` | Implemented (T08) |
 | Windows Media Foundation capture | `native/capture/windows/` | Implemented (T10); macOS/Linux are T52/T55 |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Implemented on Windows CPU (T11); app wiring remains T16 |
-| Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC is T18 |
+| Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC implemented in native/rig (T18) |
 | M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 Windows-scoped closure is T14/T15 ([ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)) |
 | Godot runtime: one avatar viewport, preview copy, 60 Hz pacing, C++ HUD | `native/gdextension/`, `native/core/`, `app/scenes/` | Implemented (T16) |
 | Runtime GLB import: rigid bind-pose scene, units/axes, model check, decal arrays | `native/gdextension/`, `app/tests/` | Implemented (T17) |
-| FaceRig math | `native/rig/` | Planned (T18) |
+| FaceRig estimator, filters, anchors and loss hold | `native/rig/` | Implemented (T18); engine integration remains T24 |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
 `ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. T10 added device
@@ -247,25 +247,22 @@ Detail: [`tracking.md`](tracking.md).
 
 ### Face rig
 
-Pure math, no I/O, no GPU. Consumes `TrackingResult` and avatar calibration; produces the
-per-frame uniforms for the compositor.
+Implemented by `avatar::rig::FaceRig` in `native/rig/include/avatar/rig/face_rig.h`.
+Pure math, no I/O, no GPU. Consumes `TrackingResult`, a named `ProfileLandmarks`
+subset and the render timestamp. An empty profile bootstraps canonical neutral.
+Eigen is private to `native/rig/src`; all public matrices are row-major float arrays.
 
-```cpp
-struct FaceRigOutput {
-    uint64_t  source_timestamp_ns;
-    Transform3D head_from_camera;    // full pose; 1.0 applies rotation only, to the head region
-    Mat3      canonical_to_image;    // homography: face-plane UV -> camera image UV
-    std::array<RegionAnchor, 3> regions;  // eye_l, eye_r, mouth (canonical-space offsets)
-    float     confidence;            // 0 = invalid; the output gate blanks
-    bool      features_valid;        // both eyes and the mouth are tracked
-};
-
-class FaceRig {
-public:
-    void    configure(const FaceCalibration&);
-    FaceRigOutput update(const TrackingResult&, uint64_t render_time_ns);
-};
-```
+`FaceRigOutput` contains `source_timestamp_ns`, `head_from_camera` (4x4 inverse of
+filtered/predicted camera-from-head pose, metres), `canonical_to_image` (3x3 sampling
+homography), three absolute canonical region centres (`eye_l`, `eye_r`, `mouth`),
+confidence and `features_valid`. `inlier_count`, `profile_subset` and `solve_failed`
+provide pure-data diagnostics. `configure(profile)` and `reset()` clear temporal
+state; `update(result, render_time_ns)` consumes only newer source timestamps;
+`sample(render_time_ns)` predicts between tracker updates without refreshing loss.
+Only complete accepted samples extend the 150 ms hold; after it the output gate
+must blank. No decay to neutral occurs. Head-region rotation, avatar calibration,
+framing and GDExtension binding remain T19/T22/T24. Exact constants and transform
+conventions are fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 The math is the heart of the product: [`face-compositing.md`](face-compositing.md).
 
@@ -447,7 +444,7 @@ App-side budget at 1080p60 on the reference hardware:
 |---|---|---|
 | Capture callback → ring publish | 1 ms | Format conversion deferred to GPU |
 | Tracking inference (CPU, 480×480) | 8–12 ms | Dominant cost; runs on its own thread, overlapped |
-| Pose filter + rig | < 0.5 ms | Fixed-rate math |
+| Pose filter + rig | < 0.1 ms mean/update | T18 local all-inlier/outlier CPU gate |
 | Render (scene + decals) | 6 ms | 16.6 ms frame budget leaves headroom |
 | Async readback submit | 0.3 ms | Submission only; completion is pipelined |
 | Readback completion → transport | 2–4 ms | Includes one-frame queue depth |

@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T17 (runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
+**Status:** current as of T18 (pure FaceRig math, numerical tests and CPU gate implemented; runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -74,6 +74,15 @@ frames the app camera. `app/tests/model_import.gd` imports the avocado and track
 result, `AVT-102`, the measured import time/memory and the design documents. Decals, head-region
 deformation, framing and package loading remain T19/T21/T22/T29.
 
+T18 implements `avatar::rig::FaceRig`: named stable correspondences, normalised DLT,
+Gauss–Newton and deterministic RANSAC, region centroids through H inverse, One Euro
+pose channels, deadband, bounded prediction, source timestamps and the 150 ms loss
+hold. The public API uses plain float arrays and private double-precision Eigen
+math. `avatar_rig_unit` compares synthetic ground truth and failure paths;
+`avatar_rig_perf` asserts the local <0.1 ms mean budget for normal/outlier updates.
+`tests/gates/T18.ps1` runs both even in fast task verification. Shaders, head-region
+application, engine wiring and transport blanking remain T19–T24.
+
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
 licence and design-link checks, and the performance harness against the local baseline all passed.
@@ -109,6 +118,7 @@ foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
 | Tracker seam: `ITrackingBackend`, versioned five-function C ABI, `ScriptedTracker` contract harness, shared latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
 | Windows capture backend: `CameraSource`, `ICameraDeviceBackend`, async Media Foundation reader, `--list-cameras`/`--capture` smoke | `native/capture/`, `native/capture/windows/` | T10 | `Implemented` |
 | Real Windows CPU tracker: pinned MediaPipe DLL, model integrity, five-export check, recorded-camera benchmark | `native/tracking/mediapipe/`, `scripts/build-tracker.ps1` | T11 | `Implemented` |
+| Pure FaceRig core and synthetic numerical/local CPU gates | `native/rig/`, `tests/unit/test_face_rig.cpp`, `tests/performance/bench_face_rig.cpp` | T18 | `Implemented` |
 | Golden comparator and replay fixtures | `tests/tools/golden_compare/`, `tests/fixtures/replay/` | T04 | `Implemented` |
 | Performance harness, hardware fingerprint, local baseline, result schema | `tests/performance/` | T05 | `Implemented` |
 | CI matrix, pinned clang-format/clang-tidy, licence manifest gate, diagnostics source scan | `.github/workflows/`, `scripts/`, `native/licenses.json` | T06 | `Implemented` |
@@ -130,7 +140,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Real tracker builds on macOS/Linux | `native/tracking/mediapipe/` | T52, T55 |
 | macOS AVFoundation capture | `native/capture/macos/` | T52 |
 | Linux V4L2/PipeWire capture | `native/capture/linux/` | T55 |
-| FaceRig math: pose filter, face frame, homography, head region, framing | `native/rig/` | T18, T19, T22 |
+| FaceRig head-region deformation and avatar framing (core estimator exists) | `native/rig/` | T19, T22 |
 | Avatar package load/save/validate/migrate, anchors, presets | `native/avatar/` | T29, T32 |
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
@@ -140,7 +150,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
 | Bundled CC0 examples and provenance manifests | `examples/`, `assets/models/` (one unmanifested dev model exists) | T43a, T60 |
-| Installers, signing, notarisation, `NOTICE` | `installer/`, `NOTICE` | T57, T59, T60 |
+| Installers, signing, notarisation, full product notices (Eigen notice exists) | `installer/`, `NOTICE` | T57, T59, T60 |
 
 The **MVP** (Windows 11 + OBS, per [ADR-0017](adr/0017-windows-first-mvp-sequencing.md)) needs the
 rows owned by T11–T50. The Windows capture row (T10) now exists; the rest do not.
@@ -179,7 +189,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — tracking (`TrackingResult`, scripted tracker) | `native/tracking/` | T04 | `Implemented` |
 | Subsystem contract — tracking backend (`ITrackingBackend`, C ABI) | `native/tracking/` | T09 | `Implemented` |
 | Subsystem contract — real Windows tracker backend | `native/tracking/mediapipe/` | T11 | `Implemented` |
-| Subsystem contract — face rig | `native/rig/` | T18, T19, T22 | `Planned` |
+| Subsystem contract — pure FaceRig output, estimator, filtering, loss hold | `native/rig/` | T18 | `Implemented` |
+| Subsystem contract — head-region deformation and framing | `native/rig/` | T19, T22 | `Planned` |
 | Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
@@ -194,7 +205,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
 | Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T41, T46, T58 | `Planned` |
 | Repository layout: foundation subtree | `native/`, `app/`, `tests/`, `scripts/` | T01–T07 | `Implemented` |
-| Repository layout: `rig/`, `avatar/`, `output/`, `platform/`, `models/`, `examples/` | see the missing-component table above | T10–T57 | `Planned` |
+| Repository layout: remaining `avatar/`, `output/`, `platform/`, `models/`, `examples/` | see the missing-component table above | T10–T57 | `Planned` |
 | User data (delegated to `user-data.md`) | `native/avatar/` | T30, T31, T42 | `Planned` |
 | Build and distribution: local build, pinned dependencies | `scripts/bootstrap.*`, `CMakeLists.txt` | T01, T06 | `Implemented` |
 | Build and distribution: three-platform build in CI | `.github/workflows/` | T06 | `Implemented` |
@@ -209,8 +220,9 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 
 | Section | Owning module | Tasks | Status |
 |---|---|---|---|
-| Coordinate spaces: canonical face space and face-frame estimation | `native/rig/` | T18 | `Planned` |
-| Region anchors | `native/rig/`, `native/avatar/` | T21, T32, T34 | `Planned` |
+| Coordinate spaces: canonical face space and face-frame estimation | `native/rig/`, `native/tracking/` | T18 | `Implemented` |
+| Region centroid tracking, inverse H, filtering and clamp | `native/rig/` | T18 | `Implemented` |
+| Avatar region shape authoring and shader consumption | `native/avatar/`, `app/` | T21, T32, T34 | `Planned` |
 | Head motion and placement: rotation scope (node/cut) | `native/rig/`, `app/` | T19 | `Planned` |
 | Head motion and placement: presentation and framing | `native/rig/`, `app/` | T22 | `Planned` |
 | Projection mode `flat` | `app/shaders/` | T20 | `Planned` |
@@ -233,8 +245,10 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Landmark map, asymmetric marker, profile correspondences | `native/tracking/` | T12 | `Implemented` |
 | MediaPipe Face Landmarker Windows CPU backend and pinned model | `native/tracking/mediapipe/`, `.tools/tracker-sdk/` | T11 | `Implemented` |
 | Worker, letterbox/unprojection, geometric confidence and feature validity | `native/tracking/mediapipe/` | T11 | `Implemented` |
-| Reprojection/pose confidence and real-corpus occlusion validation | `native/tracking/` | T18 | `Planned` |
-| Filtering, motion model, tracking rate vs render rate | `native/rig/` | T18, T24 | `Planned` |
+| Reprojection consensus confidence and synthetic pose validation | `native/rig/`, `tests/unit/test_face_rig.cpp` | T18 | `Implemented` |
+| Real-corpus reprojection and occlusion quality validation | `native/tracking/`, `tests/` | T26, T27 | `Planned` |
+| Pose filtering, prediction, timestamp guard and 150 ms loss hold | `native/rig/` | T18 | `Implemented` |
+| Tracking/render integration, source-image pairing and recovery/output transitions | `native/gdextension/`, `app/` | T24 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Planned` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x or the pinned backend cannot be built reproducibly) |
@@ -418,7 +432,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0005](adr/0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | T46, T53, T57 | Proposed |
 | [ADR-0006](adr/0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | T29 | Proposed |
 | [ADR-0007](adr/0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | T43a, T60 | Proposed |
-| [ADR-0008](adr/0008-eigen-for-rig-math.md) | Eigen for native rig math, confined to `native/rig/` | T18 | Proposed |
+| [ADR-0008](adr/0008-eigen-for-rig-math.md) | Eigen for native rig math, confined to `native/rig/` | T18 | Accepted |
 | [ADR-0009](adr/0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | T19 | Proposed |
 | [ADR-0010](adr/0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | T23 | Proposed |
 | [ADR-0011](adr/0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | T01, T06 | Accepted |
@@ -438,6 +452,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | T14, T15, T26, T27, T52, T55, T64 | Accepted |
 | [ADR-0026](adr/0026-fixed-60hz-pacing-and-one-viewport-preview.md) | Fixed 60 Hz pacing, one viewport, and a preview copy | T16, T26, T46 | Accepted |
 | [ADR-0027](adr/0027-runtime-glb-import.md) | Runtime GLB import builds a rigid bind-pose scene from GLTFState | T17, T19, T21 | Accepted |
+| [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) | FaceRig estimation and temporal contract | T18, T19, T24 | Accepted |
 
 ---
 

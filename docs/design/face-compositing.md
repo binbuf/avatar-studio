@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** core math implemented (T18); rendering and editor planned · **Last updated:** 2026-11-21
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -85,6 +85,39 @@ absolute scale, depends on the tracker's canonical head model, and is noisier th
 because it must resolve depth. The design uses the 3D pose for rotation and the 2D homography for
 sampling. They are complementary, and both are available from the same result.
 
+### Implemented core math (T18)
+
+`native/rig/include/avatar/rig/face_rig.h` implements the frame and temporal math;
+[ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) fixes the downstream contract.
+T12's `LandmarkMap`, `CanonicalFaceFrame` and `ProfileLandmarks` remain the source of
+names and neutral axes. An empty profile bootstraps from the first usable frame
+with camera aspect correction; an explicit profile uses its remaining named subset.
+No profile is silently replaced when too few correspondences remain.
+
+The solve excludes iris and upper/lower lip centres. It uses double precision,
+Hartley normalisation (mean distance sqrt(2)), SVD DLT and up to three Gauss–Newton
+iterations over inlier reprojection residuals. Four-point RANSAC has a deterministic
+seed, Euclidean threshold **0.008 normalised image units**, at least **8 inliers**
+and **60% consensus**, and a 99.9% adaptive sampling target capped at **48** trials.
+Minimal hypotheses use pivoted LU on the normalised DLT equations with h33=1;
+the final consensus uses SVD. Collinear/degenerate configurations and homographies
+with a pole through `u=[-1.5,1.5], v=[-2,1.5]` fail instead of producing uniforms.
+
+A failed solve retains the last successful source timestamp and halves confidence.
+Its fallback is `H_last + dH/dt * min(age,0.050) * exp(-age/0.050)`; fallback is
+used only when finite, pole-free and displaced by at most 0.008 at the canonical
+envelope corners, otherwise H_last is held. Neither failures nor duplicate/older
+input timestamps refresh the 150 ms hold. `solve_failed` and `profile_subset`
+allow the engine adapter to surface `RIG-002`/`RIG-003` without I/O in the math core.
+
+H always samples the unmirrored **accepted source image**. Pose prediction never
+warps a valid H forward in time. `head_from_camera` is the row-major **inverse**
+of the filtered/predicted camera-from-head tracker pose, in metres. Both matrices
+multiply column vectors and are converted to float only at the output boundary.
+The future head-region adapter must invert this transform when it needs
+camera-from-head rotation. Region output order is `eye_l`, `eye_r`, `mouth`, with
+absolute canonical centres (not deltas).
+
 ### Region anchors
 
 Eye and mouth regions must follow the *content*, not just the head. When the user looks left, the
@@ -98,6 +131,13 @@ For each region (`eye_l`, `eye_r`, `mouth`):
 - the centroid is converted into canonical space through `H⁻¹`,
 - the result is low-pass filtered with a slow time constant (~150 ms) and clamped to a small
   envelope around its rest position (±0.12 in canonical units).
+
+T18 computes each centroid in image space and applies H inverse. Missing irises
+fall back to the two eye corners; both mouth corners and both lip centres are
+required. The first accepted frame defines each rest centroid. Subsequent anchors
+use `alpha = 1-exp(-dt/0.150)` and a per-axis ±0.12 clamp around that rest centroid.
+This is runtime anchor tracking; avatar region shapes and the profile capture UX
+remain later tasks.
 
 The slow filter is deliberate: it tracks gaze and lip shape without inheriting landmark jitter, and
 the clamp prevents a bad frame from throwing the patch across the face.
@@ -280,7 +320,7 @@ uniform sampler2D camera_tex : filter_linear, repeat_disable;
 uniform sampler2D matte_tex;         // chroma or segmentation matte, 1x or 2x downscaled
 uniform mat3  canonical_to_image;
 uniform vec4  region_uv;        // centre (x, y) + full size (w, h) in canonical space
-uniform vec2  region_anchor;    // filtered centroid offset
+uniform vec2  region_anchor;    // adapter: absolute rig centroid minus its rest centroid
 uniform float region_rot;       // radians, from rotation_deg
 uniform float feather;
 uniform vec3  colour_gain;
@@ -365,7 +405,10 @@ The output stream has exactly two visible states ([ADR-0010](adr/0010-output-is-
 | **Blank** | Transparent for OBS/Spout; the configured background colour for opaque outputs | No face, missing eyes or mouth, or tracking lost beyond the hold window |
 
 There is no passthrough, no last-frame freeze, and no fallback to the camera. A held frame only
-bridges a dropped frame or a single blink, and never for longer than 150 ms.
+bridges a dropped frame or a short missing-feature interval (including a single blink),
+and never for longer than 150 ms. T18 holds through exactly 150 ms from the last
+complete accepted sample and clears `features_valid` immediately after that deadline.
+Invalid results cannot extend it. T23/T24 still own submitting the actual blank frame.
 
 This is deliberate. A stream that suddenly shows a frozen face, or the real camera, is worse than a
 stream that momentarily shows nothing, and the performer can see the state in the preview. The

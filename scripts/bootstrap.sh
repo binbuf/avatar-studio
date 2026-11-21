@@ -237,6 +237,15 @@ install_dependency \
     "json.hpp" \
     "nlohmann_json/include/nlohmann/json.hpp"
 
+install_archive \
+    "eigen" \
+    "3.4.0" \
+    "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip" \
+    "EBA3F3D414D2F8CBA2919C78EC6DAAB08FC71BA2BA4AE502B7E5D4D99FC02CDA" \
+    "eigen-3.4.0.zip" \
+    "Eigen/Core" \
+    1
+
 if [[ "$native_only" -eq 1 ]]; then
     echo "bootstrap: Godot and godot-cpp skipped (--native-only)"
     echo "bootstrap: done (native only). Configure with: cmake -S . -B build"

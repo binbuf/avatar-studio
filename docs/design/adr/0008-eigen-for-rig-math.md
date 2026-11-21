@@ -1,6 +1,6 @@
 # ADR-0008: Eigen for native rig math
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Related:** [`../architecture.md`](../architecture.md), [`../face-compositing.md`](../face-compositing.md)
 
@@ -67,3 +67,12 @@ Use **Eigen 3.4.x** (MPL2, header-only) for the native rig and tracking post-pro
 3. Add a unit test that estimates a known homography with synthetic noise and asserts the expected
    error, so a version bump cannot silently change behaviour.
 4. Confirm no Eigen header is reachable from `native/gdextension` or the tracker C ABI.
+
+## Implementation evidence (T18)
+
+Eigen 3.4.0 is unmodified and SHA256-pinned by both bootstrap scripts. CMake consumes
+only `.tools/eigen` and exposes it privately to `avatar_rig` with `EIGEN_MPL2_ONLY`.
+`NOTICE` contains MPL2 and the source URL; the build stages notices in
+`app/bin/rig-licenses`. SVD, refinement and quaternion math run in the headless
+FaceRig tests and local CPU benchmark. See
+[ADR-0028](0028-facerig-estimation-and-temporal-contract.md) for the realised contracts.

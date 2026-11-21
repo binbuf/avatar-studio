@@ -169,6 +169,44 @@ target_compile_features(avatar_tracking PUBLIC cxx_std_20)
 target_link_libraries(avatar_tracking PUBLIC avatar::core avatar::capture PRIVATE avatar_json)
 avatar_enable_warnings(avatar_tracking)
 
+# FaceRig is pure CPU math. Eigen headers never propagate to its consumers.
+set(AVATAR_EIGEN_DIR "${AVATAR_TOOLS_DIR}/eigen")
+if(NOT EXISTS "${AVATAR_EIGEN_DIR}/Eigen/Core")
+    message(FATAL_ERROR "Eigen 3.4.0 missing; run scripts/bootstrap.ps1|sh")
+endif()
+add_library(avatar_rig STATIC native/rig/src/face_rig.cpp)
+add_library(avatar::rig ALIAS avatar_rig)
+target_include_directories(avatar_rig PUBLIC native/rig/include)
+target_include_directories(avatar_rig SYSTEM PRIVATE "${AVATAR_EIGEN_DIR}")
+target_compile_definitions(avatar_rig PRIVATE EIGEN_MPL2_ONLY)
+target_link_libraries(avatar_rig PUBLIC avatar::tracking)
+avatar_enable_warnings(avatar_rig)
+add_custom_target(avatar_rig_licenses ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/rig-licenses"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${AVATAR_EIGEN_DIR}/COPYING.MPL2" "${CMAKE_CURRENT_SOURCE_DIR}/NOTICE"
+        "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/rig-licenses"
+)
+if(AVATAR_TESTS)
+    enable_testing()
+    add_executable(avatar_rig_tests tests/unit/test_main.cpp tests/unit/test_face_rig.cpp)
+    target_include_directories(avatar_rig_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_rig_tests PRIVATE avatar::rig)
+    avatar_enable_warnings(avatar_rig_tests)
+    add_test(NAME avatar_rig_unit COMMAND avatar_rig_tests)
+    set_tests_properties(avatar_rig_unit PROPERTIES LABELS "fast;task_T18" TIMEOUT 60)
+endif()
+if(AVATAR_BENCHMARKS)
+    add_executable(avatar_rig_bench tests/performance/bench_face_rig.cpp)
+    target_link_libraries(avatar_rig_bench PRIVATE avatar::rig)
+    avatar_enable_warnings(avatar_rig_bench)
+    if(AVATAR_TESTS)
+        add_test(NAME avatar_rig_perf COMMAND avatar_rig_bench)
+        set_tests_properties(avatar_rig_perf PROPERTIES LABELS "perf;task_T18" TIMEOUT 60)
+    endif()
+endif()
+
+
 # The vendor graph is built separately by scripts/build-tracker.ps1. The app
 # and its CMake graph see only the T09 C ABI and an offline, pinned SDK.
 if(WIN32)

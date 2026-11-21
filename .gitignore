@@ -50,3 +50,4 @@ CMakeUserPresets.json
 /app/bin/*.pdb
 /app/bin/tracker-models/
 /app/bin/tracker-licenses/
+/app/bin/rig-licenses/

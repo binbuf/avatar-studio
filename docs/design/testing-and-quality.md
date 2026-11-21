@@ -5,7 +5,7 @@ comparator, foundation performance harness (T05), the CI/format/licence gates (T
 C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
 tests (T12), the headless M0 harness with its 30-minute soak (T13), the Windows-scoped M0 contract
 audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16) and the runtime GLB import with
-its fixture set (T17) are implemented. The 10-minute app soak and the first avatar goldens remain
+its fixture set (T17) and FaceRig numerical/CPU gates (T18) are implemented. The 10-minute app soak and the first avatar goldens remain
 `Planned`. ·
 **Last updated:** 2026-11-21
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
@@ -364,7 +364,7 @@ ABI v1; it remains planned.
 The tests use the deterministic synthetic face source for geometry and the real pinned
 tables for resolution; they do not require a camera or the MediaPipe DLL. The T11 recorded
 clip independently confirmed the viewer-left/viewer-right side of the critical indices.
-Homography estimation and the post-RANSAC inlier gate remain T18.
+Homography estimation and the post-RANSAC inlier gate are implemented in T18 below.
 
 ## M0 headless harness and 30-minute soak (T13)
 
@@ -416,6 +416,28 @@ The short run is the fast-suite evidence; the full soak remains local evidence b
 results are gitignored. The audit's gap list and M1 readiness statement are in the local
 `docs/progress/T15.md` workspace. [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
 closes M0 for the Windows MVP and defers cross-platform and hardware-tier evidence.
+
+## FaceRig numerical and local CPU gate (T18)
+
+`avatar_rig_unit` (`fast;task_T18`) uses `SyntheticFaceSource` ground truth and its
+analytic camera pose at 1280x720 measurement scale. Static snapshots cover yaw ±30°,
+pitch ±10°, roll ±20°, and translation. Tolerances: static pose <0.05°, inverse
+translation residual <1e-6 m, and canonical point reprojection <1 px. A slow motion
+path allows <2° intentional filter lag and <1 px source-image reprojection.
+Additional cases cover seeded landmark noise, rest jitter RMS ratio <0.35, translation
+RMS <0.6 mm, exact region alpha/clamp, named-subset/iris fallback, two landmark
+outliers, pose rejection/rebaseline, failed-solve damping, malformed/degenerate
+input, duplicate/older timestamps, 50 ms prediction cap and the 150 ms hold boundary.
+
+`avatar_rig_perf` (`perf;task_T18`) times only `FaceRig::update`, including named
+joins, H estimation, region and pose updates: 120 warmup plus 1200 measured samples,
+separate all-inlier and one-outlier scenarios. Each scenario asserts **mean <0.1 ms**
+on this machine and consumes output to prevent optimisation from removing the work.
+The T18 task gate explicitly runs both numerical and performance tests even for
+`verify -Fast -Task T18`; ordinary fast CI excludes the hardware-dependent `perf`
+label. This is a local budget measurement, not Reference/Minimum hardware evidence.
+Exact constants, measurements and host details are recorded in the local progress
+workspace; [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) is permanent.
 
 ## Performance harness
 

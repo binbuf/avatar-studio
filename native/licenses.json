@@ -83,13 +83,14 @@
       "url": "https://gitlab.com/libeigen/eigen",
       "modified": false,
       "shipped": true,
-      "status": "planned",
-      "require_usage": false,
+      "status": "active",
+      "require_usage": true,
       "include_prefixes": [
         "Eigen/",
         "unsupported/Eigen/"
       ],
-      "notes": "Header-only rig math, confined to native/rig (ADR-0008). Not yet fetched by bootstrap."
+      "notes": "Unmodified Eigen 3.4.0, fetched and SHA256-verified by scripts/bootstrap.*. Private headers in native/rig only (ADR-0008); EIGEN_MPL2_ONLY excludes optional non-MPL modules. See NOTICE and app/bin/rig-licenses.",
+      "sha256": "EBA3F3D414D2F8CBA2919C78EC6DAAB08FC71BA2BA4AE502B7E5D4D99FC02CDA"
     },
     {
       "id": "mediapipe",

@@ -7,7 +7,9 @@ gates T06), the tracker C ABI and contract harness are implemented (T09), the Wi
 Foundation capture backend is implemented (T10), and the foundation was re-verified from a clean
 checkout by the T08 audit (ADR-0018), the real Windows CPU tracker is implemented (T11), the
 named landmark map with its asymmetric-marker gate is implemented (T12), and the headless M0
-harness with its 30-minute soak is implemented (T13). Rendering, the editor, output and the
+harness with its 30-minute soak is implemented (T13). T18 implements the pure FaceRig estimator, pose filters, region anchors and local
+CPU/numerical gates. T16/T17 implement the render shell and runtime rigid GLB import.
+Decal rendering, the editor, output and the
 macOS/Linux capture backends remain `Planned` unless explicitly marked otherwise.
 T14 retains the Windows tracker and measures M0; [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
 closes M0 for the Windows 11 MVP and re-homes real macOS/Linux backend evidence (T52/T55),
