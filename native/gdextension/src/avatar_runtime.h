@@ -3,6 +3,7 @@
 #include "avatar/core/clock.h"
 #include "avatar/core/frame_pacer.h"
 #include "avatar/core/latency_histogram.h"
+#include "platform_timer.h"
 
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
@@ -115,6 +116,7 @@ private:
     godot::CanvasLayer* hud_layer_ = nullptr;
     godot::Label* hud_label_ = nullptr;
 
+    avatar::platform::FrameTimerResolution timer_resolution_;
     avatar::core::SteadyTimeSource time_source_;
     avatar::core::FrameClock clock_;
     avatar::core::FramePacer pacer_;

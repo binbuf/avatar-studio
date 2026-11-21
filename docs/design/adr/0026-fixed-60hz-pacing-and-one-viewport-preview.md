@@ -47,6 +47,13 @@ counters the test reads; no GDScript runs per frame.
 
 ## Consequences
 
+Verification repair (2026-11-21): the Windows adapter holds a 1 ms timer-resolution
+request for each runtime's lifetime, releasing each successful request on destruction.
+This also applies headlessly, where the display backend does not establish timer
+resolution. Without it, deadline sleeps can round to the default ~15.6 ms tick and
+produce ~31 ms intervals. Other platforms need no timer-resolution override; cadence
+and all pacing gate thresholds remain unchanged.
+
 Positive: the output cadence is a property of the product, the preview is provably a copy, and the
 HUD/test counters come from the same C++ state. Negative: the runtime now owns display-refresh
 detection and a platform power hook; a 240 Hz display in vsync mode still relies on `max_fps` to

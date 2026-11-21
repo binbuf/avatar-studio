@@ -69,6 +69,10 @@ the verify script seeds that one-line list directly; the smoke test is the autho
 
 ### Runtime viewport and pacing (T16)
 
+The Windows runtime holds a scoped 1 ms timer-resolution request, including in
+headless verification, so deadline sleeps do not round to the default ~15.6 ms tick.
+The request is released when the runtime is destroyed. Pacing thresholds are unchanged.
+
 `app/tests/runtime.gd` is the headless runtime test, run by `scripts/smoke.ps1 -Runtime` for T16 and
 later tasks. It asserts the realised configuration rather than the design text:
 

@@ -26,6 +26,7 @@ endif()
 add_library(avatar_gdextension SHARED
     src/avatar_model.cpp
     src/avatar_runtime.cpp
+    src/platform_timer.cpp
     src/register_types.cpp
 )
 if(APPLE)
@@ -49,6 +50,7 @@ else()
 endif()
 
 if(WIN32)
+    target_link_libraries(avatar_gdextension PRIVATE winmm)
     set(AVATAR_GDE_OS "windows")
     set(AVATAR_GDE_EXT "dll")
 elseif(APPLE)
