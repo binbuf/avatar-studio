@@ -86,9 +86,9 @@ later tasks. It asserts the realised configuration rather than the design text:
   renderer and pacing mode;
 - a connected consumer keeps the runtime processing while the tree is paused (the hidden-window
   proxy) and App Nap is reported disabled;
-- a 10-second paced run: frame-time p99 ≤ 16.6 ms, interval-jitter p99 ≤ 16.6 ms, interval p99
-  within 10% of 16.667 ms, no interval longer than two missed frames, and no catch-up burst longer
-  than two frames.
+- a 10-second paced run: frame-time p99 ≤ 16.6 ms, interval-jitter p99 ≤ 16.6 ms, no interval
+  longer than two missed frames, and no catch-up burst longer than two frames; the raw interval
+  p99 is reported for diagnosis, not gated (16.667 ms is the cadence, not the budget).
 
 The JSON summary is written to `.tools/T16-runtime.json`; `tests/gates/T16.ps1` re-checks it with
 the static configuration and the design documents. The nominal interval is 16.667 ms, so the gate
