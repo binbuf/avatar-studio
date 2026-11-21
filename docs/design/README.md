@@ -1,7 +1,8 @@
 # Avatar Studio — Design Documentation
 
-**Status:** proposal. No application code exists yet; every item in this document set is
-`Planned` unless explicitly marked otherwise.
+**Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02).
+Rendering, capture, tracking, the editor and output remain `Planned` unless explicitly marked
+otherwise.
 **Last updated:** 2026-11-20
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
@@ -55,9 +56,11 @@ Used consistently in every document:
 | `Deferred` | Deliberately out of the current plan, with a documented re-entry condition |
 | `Rejected` | Considered and discarded; reason recorded in an ADR |
 
-Current reality: **everything is `Planned`.** No item is `Prototype` yet; the first spike is M0 in
-[`roadmap.md`](roadmap.md). The only concrete prior art is the original research conversation and
-the third-party projects reviewed in
+Current reality: the foundation is implemented — the framework-free C++20 core, the pinned
+bootstrap/verification contract, and the headless Godot shell with a loadable GDExtension (T01–T02).
+The avatar pipeline, capture, tracking, editor and output subsystems are still `Planned`; the first
+spike is M0 in [`roadmap.md`](roadmap.md). The only concrete prior art is the original research
+conversation and the third-party projects reviewed in
 [`product-overview.md`](product-overview.md#prior-art-reviewed).
 
 ---

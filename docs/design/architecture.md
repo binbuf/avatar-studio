@@ -365,6 +365,8 @@ avatar-studio/
 ├── app/                       # Godot project (scenes, UI, shaders, bundled assets)
 │   ├── project.godot
 │   ├── scenes/                # main, editor, live, settings
+│   ├── bin/                   # built GDExtension + avatar_studio.gdextension
+│   ├── tests/                 # headless shell smoke (smoke.gd)
 │   ├── ui/
 │   ├── shaders/               # face_decal_*.gdshader, yuv_convert.gdshader
 │   └── assets/
@@ -444,26 +446,41 @@ Build rules:
 
 ### Local development build
 
-The native core builds without Godot:
+The native core builds without Godot; the shell adds the engine when it is bootstrapped:
 
-- `scripts/bootstrap.ps1` (Windows) and `scripts/bootstrap.sh` (macOS/Linux) download every
-  third-party native dependency into `.tools/`, pinned by version and SHA256. Both scripts are
-  idempotent and verify the installed copy; `.tools/` is gitignored.
+- `scripts/bootstrap.ps1` (Windows) and `scripts/bootstrap.sh` (macOS/Linux) download every pinned
+  dependency into `.tools/`, by exact URL and SHA256. Both scripts are idempotent, verify the
+  installed copy, and print the resulting paths; `.tools/` is gitignored. The current pins are
+  nlohmann/json 3.11.3, **Godot 4.7.2 stable**, and **godot-cpp 10.0.0-stable** built with
+  `GODOTCPP_API_VERSION=4.7`. godot-cpp 10.x is versioned independently of Godot; the API version
+  is the compatibility contract ([ADR-0012](adr/0012-godot-shell-bootstrap.md)).
+- Bootstrap installs the engine at `.tools/godot/` and the bindings at `.tools/godot-cpp/`.
+  `bootstrap -Fast` (default) fetches the whole pinned set; `bootstrap -NativeOnly` skips the engine
+  and bindings for native-only work.
 - CMake consumes `.tools/` and fails configuration with an actionable message when a pinned
   dependency is missing. Configure and build never touch the network.
-- Targets: `avatar_core` (static library, C++20, framework-free) and `avatar_core_tests`.
-  Options: `AVATAR_TESTS` (default ON) and `AVATAR_WARNINGS_AS_ERRORS` (default ON; MSVC
-  `/W4 /WX`, GCC/Clang `-Wall -Wextra -Wpedantic -Werror`).
+- Targets: `avatar_core` (static library, C++20, framework-free), `avatar_core_tests`, and
+  `avatar_gdextension` (shared library, added only when `.tools/godot-cpp` exists). The adapter is
+  copied to `app/bin/avatar_studio.<os>.<arch>.<ext>` for Godot to load. Options: `AVATAR_TESTS`
+  (default ON), `AVATAR_GODEXTENSION` (default ON), and `AVATAR_WARNINGS_AS_ERRORS` (default ON;
+  MSVC `/W4 /WX`, GCC/Clang `-Wall -Wextra -Wpedantic -Werror`). godot-cpp headers are marked as
+  system headers so the warning policy applies to our code, not generated bindings.
 - Windows uses the default Visual Studio generator; Linux/macOS use the default CMake generator.
   Ninja is not required.
 - `scripts/verify.ps1` / `scripts/verify.sh` are the verification contract. `-Fast` bootstraps,
   configures, builds RelWithDebInfo and runs CTest label `fast`; `-Full` adds the complete native
   suite and `tests/gates/TNN.ps1`; `-Task TNN` selects the task label and gate. From T02 the
-  contract also requires Godot for tasks that touch the adapter.
+  contract also runs `app/tests/smoke.gd` headlessly and requires the engine and adapter for T02 and
+  later. `-Task T01` uses the native-only bootstrap and remains usable without Godot.
+- The shell baseline (`app/project.godot`, `app/scenes/main.tscn`, `app/bin/avatar_studio.gdextension`)
+  is Forward+ with a fixed 1920x1080 transparent `SubViewport` using `render_target_update_mode =
+  ALWAYS`; `AvatarRuntime` is the only GDExtension class and exposes a version string and a frame
+  counter. The preview and pacing are T16; no per-frame GDScript is part of the shell.
 - The core reads time only through `FrameClock` over an injected `TimeSource`; tests drive a fake
   source and no core code reads wall-clock time.
 
-See [ADR-0011](adr/0011-pinned-local-dependencies.md).
+See [ADR-0011](adr/0011-pinned-local-dependencies.md) and
+[ADR-0012](adr/0012-godot-shell-bootstrap.md).
 
 
 ### Install and uninstall contract
@@ -543,6 +560,9 @@ If a seam has only one implementation, it is not an abstraction, it is indirecti
 Checked against upstream sources on 2026-11-20:
 
 - Godot 4.7.2 stable (2026-08-18); 4.8 in beta.
+- godot-cpp 10.0.0-stable (2026-09-15) is the current bindings release. Since v10 it is versioned
+  independently of Godot and targets 4.3+ through `GODOTCPP_API_VERSION`; the 4.7 API JSON ships in
+  the release.
 - `CameraServer` implemented on Linux, Android, macOS, iOS only.
 - MediaPipe desktop C++: Windows experimental (MSYS2/Bazel/OpenCV pinning); GPU inference not
   supported on Windows or macOS desktop.

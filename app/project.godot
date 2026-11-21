@@ -1,0 +1,34 @@
+; Avatar Studio Godot project.
+;
+; The shell is deliberately minimal: one transparent avatar SubViewport at the
+; output resolution. The preview and pacing arrive in T16. Rendering strategy and
+; the GDExtension rules live in docs/design/architecture.md; the pinned engine is
+; Godot 4.7.2.
+;
+; Forward+ is required because the output path uses RenderingDevice resources
+; and asynchronous GPU readback. The Compatibility renderer is unsupported.
+config_version=5
+
+[application]
+
+config/name="Avatar Studio"
+config/description="Real-time avatar studio shell."
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+run/max_fps=60
+config/features=PackedStringArray("4.7", "Forward Plus")
+boot_splash/show_image=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/resizable=true
+window/size/transparent=true
+window/per_pixel_transparency/allowed=true
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+renderer/rendering_method.mobile="forward_plus"
+environment/defaults/default_clear_color=Color(0, 0, 0, 0)

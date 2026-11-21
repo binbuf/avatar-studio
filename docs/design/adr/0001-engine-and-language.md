@@ -73,3 +73,12 @@ replaced.
    backends (Vulkan, D3D12, Metal).
 4. Confirm that a GDExtension can be shipped inside a signed, notarised macOS bundle alongside a
    system extension (M4).
+
+## Amendment (2026-11-20, T02)
+
+godot-cpp moved to independent versioning at v10 and no longer publishes a `godot-4.7.2-stable`
+tag. The engine pin is unchanged: **Godot 4.7.2 stable**. The bindings pin is
+**godot-cpp 10.0.0-stable** built with `GODOTCPP_API_VERSION=4.7`; the API version, not the
+repository version number, is the compatibility contract. The adapter is built with godot-cpp's
+CMake support. See [ADR-0012](0012-godot-shell-bootstrap.md) for the bootstrap, verification and
+headless-import details. The 4.8 upgrade gate in Follow-up 2 still applies.

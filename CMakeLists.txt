@@ -4,6 +4,7 @@ project(avatar_studio LANGUAGES CXX)
 
 option(AVATAR_TESTS "Build the native unit test suite" ON)
 option(AVATAR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(AVATAR_GODEXTENSION "Build the Godot GDExtension adapter when godot-cpp is present" ON)
 
 # Single-config generators (Linux/macOS, Ninja) need an explicit default. Multi-config
 # generators (Visual Studio, Xcode) select the configuration with --config instead.
@@ -40,6 +41,8 @@ set(AVATAR_TOOLS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.tools"
     CACHE PATH "Directory populated by scripts/bootstrap.*")
 set(AVATAR_NLOHMANN_JSON_VERSION "3.11.3" CACHE STRING "Pinned nlohmann/json version")
 set(AVATAR_NLOHMANN_JSON_INCLUDE_DIR "${AVATAR_TOOLS_DIR}/nlohmann_json/include")
+set(AVATAR_GODOTCPP_DIR "${AVATAR_TOOLS_DIR}/godot-cpp"
+    CACHE PATH "Pinned godot-cpp checkout populated by scripts/bootstrap.*")
 
 if(NOT EXISTS "${AVATAR_NLOHMANN_JSON_INCLUDE_DIR}/nlohmann/json.hpp")
     message(FATAL_ERROR
@@ -84,4 +87,22 @@ if(AVATAR_TESTS)
         LABELS "fast;task_T01"
         TIMEOUT 30
     )
+endif()
+
+# ---------------------------------------------------------------------------
+# GDExtension adapter (optional)
+#
+# The native core must remain buildable without Godot. When bootstrap has
+# unpacked the pinned godot-cpp checkout, build the adapter and copy it into
+# app/bin/ for the headless smoke test. Verification for T02 and later tasks
+# treats a missing adapter as a failure; T01 only needs the native core.
+# ---------------------------------------------------------------------------
+if(AVATAR_GODEXTENSION)
+    if(EXISTS "${AVATAR_GODOTCPP_DIR}/CMakeLists.txt")
+        add_subdirectory(native/gdextension)
+    else()
+        message(STATUS
+            "avatar: godot-cpp not found at ${AVATAR_GODOTCPP_DIR}; "
+            "skipping the GDExtension adapter (run scripts/bootstrap.ps1|sh)")
+    endif()
 endif()

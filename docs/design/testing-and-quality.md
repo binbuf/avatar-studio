@@ -34,12 +34,26 @@ and not in CI. macOS CI runs the current and previous major on a 13+ floor. Linu
 | Layer | What | Runs | Blocking |
 |---|---|---|---|
 | Unit | Homography, filters, schema/migration, ring buffers, config | Every commit, < 30 s | Yes |
+| Shell smoke | Godot headless: project settings, transparent 1920x1080 SubViewport, GDExtension class load, C++ frame counter | Every commit, < 5 s | Yes |
 | Static analysis / sanitizers | clang-tidy, ASan/UBSan/TSan, warning policy | Every commit | Yes |
 | Component | Capture → ring → tracker → rig with synthetic input | Every commit, < 2 min | Yes |
 | Golden image | Rendered frames vs. stored references, perceptual diff | Every commit on one OS, all OS on release | Yes (threshold) |
 | Integration | Real transport ↔ real consumer on each OS | Nightly | Yes for release |
 | Performance | Latency, frame time, memory, dropped frames | Nightly + release | Yes for release |
 | Manual QA | Subjective quality, usability, edge hardware | Per release | Yes |
+
+### Headless shell smoke
+
+`app/tests/smoke.gd` runs under `godot --headless` and is part of the verification contract from T02.
+It asserts the Forward+ project settings, the fixed 1920x1080 transparent `SubViewport` with
+`render_target_update_mode = ALWAYS`, that the pinned GDExtension loaded and registered
+`AvatarRuntime`, that `get_version()` is non-empty, and that the C++ frame counter advances. It exits
+non-zero on any failure. No GPU is required; golden rendering is a later layer.
+
+`scripts/verify.*` runs the smoke test for `-Task T02` and later and fails if the engine or adapter
+is missing. `-Task T01` remains native-only so the framework-free core is testable without Godot.
+The 4.7.2 headless editor import crashes on shutdown after writing `.godot/extension_list.cfg`, so
+the verify script seeds that one-line list directly; the smoke test is the authoritative load check.
 
 ---
 

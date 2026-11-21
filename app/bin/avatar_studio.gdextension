@@ -1,0 +1,20 @@
+; Avatar Studio GDExtension descriptor.
+;
+; The entry point and class registration live in native/gdextension/src.
+; CMake copies the built shared library to app/bin/ with the names below.
+; One RelWithDebInfo artifact serves both entries until a debug-specific
+; build is needed; Godot's editor binary loads the debug entry.
+[configuration]
+
+entry_symbol = "avatar_studio_library_init"
+compatibility_minimum = "4.7"
+reloadable = false
+
+[libraries]
+
+windows.debug.x86_64 = "res://bin/avatar_studio.windows.x86_64.dll"
+windows.release.x86_64 = "res://bin/avatar_studio.windows.x86_64.dll"
+linux.debug.x86_64 = "res://bin/avatar_studio.linux.x86_64.so"
+linux.release.x86_64 = "res://bin/avatar_studio.linux.x86_64.so"
+macos.debug = "res://bin/avatar_studio.macos.x86_64.dylib"
+macos.release = "res://bin/avatar_studio.macos.x86_64.dylib"
