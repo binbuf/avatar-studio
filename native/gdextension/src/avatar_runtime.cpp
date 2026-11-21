@@ -1,15 +1,21 @@
 #include "avatar_runtime.h"
 
+#include "avatar_model.h"
 #include "platform_power.h"
 
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/viewport_texture.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/math.hpp>
+#include <godot_cpp/core/math_defs.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -17,6 +23,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 using namespace godot;
@@ -60,6 +67,7 @@ void AvatarRuntime::_ready() {
     configure_scene();
     configure_viewport();
     configure_preview();
+    load_default_avatar();
     create_debug_hud();
     configure_pacing();
 
@@ -192,6 +200,18 @@ int64_t AvatarRuntime::get_preview_render_count() const {
 
 bool AvatarRuntime::is_preview_a_copy() const {
     return preview_is_copy_;
+}
+
+Object* AvatarRuntime::get_avatar_model() const {
+    return avatar_model_;
+}
+
+bool AvatarRuntime::is_avatar_loaded() const {
+    return avatar_model_ != nullptr && avatar_model_->is_loaded();
+}
+
+Dictionary AvatarRuntime::get_avatar_import_summary() const {
+    return avatar_model_ != nullptr ? avatar_model_->get_import_summary() : Dictionary();
 }
 
 String AvatarRuntime::get_pacing_mode() const {
@@ -336,6 +356,10 @@ void AvatarRuntime::configure_scene() {
         avatar_viewport_ != nullptr
             ? Object::cast_to<Node3D>(avatar_viewport_->get_node_or_null("Presentation"))
             : nullptr;
+    avatar_camera_ =
+        avatar_viewport_ != nullptr
+            ? Object::cast_to<Camera3D>(avatar_viewport_->get_node_or_null("AvatarCamera"))
+            : nullptr;
 }
 
 void AvatarRuntime::configure_viewport() {
@@ -362,6 +386,57 @@ void AvatarRuntime::configure_preview() {
     const Ref<Texture2D> preview_texture = preview_->get_texture();
     preview_is_copy_ = viewport_texture.is_valid() && preview_texture.is_valid() &&
                        preview_texture->get_rid() == viewport_texture->get_rid();
+}
+
+void AvatarRuntime::load_default_avatar() {
+    if (presentation_ == nullptr || avatar_model_ != nullptr) {
+        return;
+    }
+
+    avatar_model_ = memnew(AvatarModel);
+    avatar_model_->set_name("AvatarModel");
+    presentation_->add_child(avatar_model_);
+
+    // The Godot project lives in app/, while the model corpus lives at the
+    // repository root. The package loader (T30) will pass a package-relative
+    // path; the development shell resolves the fixture explicitly.
+    const String project_dir = ProjectSettings::get_singleton()->globalize_path("res://");
+    const String model_path =
+        project_dir.path_join("../assets/models/avocado_half.glb").simplify_path();
+    if (!FileAccess::file_exists(model_path)) {
+        UtilityFunctions::push_warning(String("AVT-101: development avatar is missing at ") +
+                                       model_path);
+        return;
+    }
+
+    const int32_t result = avatar_model_->import_glb(model_path);
+    if (result != OK) {
+        UtilityFunctions::push_error(String(avatar_model_->get_last_error_code()) + String(": ") +
+                                     avatar_model_->get_last_error_message());
+        return;
+    }
+    frame_avatar_camera();
+}
+
+void AvatarRuntime::frame_avatar_camera() {
+    if (avatar_camera_ == nullptr || avatar_model_ == nullptr || presentation_ == nullptr ||
+        !avatar_model_->is_loaded()) {
+        return;
+    }
+    const AABB local_aabb = avatar_model_->get_model_aabb();
+    if (!local_aabb.has_volume()) {
+        return;
+    }
+    const Vector3 center = presentation_->get_transform().xform(local_aabb.get_center());
+    const Vector3 size = local_aabb.size;
+    const double fov_radians = static_cast<double>(avatar_camera_->get_fov()) * Math::PI / 180.0;
+    const double extent = std::max(static_cast<double>(size.x), static_cast<double>(size.y));
+    const double fit_distance = extent * 1.35 / (2.0 * std::tan(fov_radians * 0.5));
+    const double distance = std::max(fit_distance, 0.05);
+    avatar_camera_->look_at_from_position(center +
+                                              Vector3(0.0F, 0.0F, static_cast<real_t>(distance)),
+                                          center, Vector3(0.0F, 1.0F, 0.0F));
+    avatar_camera_->set_current(true);
 }
 
 void AvatarRuntime::configure_pacing() {
@@ -416,6 +491,13 @@ void AvatarRuntime::update_debug_hud() {
     text += String("  renderer ") + renderer_name_;
     text += String("  pacing ") + pacing_mode_name(pacing_mode_);
     text += String("  refresh ") + String::num(display_refresh_hz_, 1) + String(" Hz");
+    if (avatar_model_ != nullptr && avatar_model_->is_loaded()) {
+        text += String("\navatar ") + String::num_int64(avatar_model_->get_mesh_count()) +
+                String(" mesh(es) ") + String::num_int64(avatar_model_->get_triangle_count()) +
+                String(" tris, facing ") + String::num(avatar_model_->get_realised_facing().x, 1) +
+                String(",") + String::num(avatar_model_->get_realised_facing().y, 1) + String(",") +
+                String::num(avatar_model_->get_realised_facing().z, 1);
+    }
     hud_label_->set_text(text);
 }
 
@@ -442,6 +524,11 @@ void AvatarRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_preview_render_count"),
                          &AvatarRuntime::get_preview_render_count);
     ClassDB::bind_method(D_METHOD("is_preview_a_copy"), &AvatarRuntime::is_preview_a_copy);
+
+    ClassDB::bind_method(D_METHOD("get_avatar_model"), &AvatarRuntime::get_avatar_model);
+    ClassDB::bind_method(D_METHOD("is_avatar_loaded"), &AvatarRuntime::is_avatar_loaded);
+    ClassDB::bind_method(D_METHOD("get_avatar_import_summary"),
+                         &AvatarRuntime::get_avatar_import_summary);
 
     ClassDB::bind_method(D_METHOD("get_pacing_mode"), &AvatarRuntime::get_pacing_mode);
     ClassDB::bind_method(D_METHOD("get_display_refresh_hz"),

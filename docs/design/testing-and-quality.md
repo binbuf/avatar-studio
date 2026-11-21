@@ -4,8 +4,9 @@
 comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
 C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
 tests (T12), the headless M0 harness with its 30-minute soak (T13), the Windows-scoped M0 contract
-audit (T14/T15) and the one-viewport runtime with 60 Hz pacing (T16) are implemented. Rendering
-content, the 10-minute app soak and the first avatar goldens remain `Planned`. ·
+audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16) and the runtime GLB import with
+its fixture set (T17) are implemented. The 10-minute app soak and the first avatar goldens remain
+`Planned`. ·
 **Last updated:** 2026-11-21
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
@@ -45,7 +46,7 @@ and not in CI. macOS CI runs the current and previous major on a 13+ floor. Linu
 | Layer | What | Runs | Blocking |
 |---|---|---|---|
 | Unit | Homography, filters, schema/migration, ring buffers, config | Every commit, < 30 s | Yes |
-| Shell smoke | Godot headless: project settings, transparent 1920x1080 SubViewport, GDExtension class load, C++ frame counter; T16 runtime config and a 10-second paced run | Every commit, < 15 s | Yes |
+| Shell smoke | Godot headless: project settings, transparent 1920x1080 SubViewport, GDExtension class load, C++ frame counter; T16 runtime config and a 10-second paced run; T17 GLB import, fixtures and app-scene wiring | Every commit, < 15 s | Yes |
 | Static analysis / sanitizers | clang-tidy, ASan/UBSan/TSan, warning policy | Every commit | Yes |
 | Component | Capture → ring → tracker → rig with synthetic input | Every commit, < 2 min | Yes |
 | Golden image | Rendered frames vs. stored references, perceptual diff | Every commit on one OS, all OS on release | Yes (threshold) |
@@ -93,6 +94,32 @@ is unit-tested with `ManualTimeSource` for 60/120/144/240 Hz mode selection, the
 grid, early waits, and dropped-not-replayed slots. The windowed run on the T16 host used a 240 Hz
 display (4x 60, vsync mode); the headless run used the deadline scheduler. Results are in the local
 `docs/progress/T16.md` workspace.
+
+### Runtime GLB import (T17)
+
+`app/tests/model_import.gd` is the headless import test, run by `scripts/smoke.ps1 -Model` for T17
+and later tasks. It imports `assets/models/avocado_half.glb` and the tracked fixtures under
+`tests/fixtures/models/` through `AvatarModel`, then asserts:
+
+- mesh and material counts are non-zero, the triangle count is plausible, and the node tree is
+  extracted; the avocado AABB is finite, has volume and a height near 15.5 cm;
+- no `AnimationPlayer`, `Skeleton3D`, skin or morph target is instantiated; an animated, skinned
+  fixture renders its bind-pose AABB at the origin instead of the animated offset;
+- a feet-origin fixture keeps `min.y = 0` and its authored size; an axis-variant Z-up/+Y-forward
+  fixture is converted to 0.4 x 1.8 x 0.2 m, Y up and −Z forward;
+- `face_submesh` reduces the decal triangle set without hiding the rest of the model, and the
+  decal positions/normals/indices are internally consistent;
+- an invalid GLB fails with `AVT-102`, leaves the node unloaded and creates no partial scene;
+- the app scene attaches `AvatarModel` under `Presentation`, keeps the two mesh instances and their
+  materials, has a current `AvatarCamera` in front of the avatar, key/fill lights, and exactly one
+  `SubViewport`.
+
+The JSON summary is written to `.tools/T17-model-import.json`; `tests/gates/T17.ps1` re-checks the
+counts, the AVT-102 result, the measured import time/peak static memory, the static implementation
+and the design documents. Import is one-time; the decal pass reads the persistent mesh and arrays,
+not a per-frame copy. `app/tests/avatar_shot.gd` is manual windowed evidence: on the T17 host it
+captured 397,552 opaque and 393,225 non-black pixels at 1920x1080, showing the avocado and pit with
+their materials. It is not part of the headless verify path.
 
 ---
 

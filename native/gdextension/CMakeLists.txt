@@ -24,6 +24,7 @@ if(AVATAR_GODOTCPP_INCLUDES)
 endif()
 
 add_library(avatar_gdextension SHARED
+    src/avatar_model.cpp
     src/avatar_runtime.cpp
     src/register_types.cpp
 )
@@ -33,7 +34,9 @@ if(APPLE)
 else()
     target_sources(avatar_gdextension PRIVATE src/platform_power.cpp)
 endif()
-target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core)
+# avatar_json is the pinned nlohmann/json header set used by the GLB preflight;
+# the import path must never download or use a system copy.
+target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core avatar_json)
 target_include_directories(avatar_gdextension PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(avatar_gdextension PRIVATE AVATAR_RUNTIME_VERSION="0.1.0")
 target_compile_features(avatar_gdextension PRIVATE cxx_std_20)

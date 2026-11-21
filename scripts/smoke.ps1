@@ -27,6 +27,11 @@
     10-second paced run. The JSON summary is written to
     <root>/.tools/T16-runtime.json for tests/gates/T16.ps1.
 
+.PARAMETER Model
+    Also run app/tests/model_import.gd: the T17 runtime GLB import, fixtures,
+    bind-pose rules and app-scene wiring. The JSON summary is written to
+    <root>/.tools/T17-model-import.json for tests/gates/T17.ps1.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Required
 #>
@@ -34,6 +39,7 @@
 param(
     [switch]$Required,
     [switch]$Runtime,
+    [switch]$Model,
     [string]$ProjectDir = '',
     [string]$Root = ''
 )
@@ -175,6 +181,33 @@ if ($Runtime) {
             }
         }
         Write-Host "smoke: runtime result $resultPath"
+    }
+}
+
+if ($Model) {
+    $modelScript = Join-Path $ProjectDir 'tests/model_import.gd'
+    if (-not (Test-Path -LiteralPath $modelScript)) {
+        if ($Required) {
+            Write-Host "smoke: FAIL - $modelScript is missing; the T17 model import test is required" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "smoke: $modelScript not present, skipping model import test"
+    } else {
+        $resultDir = Join-Path $Root '.tools'
+        New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
+        $resultPath = Join-Path $resultDir 'T17-model-import.json'
+        $previousResult = $env:AVATAR_MODEL_RESULT
+        $env:AVATAR_MODEL_RESULT = $resultPath
+        try {
+            Invoke-GodotScript 'res://tests/model_import.gd' 'runtime GLB import test'
+        } finally {
+            if ($null -eq $previousResult) {
+                Remove-Item Env:\AVATAR_MODEL_RESULT -ErrorAction SilentlyContinue
+            } else {
+                $env:AVATAR_MODEL_RESULT = $previousResult
+            }
+        }
+        Write-Host "smoke: model import result $resultPath"
     }
 }
 

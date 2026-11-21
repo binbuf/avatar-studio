@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T16 (one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
+**Status:** current as of T17 (runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -62,6 +62,17 @@ frame time, interval, jitter, drops, viewport size, renderer and pacing mode wit
 GDScript. `app/tests/runtime.gd` and `tests/gates/T16.ps1` verify the configuration and a
 10-second paced run; the T16 host used a 240 Hz display in vsync mode and the headless verify path
 used the deadline scheduler. Avatar content, decals, framing and output remain T17+ work.
+T17 implements runtime GLB content: `AvatarModel` parses a self-contained `.glb` with
+`GLTFDocument`/`GLTFState` and rebuilds a rigid bind-pose `Node3D`/`MeshInstance3D` tree with the
+glTF materials. Bones, skin weights, blend shapes, `Skeleton3D` and `AnimationPlayer` are never
+instantiated. Units (`m`/`cm`/`mm`), authored up/forward and a uniform scale are applied as one
+rigid conversion on the model root; the realised size/facing, node tree, mesh/material counts,
+AABB, candidate head nodes and rest-position/normal/index decal arrays are exposed for the
+model-check panel and the decal pass. `AvatarRuntime` attaches the model under `Presentation` and
+frames the app camera. `app/tests/model_import.gd` imports the avocado and tracked fixtures
+(feet-origin, Z-up/+Y-forward, animated/skinned, invalid) and `tests/gates/T17.ps1` re-checks the
+result, `AVT-102`, the measured import time/memory and the design documents. Decals, head-region
+deformation, framing and package loading remain T19/T21/T22/T29.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -110,9 +121,9 @@ It does not produce a frame that a user can see.
 
 ## What does not exist yet
 
-Nothing in this list is implemented. Most of these paths do not exist yet; `app/scenes/` contains only
-the shell's `main.tscn`, and `assets/models/` contains one development model (see the legal note below).
-The table is listed so that a later session cannot mistake a design section for a stub.
+Nothing in this list is implemented. Most of these paths do not exist yet; `app/scenes/` contains
+the shell's `main.tscn`, and `assets/models/` contains one development model (see the legal note
+below). The table is listed so that a later session cannot mistake a design section for a stub.
 
 | Missing component | Expected location | Owning tasks |
 |---|---|---|
@@ -124,7 +135,7 @@ The table is listed so that a later session cannot mistake a design section for 
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
 | Cross-process frame transport and the three OS virtual cameras | `platform/windows/vcam/`, `platform/macos/vcam/`, `platform/linux/vcam/` | T53, T54, T56, T57 |
-| Runtime avatar content, decal shaders, YUV conversion | `app/scenes/`, `app/shaders/` | T17, T20, T21, T24, T39 |
+| Runtime avatar content, decal shaders, YUV conversion | `app/scenes/`, `app/shaders/` | T20, T21, T24, T39 |
 | Editor, library, live and settings screens | `app/ui/` | T33–T42 |
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
@@ -173,8 +184,10 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
 | GDExtension binding rules: runtime node, C++ counters and hidden HUD, no per-frame GDScript | `native/gdextension/` | T16 | `Implemented` |
-| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T17, T24 | `Planned` |
+| GDExtension binding rules: one-time GLB import, persistent mesh data, no per-frame marshalling | `native/gdextension/` | T17 | `Implemented` |
+| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24 | `Planned` |
 | Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
+| Rendering strategy: runtime GLB import, bind pose, units/axes, model check | `native/gdextension/`, `app/scenes/`, `app/tests/` | T17 | `Implemented` |
 | Rendering strategy: decal pass | `app/shaders/` | T20, T21 | `Planned` |
 | Colour and alpha | `app/shaders/`, `native/output/` | T20, T39, T48 | `Planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
@@ -280,7 +293,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Section | Owning module | Tasks | Status |
 |---|---|---|---|
 | Three levels of configuration (package, profile, show) | `native/avatar/` | T29, T31, T42 | `Planned` |
-| Model requirements and what the editor calibrates | `native/avatar/`, `native/rig/` | T17, T32 | `Planned` |
+| Model requirements and runtime GLB import (units/axes, bind pose, model check) | `native/gdextension/` | T17 | `Implemented` |
+| Editor model calibration and the model-check panel | `native/avatar/`, `native/rig/`, `app/ui/` | T32 | `Planned` |
 | Layout and `avatar.json` | `native/avatar/` | T29 | `Planned` |
 | Appearance and lighting | `native/avatar/`, `app/` | T29, T38 | `Planned` |
 | `face-calibration.json` | `native/avatar/`, `native/rig/` | T29, T34 | `Planned` |
@@ -423,6 +437,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | Retain the Windows tracker while the full M0 gate remains open | T14 | Accepted |
 | [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | T14, T15, T26, T27, T52, T55, T64 | Accepted |
 | [ADR-0026](adr/0026-fixed-60hz-pacing-and-one-viewport-preview.md) | Fixed 60 Hz pacing, one viewport, and a preview copy | T16, T26, T46 | Accepted |
+| [ADR-0027](adr/0027-runtime-glb-import.md) | Runtime GLB import builds a rigid bind-pose scene from GLTFState | T17, T19, T21 | Accepted |
 
 ---
 

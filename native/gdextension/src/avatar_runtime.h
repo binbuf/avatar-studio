@@ -4,17 +4,21 @@
 #include "avatar/core/frame_pacer.h"
 #include "avatar/core/latency_histogram.h"
 
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/sub_viewport.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector2i.hpp>
 
 #include <cstdint>
+
+class AvatarModel;
 
 /// Owner of the avatar render loop.
 ///
@@ -74,6 +78,13 @@ public:
     bool is_consumer_connected() const;
     bool is_app_nap_disabled() const;
 
+    // Avatar content (T17). The runtime owns one AvatarModel under the fixed
+    // presentation node; the model is a rigid bind-pose scene and exposes its
+    // model check summary to the shell.
+    godot::Object* get_avatar_model() const;
+    bool is_avatar_loaded() const;
+    godot::Dictionary get_avatar_import_summary() const;
+
     // Debug HUD: hidden by default, updated from C++ at ~4 Hz. No GDScript
     // runs per frame.
     void set_debug_hud_visible(bool visible);
@@ -89,6 +100,8 @@ private:
     void configure_scene();
     void configure_viewport();
     void configure_preview();
+    void load_default_avatar();
+    void frame_avatar_camera();
     void configure_pacing();
     void create_debug_hud();
     void update_debug_hud();
@@ -97,6 +110,8 @@ private:
     godot::SubViewport* avatar_viewport_ = nullptr;
     godot::TextureRect* preview_ = nullptr;
     godot::Node3D* presentation_ = nullptr;
+    AvatarModel* avatar_model_ = nullptr;
+    godot::Camera3D* avatar_camera_ = nullptr;
     godot::CanvasLayer* hud_layer_ = nullptr;
     godot::Label* hud_label_ = nullptr;
 

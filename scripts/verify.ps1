@@ -128,6 +128,10 @@ try {
         # T16 adds the one-viewport configuration and 10-second paced run.
         $smokeParameters.Runtime = $true
     }
+    if ($taskNumber -ge 17) {
+        # T17 adds the runtime GLB import, fixtures and app-scene test.
+        $smokeParameters.Model = $true
+    }
     Invoke-Script (Join-Path $root 'scripts/smoke.ps1') $smokeParameters
 
     if ($Task -ne '') {

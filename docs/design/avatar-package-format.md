@@ -1,7 +1,7 @@
 # Avatar Package Format
 
-**Status:** proposal · **Last updated:** 2026-11-20
-**Decision record:** [ADR-0006](adr/0006-avatar-package-format.md)
+**Status:** proposal; runtime GLB import and the model-check surface are implemented (T17) · **Last updated:** 2026-11-21
+**Decision record:** [ADR-0006](adr/0006-avatar-package-format.md), [ADR-0027](adr/0027-runtime-glb-import.md)
 
 An `.avatar` package is a directory (optionally zipped as `.avatarz`) containing a glTF model, a
 declarative JSON description of how the live face and props attach to it, and provenance metadata.
@@ -100,6 +100,28 @@ format. It creates one:
 The defaults are a starting point, not a guess that has to be right: the model-check panel shows the
 realised size and facing, and the user corrects units, scale, or facing there before calibrating.
 Nothing in this flow asks the user to open a 3D editor.
+
+### Runtime import (T17)
+
+The runtime importer is `AvatarModel` (`native/gdextension/src/avatar_model.*`). It uses the
+engine's `GLTFDocument`/`GLTFState` parser and then builds a deliberately rigid scene from the
+parsed state. It does not use the editor, does not write a `.import` file, and never re-exports the
+source model.
+
+| Step | Realised behaviour |
+|---|---|
+| Preflight | Requires a self-contained glTF 2.0 `.glb`: valid header, JSON chunk, at least one mesh, no external `buffers`/`images` URI, no `KHR_techniques_webgl` shader extension. Failures are `AVT-102`; a missing file is `AVT-101`. |
+| Parse | `GLTFDocument.append_from_file()` into `GLTFState` with `create_animations = false` and no skeleton-bone import. |
+| Scene | A `Node3D`/`MeshInstance3D` tree is rebuilt from `GLTFState.get_nodes()`; each surface is copied into an `ArrayMesh` with its glTF material. Bones, skin weights and blend shapes are stripped, so the model renders in its bind pose. No `AnimationPlayer`, `Skeleton3D`, skin or morph target is instantiated. |
+| Units and axes | Defaults are metres, Y up, −Z forward, scale 1.0. `units` (`m`/`cm`/`mm`), `forward`, `up` and `scale` are applied as one uniform scale plus a rigid axis conversion on the model root. The conversion is never baked into the source asset. |
+| Model check | Exposes mesh and material names/counts, total triangles (≤ 200k), node tree, model AABB, realised size/facing/up, candidate head nodes, warnings, import time and peak static memory. |
+| Decal input | Exposes rest model-space positions, normals and triangle indices. `face_submesh` restricts this data to the named mesh; it does not hide the rest of the model. |
+| Failure | The node is left empty; `get_last_error_code()` returns `AVT-102` (or `AVT-101` for a missing file). |
+
+Warnings never block a model that parses. Candidate head nodes prefer node names containing
+`head`, `face` or `neck`, then mesh nodes in the top 20% of the model; T19/T32 refine the choice.
+Unknown units/axes, a missing `face_submesh` and absent normals are warnings, not import failures.
+The realised import is measured in `docs/progress/T17.md`.
 
 ---
 

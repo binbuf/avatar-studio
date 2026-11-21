@@ -140,6 +140,7 @@ a camera, or a GPU.
 | Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC is T18 |
 | M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 Windows-scoped closure is T14/T15 ([ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)) |
 | Godot runtime: one avatar viewport, preview copy, 60 Hz pacing, C++ HUD | `native/gdextension/`, `native/core/`, `app/scenes/` | Implemented (T16) |
+| Runtime GLB import: rigid bind-pose scene, units/axes, model check, decal arrays | `native/gdextension/`, `app/tests/` | Implemented (T17) |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
@@ -379,11 +380,25 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
 
 `AvatarRuntime` configures the avatar `SubViewport` at 1920x1080, transparent, with
 `render_target_update_mode = ALWAYS`, and owns a fixed `Presentation` `Node3D` (180° yaw) that
-T17+ will place the model under. The window preview is a `TextureRect` whose texture is the
+T17 places the model under. The window preview is a `TextureRect` whose texture is the
 `SubViewport`'s `ViewportTexture`; it samples the same render target and does not render a second
 scene. The runtime counts avatar viewport renders separately from preview renders, and the preview
 render count stays zero. The test asserts that the preview texture RID equals the viewport texture
 RID and that the scene owns exactly one `SubViewport`.
+
+### Runtime GLB import (T17)
+
+`AvatarModel` is the one runtime content object. It parses a self-contained `.glb` with
+`GLTFDocument`/`GLTFState` and rebuilds a rigid `Node3D`/`MeshInstance3D` tree from the parsed
+state. Surfaces are copied into `ArrayMesh` resources with their glTF materials; bones, skin
+weights and blend shapes are stripped, so no `AnimationPlayer`, `Skeleton3D`, skin or morph target
+is created and the model always renders in its bind pose. Units, authored up/forward and uniform
+scale are applied as one rigid conversion on the model root, and the realised size/facing plus the
+node tree, mesh/material counts, AABB, candidate head nodes and rest-position/normal/index decal
+arrays are exposed to the shell. `AvatarRuntime` attaches one `AvatarModel` under `Presentation`,
+frames `AvatarCamera` from the model AABB, and keeps the key/fill lights in the app scene. Import
+is one-time: the decal pass consumes the resulting mesh and arrays without per-frame marshalling.
+See [ADR-0027](adr/0027-runtime-glb-import.md).
 
 The debug HUD is a C++-created `CanvasLayer`/`Label`, hidden by default and updated at ~4 Hz from
 the same counters the test reads: frame time, interval, interval jitter, dropped frames, viewport
@@ -595,7 +610,8 @@ The native core builds without Godot; the shell adds the engine when it is boots
 - The shell baseline (`app/project.godot`, `app/scenes/main.tscn`, `app/bin/avatar_studio.gdextension`)
   is Forward+ with a fixed 1920x1080 transparent `SubViewport` using `render_target_update_mode =
   ALWAYS`. `AvatarRuntime` owns the one-viewport preview copy, the 60 Hz pacing knobs, the hidden
-  debug HUD and the frame counters. No per-frame GDScript is part of the shell.
+  debug HUD and the frame counters; `AvatarModel` owns the imported avatar content. No per-frame
+  GDScript is part of the shell.
 - The core reads time only through `FrameClock` over an injected `TimeSource`; tests drive a fake
   source and no core code reads wall-clock time.
 

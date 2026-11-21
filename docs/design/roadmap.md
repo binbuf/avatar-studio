@@ -105,7 +105,8 @@ blocker to starting M1. Its gap list and readiness statement are in the local
 
 T16 landed the render-loop shell: one 1920x1080 transparent `SubViewport`, a preview that samples
 its `ViewportTexture`, a fixed 180° presentation node, 60 Hz pacing with vsync only on integer
-refresh multiples, and a hidden C++ HUD. Avatar content, decals and framing start at T17.
+refresh multiples, and a hidden C++ HUD. T17 adds runtime GLB import with a rigid bind-pose
+scene, units/axes conversion and the model-check surface; decals and framing remain T20-T22.
 
 **Exit criteria**
 
