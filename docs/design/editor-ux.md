@@ -109,6 +109,11 @@ The inspector is a view of the same state as `avatar.json`: **Width** is the mod
 distance (`face.surface.scale`), and **Height**, **Depth** and **Tilt** position and orient the face
 plane (`face.surface.origin`, `normal`, `up`). There is no second source of truth.
 
+The preview is not a second render: T16's `AvatarRuntime` shows a `TextureRect` sampling the one
+1920x1080 avatar `SubViewport` texture. Editor overlays (regions, mesh, camera feed) draw on top of
+that copy in the window and never enter the avatar viewport. A hidden debug HUD, fed by C++
+counters, can be toggled for support without changing the scene; the user-facing Live HUD is T25.
+
 ### Behaviours
 
 - **Auto-placement** estimates the face plane from the model's bounding box and the region shapes

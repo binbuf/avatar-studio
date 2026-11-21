@@ -1,6 +1,6 @@
 # System Architecture
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal · **Last updated:** 2026-11-21
 
 Decision records for the choices below: [ADR-0001](adr/0001-engine-and-language.md) (engine and
 language), [ADR-0002](adr/0002-native-camera-capture.md) (capture), [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md)
@@ -139,6 +139,7 @@ a camera, or a GPU.
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Implemented on Windows CPU (T11); app wiring remains T16 |
 | Named landmark map, canonical frame, profile correspondences | `native/tracking/` | Implemented (T12); homography/RANSAC is T18 |
 | M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 Windows-scoped closure is T14/T15 ([ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)) |
+| Godot runtime: one avatar viewport, preview copy, 60 Hz pacing, C++ HUD | `native/gdextension/`, `native/core/`, `app/scenes/` | Implemented (T16) |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
@@ -363,11 +364,31 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
   the display refresh is an integer multiple, otherwise a monotonic deadline scheduler paces the
   output and the preview may tear. A late frame is dropped, never doubled. Rendering continues while
   a consumer is connected even if the window is hidden; Godot's low-processor mode and macOS App Nap
-  are disabled while live. The exact engine knobs are validated in M1; the requirement is the
-  cadence, not the mechanism.
+  are disabled while live. T16 implements this as `core::FramePacer` plus the `AvatarRuntime` node:
+  the pacer owns an absolute monotonic deadline grid, counts whole missed slots as dropped, and
+  never schedules a catch-up frame. The exact engine knobs are `Engine.max_fps = 60`,
+  `OS.low_processor_usage_mode = false`, `DisplayServer.window_set_vsync_mode(VSYNC_ENABLED)` on
+  60/120/240 Hz (integer multiples within 1%) and `VSYNC_DISABLED` otherwise. The runtime sleeps to
+  the next deadline with `OS.delay_usec` only when the main loop arrives early. Measured 10-second
+  runs are in `docs/progress/T16.md`.
 - **Lighting.** Four environment presets plus key-light overrides
   ([`avatar-package-format.md`](avatar-package-format.md#appearance-and-lighting)). The same key
   direction and intensity feed the decal's diffuse term, so model and face are lit together.
+
+### One render and the preview copy (T16)
+
+`AvatarRuntime` configures the avatar `SubViewport` at 1920x1080, transparent, with
+`render_target_update_mode = ALWAYS`, and owns a fixed `Presentation` `Node3D` (180° yaw) that
+T17+ will place the model under. The window preview is a `TextureRect` whose texture is the
+`SubViewport`'s `ViewportTexture`; it samples the same render target and does not render a second
+scene. The runtime counts avatar viewport renders separately from preview renders, and the preview
+render count stays zero. The test asserts that the preview texture RID equals the viewport texture
+RID and that the scene owns exactly one `SubViewport`.
+
+The debug HUD is a C++-created `CanvasLayer`/`Label`, hidden by default and updated at ~4 Hz from
+the same counters the test reads: frame time, interval, interval jitter, dropped frames, viewport
+size, renderer and pacing mode. No GDScript runs per frame. The HUD is toggled with
+`AvatarRuntime.set_debug_hud_visible()`; T25 owns the user-facing live HUD.
 
 ### Colour and alpha
 
@@ -573,8 +594,8 @@ The native core builds without Godot; the shell adds the engine when it is boots
   performance ([ADR-0016](adr/0016-ci-quality-gates.md)).
 - The shell baseline (`app/project.godot`, `app/scenes/main.tscn`, `app/bin/avatar_studio.gdextension`)
   is Forward+ with a fixed 1920x1080 transparent `SubViewport` using `render_target_update_mode =
-  ALWAYS`; `AvatarRuntime` is the only GDExtension class and exposes a version string and a frame
-  counter. The preview and pacing are T16; no per-frame GDScript is part of the shell.
+  ALWAYS`. `AvatarRuntime` owns the one-viewport preview copy, the 60 Hz pacing knobs, the hidden
+  debug HUD and the frame counters. No per-frame GDScript is part of the shell.
 - The core reads time only through `FrameClock` over an injected `TimeSource`; tests drive a fake
   source and no core code reads wall-clock time.
 

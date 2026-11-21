@@ -1,6 +1,6 @@
 # Roadmap
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal · **Last updated:** 2026-11-21
 
 Six milestones. Each has an exit criterion that is a measurement, not a feeling, and each retires a
 specific risk. The ordering is chosen so that the two things that could invalidate the whole design
@@ -103,6 +103,10 @@ blocker to starting M1. Its gap list and readiness statement are in the local
 - 60 fps render into a `SubViewport`, preview window, window-capture output.
 - Synthetic face source, the first golden-image test, and the first diagnostic codes.
 
+T16 landed the render-loop shell: one 1920x1080 transparent `SubViewport`, a preview that samples
+its `ViewportTexture`, a fixed 180° presentation node, 60 Hz pacing with vsync only on integer
+refresh multiples, and a hidden C++ HUD. Avatar content, decals and framing start at T17.
+
 **Exit criteria**
 
 | Criterion | Threshold |
@@ -112,7 +116,7 @@ blocker to starting M1. Its gap list and readiness statement are in the local
 | Framing stable | Avatar stays inside the viewport across ±30° yaw, ±20° pitch/roll; no drift |
 | Blank on loss | Blank within 150 ms; no camera pixels in the output |
 | 1080p60 sustained | p99 frame time ≤ 16.6 ms on Reference |
-| Frame pacing | p99 interval ≤ 16.6 ms on 60/120/144 Hz displays, no bursts |
+| Frame pacing | p99 frame time ≤ 16.6 ms; p99 interval jitter (deviation from 16.667 ms) ≤ 16.6 ms; no burst > 2 frames, on 60/120/144 Hz displays |
 | App-side latency | p50 ≤ 70 ms |
 | Setup with a prepared model | ≤ 10 min with a developer present |
 

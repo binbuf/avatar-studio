@@ -22,12 +22,18 @@
 .PARAMETER Root
     Repository root. Defaults to the parent of this script.
 
+.PARAMETER Runtime
+    Also run app/tests/runtime.gd: the T16 one-viewport configuration and
+    10-second paced run. The JSON summary is written to
+    <root>/.tools/T16-runtime.json for tests/gates/T16.ps1.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1 -Required
 #>
 [CmdletBinding()]
 param(
     [switch]$Required,
+    [switch]$Runtime,
     [string]$ProjectDir = '',
     [string]$Root = ''
 )
@@ -112,19 +118,7 @@ if ($Required) {
 }
 
 Ensure-ExtensionList $ProjectDir
-$arguments = @('--headless', '--path', $ProjectDir, '--script', 'res://tests/smoke.gd')
-Write-Host (">> {0} {1}" -f $godot, ($arguments -join ' '))
-$output = & $godot @arguments 2>&1
-$code = $LASTEXITCODE
-foreach ($line in $output) {
-    Write-Host ([string]$line)
-}
-if ($code -ne 0) {
-    Write-Host "smoke: FAIL - Godot shell smoke test exited $code" -ForegroundColor Red
-    exit 1
-}
 
-$text = ($output | Out-String)
 $fatalPatterns = @(
     'Failed to load GDExtension',
     'GDExtension load failed',
@@ -132,10 +126,55 @@ $fatalPatterns = @(
     'SCRIPT ERROR',
     'Parse Error'
 )
-foreach ($pattern in $fatalPatterns) {
-    if ($text -match [regex]::Escape($pattern)) {
-        Write-Host "smoke: FAIL - output contains '$pattern'" -ForegroundColor Red
+
+function Invoke-GodotScript([string]$Script, [string]$Label) {
+    $arguments = @('--headless', '--path', $ProjectDir, '--script', $Script)
+    Write-Host (">> {0} {1}" -f $godot, ($arguments -join ' '))
+    $output = & $godot @arguments 2>&1
+    $code = $LASTEXITCODE
+    foreach ($line in $output) {
+        Write-Host ([string]$line)
+    }
+    if ($code -ne 0) {
+        Write-Host "smoke: FAIL - $Label exited $code" -ForegroundColor Red
         exit 1
+    }
+
+    $text = ($output | Out-String)
+    foreach ($pattern in $fatalPatterns) {
+        if ($text -match [regex]::Escape($pattern)) {
+            Write-Host "smoke: FAIL - $Label output contains '$pattern'" -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+
+Invoke-GodotScript 'res://tests/smoke.gd' 'Godot shell smoke test'
+
+if ($Runtime) {
+    $runtimeScript = Join-Path $ProjectDir 'tests/runtime.gd'
+    if (-not (Test-Path -LiteralPath $runtimeScript)) {
+        if ($Required) {
+            Write-Host "smoke: FAIL - $runtimeScript is missing; the T16 runtime test is required" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "smoke: $runtimeScript not present, skipping runtime test"
+    } else {
+        $resultDir = Join-Path $Root '.tools'
+        New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
+        $resultPath = Join-Path $resultDir 'T16-runtime.json'
+        $previousResult = $env:AVATAR_RUNTIME_RESULT
+        $env:AVATAR_RUNTIME_RESULT = $resultPath
+        try {
+            Invoke-GodotScript 'res://tests/runtime.gd' 'runtime pacing test'
+        } finally {
+            if ($null -eq $previousResult) {
+                Remove-Item Env:\AVATAR_RUNTIME_RESULT -ErrorAction SilentlyContinue
+            } else {
+                $env:AVATAR_RUNTIME_RESULT = $previousResult
+            }
+        }
+        Write-Host "smoke: runtime result $resultPath"
     }
 }
 

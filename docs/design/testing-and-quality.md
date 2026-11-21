@@ -3,9 +3,9 @@
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
 comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
 C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
-tests (T12), the headless M0 harness with its 30-minute soak (T13) and the Windows-scoped M0 contract
-audit (T14/T15) are implemented. Rendering, the 10-minute app soak and the first avatar goldens
-remain `Planned`. ·
+tests (T12), the headless M0 harness with its 30-minute soak (T13), the Windows-scoped M0 contract
+audit (T14/T15) and the one-viewport runtime with 60 Hz pacing (T16) are implemented. Rendering
+content, the 10-minute app soak and the first avatar goldens remain `Planned`. ·
 **Last updated:** 2026-11-21
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
@@ -45,7 +45,7 @@ and not in CI. macOS CI runs the current and previous major on a 13+ floor. Linu
 | Layer | What | Runs | Blocking |
 |---|---|---|---|
 | Unit | Homography, filters, schema/migration, ring buffers, config | Every commit, < 30 s | Yes |
-| Shell smoke | Godot headless: project settings, transparent 1920x1080 SubViewport, GDExtension class load, C++ frame counter | Every commit, < 5 s | Yes |
+| Shell smoke | Godot headless: project settings, transparent 1920x1080 SubViewport, GDExtension class load, C++ frame counter; T16 runtime config and a 10-second paced run | Every commit, < 15 s | Yes |
 | Static analysis / sanitizers | clang-tidy, ASan/UBSan/TSan, warning policy | Every commit | Yes |
 | Component | Capture → ring → tracker → rig with synthetic input | Every commit, < 2 min | Yes |
 | Golden image | Rendered frames vs. stored references, perceptual diff | Every commit on one OS, all OS on release | Yes (threshold) |
@@ -65,6 +65,34 @@ non-zero on any failure. No GPU is required; golden rendering is a later layer.
 is missing. `-Task T01` remains native-only so the framework-free core is testable without Godot.
 The 4.7.2 headless editor import crashes on shutdown after writing `.godot/extension_list.cfg`, so
 the verify script seeds that one-line list directly; the smoke test is the authoritative load check.
+
+### Runtime viewport and pacing (T16)
+
+`app/tests/runtime.gd` is the headless runtime test, run by `scripts/smoke.ps1 -Runtime` for T16 and
+later tasks. It asserts the realised configuration rather than the design text:
+
+- one 1920x1080 transparent `SubViewport` with `render_target_update_mode = ALWAYS`;
+- the preview `TextureRect` is a `ViewportTexture` with the same RID as the viewport, the scene
+  owns exactly one `SubViewport`, the preview render count is zero, and the avatar viewport render
+  count advances;
+- the fixed `Presentation` transform is a 180° yaw;
+- `Engine.max_fps = 60`, `OS.low_processor_usage_mode = false`, Forward+ and an explicit pacing mode;
+- the C++ HUD is hidden by default, toggles, and carries frame time, interval, drops, viewport size,
+  renderer and pacing mode;
+- a connected consumer keeps the runtime processing while the tree is paused (the hidden-window
+  proxy) and App Nap is reported disabled;
+- a 10-second paced run: frame-time p99 ≤ 16.6 ms, interval-jitter p99 ≤ 16.6 ms, interval p99
+  within 10% of 16.667 ms, no interval longer than two missed frames, and no catch-up burst longer
+  than two frames.
+
+The JSON summary is written to `.tools/T16-runtime.json`; `tests/gates/T16.ps1` re-checks it with
+the static configuration and the design documents. The nominal interval is 16.667 ms, so the gate
+uses frame-time p99 and the absolute deviation of the interval from the target for the 16.6 ms
+limit; the raw interval p99 is reported but not gated below its own nominal value. `core::FramePacer`
+is unit-tested with `ManualTimeSource` for 60/120/144/240 Hz mode selection, the absolute deadline
+grid, early waits, and dropped-not-replayed slots. The windowed run on the T16 host used a 240 Hz
+display (4x 60, vsync mode); the headless run used the deadline scheduler. Results are in the local
+`docs/progress/T16.md` workspace.
 
 ---
 
@@ -368,14 +396,18 @@ closes M0 for the Windows MVP and defers cross-platform and hardware-tier eviden
 |---|---|---|
 | App-side latency | Timestamp at capture callback, timestamp at transport submit, same frame | p50 ≤ 70 ms, p95 ≤ 100 ms |
 | Frame time | Render thread, 10-minute run | p99 ≤ 16.6 ms |
-| Frame interval jitter | Render timestamps, 10-minute run | p99 ≤ 16.6 ms, no burst > 2 frames |
-| Frame pacing across displays | Manual + scripted on 60/120/144 Hz | 60 fps output, no cumulative drift |
+| Frame interval jitter | Render timestamps, 10-minute run | p99 ≤ 16.6 ms, no burst > 2 frames || Frame pacing across displays | Manual + scripted on 60/120/144 Hz | 60 fps output, no cumulative drift |
 | Dropped output frames | Transport counters | 0 per 10 min |
 | Dropped tracking frames | Tracker counters | ≤ 2% |
 | CPU usage | OS counters, idle vs live | ≤ 25% of one core at 1080p60 (excl. tracking), ≤ 60% incl. |
 | GPU usage | Vendor counters where available | ≤ 50% on Reference |
 | Memory | RSS after 30 min | Stable ±5%, no growth |
 | Startup | Process start → first live frame | ≤ 4 s |
+
+T16 applies the frame-time and interval-jitter rows to a 10-second runtime run (headless in the
+verify path, windowed on the host display when available); T26 applies them to the 10-minute app
+soak with real avatar content. The 16.6 ms limit is the render budget, not the nominal 16.667 ms
+interval; interval jitter is measured as the absolute deviation from the target.
 
 Runs are scripted so results are comparable across machines and stored as JSON
 with hardware fingerprints. A regression beyond 10% on any metric fails the

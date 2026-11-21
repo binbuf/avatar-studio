@@ -27,7 +27,13 @@ add_library(avatar_gdextension SHARED
     src/avatar_runtime.cpp
     src/register_types.cpp
 )
-target_link_libraries(avatar_gdextension PRIVATE godot::cpp)
+if(APPLE)
+    # App Nap is an NSProcessInfo activity; the hook is Objective-C++.
+    target_sources(avatar_gdextension PRIVATE src/platform_power.mm)
+else()
+    target_sources(avatar_gdextension PRIVATE src/platform_power.cpp)
+endif()
+target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core)
 target_include_directories(avatar_gdextension PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(avatar_gdextension PRIVATE AVATAR_RUNTIME_VERSION="0.1.0")
 target_compile_features(avatar_gdextension PRIVATE cxx_std_20)

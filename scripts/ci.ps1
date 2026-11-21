@@ -128,8 +128,8 @@ try {
     }
 
     if (-not $NativeOnly) {
-        Write-Step 'headless Godot shell smoke'
-        Invoke-PsScript (Join-Path $root 'scripts/smoke.ps1') @{ Required = $true }
+        Write-Step 'headless Godot shell smoke and runtime pacing test'
+        Invoke-PsScript (Join-Path $root 'scripts/smoke.ps1') @{ Required = $true; Runtime = $true }
     }
 
     Write-Host ''

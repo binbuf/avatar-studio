@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T15 (M0 audited and closed for the Windows MVP; platform/tier evidence deferred) · **Last updated:** 2026-11-21
+**Status:** current as of T16 (one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -51,6 +51,17 @@ gap list, severity/owner assignments and M1 readiness statement live in the loca
 real-tracker statistics interface is T26 work, and the Windows MediaPipe DLL cannot distinguish a
 model-integrity failure from another `INTERNAL` error through ABI v1, so the app verifies the
 staged model before `create` and treats `INTERNAL` as a startup failure.
+T16 implements the render-loop shell: `AvatarRuntime` owns a single 1920x1080 transparent
+`SubViewport` with `render_target_update_mode = ALWAYS`, a fixed 180° presentation node, and a
+preview `TextureRect` that samples the viewport's `ViewportTexture` instead of rendering a second
+scene. `core::FramePacer` pins `Engine.max_fps` to 60, enables vsync only for integer refresh
+multiples (60/120/240 within 1%), otherwise uses an absolute monotonic deadline grid, and counts
+missed slots as dropped rather than replaying them. Low-processor mode is disabled, macOS App Nap
+is held off while a consumer is connected, and a C++-built debug HUD (hidden by default) reports
+frame time, interval, jitter, drops, viewport size, renderer and pacing mode without per-frame
+GDScript. `app/tests/runtime.gd` and `tests/gates/T16.ps1` verify the configuration and a
+10-second paced run; the T16 host used a 240 Hz display in vsync mode and the headless verify path
+used the deadline scheduler. Avatar content, decals, framing and output remain T17+ work.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -81,6 +92,7 @@ foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
 | Native build: CMake, warnings-as-errors, CTest harness, `verify` contract | `CMakeLists.txt`, `tests/unit/`, `scripts/verify.*` | T01 | `Implemented` |
 | Core primitives: `FrameClock`, SPSC ring, latest-value slot, status codes, diagnostics registry | `native/core/` | T01, T03 | `Implemented` |
 | Godot 4.7.2 shell, godot-cpp 10 pinning, GDExtension load, headless smoke | `app/`, `native/gdextension/`, `app/tests/smoke.gd` | T02 | `Implemented` |
+| Runtime render loop: one avatar viewport, preview copy, 60 Hz pacing, C++ debug HUD | `native/gdextension/`, `native/core/`, `app/scenes/`, `app/tests/runtime.gd` | T16 | `Implemented` |
 | Capture data plane: `VideoFrame`, `FrameRing`, `ICameraSource`, test-pattern/synthetic-face/replay sources, `FaceGroundTruth` | `native/capture/` | T04 | `Implemented` |
 | Tracking data plane: `TrackingResult`, `ScriptedTracker`, replay sidecar | `native/tracking/` | T04 | `Implemented` |
 | Tracker seam: `ITrackingBackend`, versioned five-function C ABI, `ScriptedTracker` contract harness, shared latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
@@ -112,7 +124,7 @@ The table is listed so that a later session cannot mistake a design section for 
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
 | Cross-process frame transport and the three OS virtual cameras | `platform/windows/vcam/`, `platform/macos/vcam/`, `platform/linux/vcam/` | T53, T54, T56, T57 |
-| Runtime scene, decal shaders, YUV conversion, preview | `app/scenes/`, `app/shaders/` | T16, T20, T21, T24, T39 |
+| Runtime avatar content, decal shaders, YUV conversion | `app/scenes/`, `app/shaders/` | T17, T20, T21, T24, T39 |
 | Editor, library, live and settings screens | `app/ui/` | T33–T42 |
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
@@ -160,8 +172,10 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
-| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T16 | `Planned` |
-| Rendering strategy: viewport, decal pass, pacing | `app/scenes/`, `app/shaders/` | T16, T20, T21 | `Planned` |
+| GDExtension binding rules: runtime node, C++ counters and hidden HUD, no per-frame GDScript | `native/gdextension/` | T16 | `Implemented` |
+| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T17, T24 | `Planned` |
+| Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
+| Rendering strategy: decal pass | `app/shaders/` | T20, T21 | `Planned` |
 | Colour and alpha | `app/shaders/`, `native/output/` | T20, T39, T48 | `Planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
 | Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
@@ -245,7 +259,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 
 | Section | Owning module | Tasks | Status |
 |---|---|---|---|
-| Topology: one render, one readback, per-transport rings | `native/output/` | T16, T46 | `Planned` |
+| Topology: one render, preview copy | `app/scenes/`, `native/gdextension/` | T16 | `Implemented` |
+| Topology: async readback and per-transport rings | `native/output/` | T46 | `Planned` |
 | `OutputFrame` and async readback | `native/output/` | T46 | `Planned` |
 | Transport: Spout2 (Windows) | `native/output/` | T47 | `Planned` |
 | Transport: Syphon (macOS) | `native/output/` | T52 | `Planned` |
@@ -326,7 +341,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 |---|---|---|---|
 | Reference hardware and local baseline | `tests/performance/` | T05 | `Implemented` |
 | Test pyramid and CTest labels | `CMakeLists.txt`, `tests/unit/` | T01, T06 | `Implemented` |
-| Headless shell smoke | `app/tests/smoke.gd`, `scripts/smoke.*` | T02, T06 | `Implemented` |
+| Headless shell smoke and runtime pacing test | `app/tests/smoke.gd`, `app/tests/runtime.gd`, `scripts/smoke.*` | T02, T06, T16 | `Implemented` |
 | Determinism: synthetic sources, replay, golden comparator | `native/capture/`, `tests/tools/golden_compare/` | T04 | `Implemented` |
 | Golden-image tests | `tests/golden/` | T26, T43 | `Planned` |
 | Output invariant test (no passthrough, blank on loss) | `tests/`, `native/output/` | T23 | `Planned` |
@@ -407,6 +422,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md) | Headless M0 harness, measurement definitions, and soak thresholds | T13 | Accepted |
 | [ADR-0024](adr/0024-m0-windows-evidence-and-open-gate.md) | Retain the Windows tracker while the full M0 gate remains open | T14 | Accepted |
 | [ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | T14, T15, T26, T27, T52, T55, T64 | Accepted |
+| [ADR-0026](adr/0026-fixed-60hz-pacing-and-one-viewport-preview.md) | Fixed 60 Hz pacing, one viewport, and a preview copy | T16, T26, T46 | Accepted |
 
 ---
 

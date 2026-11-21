@@ -124,6 +124,10 @@ try {
     if ($requiresGodot) {
         $smokeParameters.Required = $true
     }
+    if ($taskNumber -ge 16) {
+        # T16 adds the one-viewport configuration and 10-second paced run.
+        $smokeParameters.Runtime = $true
+    }
     Invoke-Script (Join-Path $root 'scripts/smoke.ps1') $smokeParameters
 
     if ($Task -ne '') {

@@ -97,6 +97,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(avatar_core STATIC
     native/core/src/clock.cpp
+    native/core/src/frame_pacer.cpp
     native/core/src/status.cpp
     native/core/src/diagnostics.cpp
 )
@@ -227,6 +228,7 @@ if(AVATAR_TESTS)
         tests/unit/test_spsc_ring.cpp
         tests/unit/test_latest_slot.cpp
         tests/unit/test_diagnostics.cpp
+        tests/unit/test_frame_pacer.cpp
     )
     target_link_libraries(avatar_core_tests PRIVATE avatar::core)
     target_compile_features(avatar_core_tests PRIVATE cxx_std_20)
@@ -234,7 +236,7 @@ if(AVATAR_TESTS)
 
     add_test(NAME avatar_core_unit COMMAND avatar_core_tests)
     set_tests_properties(avatar_core_unit PROPERTIES
-        LABELS "fast;task_T01;task_T03"
+        LABELS "fast;task_T01;task_T03;task_T16"
         TIMEOUT 30
     )
 
