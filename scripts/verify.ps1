@@ -134,6 +134,13 @@ try {
     }
     Invoke-Script (Join-Path $root 'scripts/smoke.ps1') $smokeParameters
 
+    # The planning workspace is gitignored, so this is a local-only check. It
+    # keeps the [camera+person] roadmap tag, the task's requires: front matter,
+    # and its "## Preflight" section in sync. Clean checkouts skip it.
+    if (Test-Path -LiteralPath (Join-Path $root 'docs/ROADMAP.md')) {
+        Invoke-Native 'node' @('scripts/check-task-preflight.mjs')
+    }
+
     if ($Task -ne '') {
         $gate = Join-Path $root ("tests/gates/{0}.ps1" -f $Task)
         if (Test-Path -LiteralPath $gate) {

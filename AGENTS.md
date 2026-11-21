@@ -20,3 +20,11 @@
 ### Quality
 
 - Never silently substitute a partial implementation for the requested functionality. Document blockers and incomplete requirements explicitly.
+- A task that needs a live camera and a person says so in three places: `requires: camera+person`
+  front matter, a `[camera+person]` suffix in its ROADMAP title (so `symphony status` and the
+  task-start line show it), and a `## Preflight` section at the top of the task body.
+- Announce that preflight in the session's first message and report `blocked` when the hardware or
+  person is absent. A test pattern, recorded clip, or scripted tracker is not a substitute for the
+  human-review items.
+- `node scripts/check-task-preflight.mjs` keeps the three in sync; `scripts/verify.ps1` runs it
+  whenever the local planning workspace is present.
