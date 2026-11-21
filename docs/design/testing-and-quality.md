@@ -1,9 +1,9 @@
 # Testing and Quality
 
 **Status:** proposal; the deterministic source set, scripted tracker, replay fixtures, golden
-comparator, foundation performance harness (T05) and the CI/format/licence gates (T06) are
-implemented. Rendering, real capture/tracking, the 10-minute soak and the first avatar goldens remain
-`Planned`. ·
+comparator, foundation performance harness (T05), the CI/format/licence gates (T06) and the tracker
+C ABI contract harness (T09) are implemented. Rendering, real capture/tracking, the 10-minute soak and
+the first avatar goldens remain `Planned`. ·
 **Last updated:** 2026-11-20
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
@@ -105,6 +105,30 @@ same interfaces.
 Component tests: `avatar_capture_unit` (labels `fast;task_T04`) covers the ring, both synthetic
 sources, the scripted tracker, the replay fixture and the comparator library. `golden_compare_cli`
 runs the comparator's `--self-test` through the real command line.
+
+### Tracker contract harness (T09)
+
+`avatar_tracking_unit` (labels `fast;task_T09`) is the contract suite for the tracker seam. It runs
+`ScriptedTracker` through both interfaces and asserts the properties the rig depends on:
+
+- `submit` returns without waiting for inference (10,000 frames, bounded wall time);
+- `latest`/`poll_result` return only the newest result, and a second poll without a push returns
+  nothing;
+- `source_timestamp_ns` is the input frame's timestamp, including duplicate and non-monotonic input;
+- `valid = false` and `valid = true, features_valid = false` stay distinct;
+- null-safe destroy, invalid frames, ABI-version mismatch and invalid config are rejected;
+- a deliberately throwing backend is converted to `AVATAR_TRACKER_ERROR_INTERNAL`; no exception
+  crosses the C boundary.
+
+`avatar_tracker_c_abi_compile` compiles `tracker_c_api.h` as C11 with `/W4 /WX` (MSVC) or
+`-Wall -Wextra -Wpedantic -Werror` (GCC/Clang), and its `_Static_assert`-style checks pin the
+documented offsets and sizes. The C++ translation unit includes the same header, so a field move
+fails both sides.
+
+`core::LatencyHistogram<>` is shared by `TrackerStats` and `avatar_bench`. It is a fixed-bucket
+histogram (100 microsecond buckets, 102.4 ms window, exact max, saturating overflow), so a percentile
+in the debug HUD and a percentile in the performance JSON use the same definition. The contract suite
+covers the empty, percentile, overflow and saturating-counter cases.
 
 ### Replay sidecar format
 

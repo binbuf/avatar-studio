@@ -1,7 +1,10 @@
 # Face Tracking
 
-**Status:** proposal · **Last updated:** 2026-11-20
-**Decision record:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md)
+**Status:** proposal; the tracker C ABI v1, `ITrackingBackend` and the `ScriptedTracker` contract
+harness are implemented (T09). The real MediaPipe backend remains `Planned` (T11). · **Last
+updated:** 2026-11-20
+**Decision record:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
+[ADR-0019](adr/0019-tracker-c-abi-v1.md)
 
 Tracking turns a camera frame into a head pose and 478 landmarks. It is the only component with a
 large external dependency and the only one whose feasibility is not yet proven on all three
@@ -48,12 +51,72 @@ Properties the contract guarantees:
   is what makes pose/pixel pairing possible.
 - Results are published atomically; a reader sees a complete result or the previous one.
 
+The C++ side of this contract is `native/tracking/include/avatar/tracking/itracking_backend.h`
+(`ITrackingBackend`, `TrackerConfig`). `ScriptedTracker` implements it; T11's MediaPipe adapter will
+implement it on top of the C ABI rather than exposing vendor types.
+
+### C ABI v1 (T09)
+
+The real backend is a separate shared library behind
+`native/tracking/include/avatar/tracker/tracker_c_api.h`. The header is the contract; the application
+never includes a vendor header. It is C11-compatible, includes only `<stdint.h>` and `<stddef.h>`, and
+carries no C++ standard-library type.
+
+The ABI is exactly five functions plus a version macro:
+
+| Function | Behaviour |
+|---|---|
+| `avatar_tracker_create(config, out_error)` | Allocates a backend. A `config` whose `abi_version` is not `AVATAR_TRACKER_ABI_VERSION` fails with `AVATAR_TRACKER_ERROR_ABI_MISMATCH`. A null config uses `AVATAR_TRACKER_CONFIG_INIT`. |
+| `avatar_tracker_configure(handle, config)` | Replaces the configuration, rewinds the backend and discards an unconsumed result. |
+| `avatar_tracker_push_frame(handle, frame)` | Never blocks on inference and never queues. A busy/exhausted backend drops the frame and still returns `AVATAR_TRACKER_OK`; the drop is counted in `TrackerStats`. |
+| `avatar_tracker_poll_result(handle, out)` | Copies the newest unconsumed result and returns `AVATAR_TRACKER_OK`, or returns `AVATAR_TRACKER_NO_RESULT` and zeroes the output. Two polls without a push return one result. |
+| `avatar_tracker_destroy(handle)` | Null-safe teardown. The handle is invalid afterwards; double destroy is undefined. |
+
+`AVATAR_TRACKER_ABI_VERSION` is `1`. Errors are negative and statuses are positive:
+`AVATAR_TRACKER_OK` (0), `AVATAR_TRACKER_NO_RESULT` (1), then
+`INVALID_ARGUMENT`, `ABI_MISMATCH`, `INVALID_CONFIG`, `NOT_INITIALIZED`, `BUSY`, `FRAME_TOO_LARGE`,
+`INTERNAL`. `BUSY` is reserved: `push_frame` drops rather than making the caller retry.
+
+The result is a fixed, pointer-free POD layout. `avatar_tracker_result` is 5992 bytes with 8-byte
+alignment on both 32-bit and 64-bit targets:
+
+| Offset | Field | Size |
+|---:|---|---:|
+| 0 | `source_timestamp_ns` | 8 |
+| 8 | `valid` (0/1) | 1 |
+| 9 | `features_valid` (0/1) | 1 |
+| 10 | reserved, zero | 2 |
+| 12 | `confidence` (0..1) | 4 |
+| 16 | `pose` (`rotation[4]` x,y,z,w; `translation[3]`, metres) | 28 |
+| 44 | `landmark_count` (≤ 478) | 4 |
+| 48 | `landmarks[478]` (`x,y,z` each) | 5736 |
+| 5784 | `blendshapes[52]` | 208 |
+
+Entries at or beyond `landmark_count` are zero; all 52 blendshapes are present and zero when a backend
+has no expression output. `avatar_tracker_frame` carries the timestamp, sequence, dimensions, format,
+stride and up to three borrowed plane pointers. The pixel pointers are valid only for the duration of
+`push_frame`; a backend that needs them afterwards copies them.
+
+The `ScriptedTracker` C ABI implementation serializes its calls with a mutex, so a capture thread and
+a render thread can share one handle. The real backend owns its inference thread and must preserve the
+same external contract. The `simulate_fault` config field exists only so the contract suite can prove
+that a backend exception is converted to `AVATAR_TRACKER_ERROR_INTERNAL`; production callers leave it
+at `AVATAR_TRACKER_FAULT_NONE`.
+
+`tests/unit/tracker_c_api_c_compile.c` compiles the header as C11 with warnings-as-errors and asserts
+the layout table above. `tests/unit/test_tracker_contract.cpp` exercises the C ABI and the C++
+interface: submit never blocks, latest-only polling, timestamp preservation, duplicate/non-monotonic
+timestamps, `valid` versus `features_valid`, null-safe destroy, invalid frames, and exception
+containment.
+
 ### Scripted tracker (T04)
 
 `native/tracking/include/avatar/tracking/scripted_tracker.h` implements the contract without
-inference. It pre-builds a deterministic sequence and `submit(frame)` stamps each result with that
-frame's `timestamp_ns`; `latest()` returns the most recent result. The scenarios cover the failure
-modes the rig and the output gate must survive:
+inference. It implements both `ITrackingBackend` and the C ABI above, so the same object can drive a
+C++ component test or a C host. It pre-builds a deterministic sequence and `submit(frame)` stamps each
+result with that frame's `timestamp_ns`; `latest()` returns the most recent result. `configure`
+rebuilds the sequence and rewinds; `shutdown` stops accepting frames until `initialize` resumes. The
+scenarios cover the failure modes the rig and the output gate must survive:
 
 | Scenario | Behaviour |
 |---|---|
@@ -257,6 +320,18 @@ The tracker exposes, per session:
 
 These are shown in a debug HUD (hidden behind a flag) and included in opt-in diagnostics. Without
 them, "the face feels laggy" is unactionable.
+
+`TrackerStats` (`native/tracking/include/avatar/tracking/tracking_result.h`) implements the first four:
+`submitted`, `produced`, `dropped` plus a per-reason counter (`script_exhausted`, `backend_busy`,
+`invalid_frame`, `not_initialized`, `shutdown`) and `last_drop_reason`; `input_width`/`input_height`;
+a ten-bin `ConfidenceDistribution` with mean; and `inference_ns`, a
+`core::LatencyHistogram<>` with p50/p95/p99. The scripted tracker leaves `inference_ns` empty because
+it does no inference; T11 records one sample per produced result.
+
+The histogram is the shared utility in `native/core/include/avatar/core/latency_histogram.h`
+(100 microsecond buckets over a 102.4 ms window, exact max, saturating overflow bucket). The
+performance harness uses the same type, so a percentile means the same thing in `TrackerStats` and in
+`avatar_bench`'s JSON. Landmark reprojection error remains a T13/T26 measurement.
 
 ## Open questions
 

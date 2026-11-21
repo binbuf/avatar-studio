@@ -19,6 +19,7 @@
 #include "avatar/capture/test_pattern_source.h"
 #include "avatar/capture/video_frame.h"
 #include "avatar/core/clock.h"
+#include "avatar/core/latency_histogram.h"
 #include "avatar/tracking/scripted_tracker.h"
 #include "avatar/tracking/tracking_result.h"
 
@@ -820,28 +821,25 @@ struct Distribution {
     std::size_t samples = 0;
 };
 
-[[nodiscard]] Distribution summarize(std::vector<double> values) {
+[[nodiscard]] Distribution summarize(const std::vector<double>& values) {
     Distribution result;
     result.samples = values.size();
     if (values.empty()) {
         return result;
     }
-    std::sort(values.begin(), values.end());
-    const auto percentile = [&values](double percent) -> double {
-        const double rank = std::ceil((percent / 100.0) * static_cast<double>(values.size())) - 1.0;
-        const std::size_t index =
-            static_cast<std::size_t>(std::clamp(rank, 0.0, static_cast<double>(values.size() - 1)));
-        return values[index];
-    };
-    double total = 0.0;
-    for (const double value : values) {
-        total += value;
+    // The tracker and the harness share one histogram implementation, so a
+    // percentile means the same thing in TrackerStats and in the JSON result.
+    // The harness feeds millisecond doubles; the histogram stores nanoseconds.
+    core::LatencyHistogram<> histogram;
+    for (const double milliseconds : values) {
+        const double nanoseconds = milliseconds * 1'000'000.0;
+        histogram.add(nanoseconds <= 0.0 ? 0 : static_cast<std::uint64_t>(nanoseconds));
     }
-    result.p50 = percentile(50.0);
-    result.p95 = percentile(95.0);
-    result.p99 = percentile(99.0);
-    result.mean = total / static_cast<double>(values.size());
-    result.max = values.back();
+    result.p50 = static_cast<double>(histogram.p50_ns()) / 1'000'000.0;
+    result.p95 = static_cast<double>(histogram.p95_ns()) / 1'000'000.0;
+    result.p99 = static_cast<double>(histogram.p99_ns()) / 1'000'000.0;
+    result.mean = histogram.mean_ns() / 1'000'000.0;
+    result.max = static_cast<double>(histogram.max_ns()) / 1'000'000.0;
     return result;
 }
 

@@ -3,8 +3,9 @@
 **Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02,
 data-plane primitives and diagnostics registry T03, deterministic sources, scripted tracker, replay
 fixtures and golden comparator T04, performance harness and local baseline T05, CI/format/licence
-gates T06) and was re-verified from a clean checkout by the T08 audit (ADR-0018). Rendering, real
-capture, tracking, the editor and output remain `Planned` unless explicitly marked otherwise.
+gates T06), the tracker C ABI and contract harness are implemented (T09), and the foundation was
+re-verified from a clean checkout by the T08 audit (ADR-0018). Rendering, real capture, real tracking,
+the editor and output remain `Planned` unless explicitly marked otherwise.
 **Last updated:** 2026-11-20
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
@@ -64,9 +65,10 @@ Current reality: only the foundation exists. Implemented today: the framework-fr
 (SPSC ring, latest-value slot, `FrameClock`, diagnostics registry), the pinned
 bootstrap/verification contract, the headless Godot shell with a loadable GDExtension (T01–T03), the
 deterministic capture and tracking sources with their golden comparator (T04), the performance
-harness and local baseline (T05), and the three-platform CI matrix with formatting and licence gates
-(T06). Every avatar capability — real capture, the tracker backend, the face rig, the decal modes,
-the editor, the output manager and the OS virtual cameras — is `Planned`. The MVP is a Windows 11
+harness and local baseline (T05), the three-platform CI matrix with formatting and licence gates
+(T06), and the tracker C ABI with its scripted contract harness (T09). Every avatar capability — real
+capture, the real tracker backend, the face rig, the decal modes, the editor, the output manager and
+the OS virtual cameras — is `Planned`. The MVP is a Windows 11
 streamer running OBS over Spout2 or window capture; macOS/Linux parity and the OS virtual cameras
 remain 1.0 requirements and are sequenced after it by
 [ADR-0017](adr/0017-windows-first-mvp-sequencing.md).

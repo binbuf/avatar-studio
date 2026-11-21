@@ -111,9 +111,45 @@ ScriptedTracker::ScriptedTracker(ScriptedTrackerConfig config) : config_(config)
 }
 
 void ScriptedTracker::reset() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    reset_locked();
+}
+
+void ScriptedTracker::reset_locked() {
     cursor_ = 0;
     latest_.reset();
     stats_ = TrackerStats{};
+    random_state_ = config_.seed;
+}
+
+bool ScriptedTracker::initialize(const TrackerConfig& config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    initialized_ = true;
+    shutdown_ = false;
+    reset_locked();
+    stats_.input_width = config.input_width;
+    stats_.input_height = config.input_height;
+    return true;
+}
+
+void ScriptedTracker::configure(ScriptedTrackerConfig config) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    config_ = config;
+    if (config_.frame_count == 0) {
+        config_.frame_count = 1;
+    }
+    random_state_ = config_.seed;
+    build_script();
+    reset_locked();
+    initialized_ = true;
+    shutdown_ = false;
+}
+
+void ScriptedTracker::shutdown() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    shutdown_ = true;
+    initialized_ = false;
+    latest_.reset();
 }
 
 void ScriptedTracker::build_script() {
@@ -213,16 +249,47 @@ void ScriptedTracker::apply_scenario(std::uint32_t index, TrackingResult& result
 }
 
 void ScriptedTracker::submit(const capture::VideoFrame& frame) {
+    std::lock_guard<std::mutex> lock(mutex_);
     ++stats_.submitted;
+    if (shutdown_) {
+        stats_.record_drop(DropReason::shutdown);
+        return;
+    }
+    if (!initialized_) {
+        stats_.record_drop(DropReason::not_initialized);
+        return;
+    }
+    stats_.input_width = frame.width;
+    stats_.input_height = frame.height;
     if (cursor_ >= script_.size()) {
-        ++stats_.dropped;
+        stats_.record_drop(DropReason::script_exhausted);
         return;
     }
     TrackingResult result = script_[cursor_];
     result.source_timestamp_ns = frame.timestamp_ns;
     latest_ = result;
-    ++stats_.produced;
+    stats_.record_result(result.confidence);
     ++cursor_;
+}
+
+std::optional<TrackingResult> ScriptedTracker::latest() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return latest_;
+}
+
+std::optional<TrackingResult> ScriptedTracker::latest() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return latest_;
+}
+
+TrackerStats ScriptedTracker::stats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return stats_;
+}
+
+std::uint32_t ScriptedTracker::cursor() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cursor_;
 }
 
 } // namespace avatar::tracking

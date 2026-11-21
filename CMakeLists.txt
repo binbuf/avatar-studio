@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(avatar_studio LANGUAGES CXX)
+project(avatar_studio LANGUAGES C CXX)
 
 option(AVATAR_TESTS "Build the native unit test suite" ON)
 option(AVATAR_BENCHMARKS "Build the native microbenchmark suite" ON)
@@ -134,6 +134,7 @@ avatar_enable_warnings(avatar_capture)
 
 add_library(avatar_tracking STATIC
     native/tracking/src/scripted_tracker.cpp
+    native/tracking/src/tracker_c_api.cpp
 )
 add_library(avatar::tracking ALIAS avatar_tracking)
 target_include_directories(avatar_tracking
@@ -198,6 +199,52 @@ if(AVATAR_TESTS)
     set_tests_properties(avatar_capture_unit PROPERTIES
         LABELS "fast;task_T04"
         TIMEOUT 180
+    )
+
+    # Tracker contract suite (T09): the C ABI, the C++ interface, the scripted
+    # backend and the shared latency histogram. The C compile target is built
+    # separately because it must not see a C++ compiler or a C++ header.
+    add_executable(avatar_tracking_tests
+        tests/unit/test_tracking_main.cpp
+        tests/unit/test_tracker_contract.cpp
+        tests/unit/test_latency_histogram.cpp
+    )
+    target_include_directories(avatar_tracking_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit"
+    )
+    target_link_libraries(avatar_tracking_tests PRIVATE
+        avatar::core
+        avatar::capture
+        avatar::tracking
+    )
+    target_compile_features(avatar_tracking_tests PRIVATE cxx_std_20)
+    avatar_enable_warnings(avatar_tracking_tests)
+
+    add_test(NAME avatar_tracking_unit COMMAND avatar_tracking_tests)
+    set_tests_properties(avatar_tracking_unit PROPERTIES
+        LABELS "fast;task_T09"
+        TIMEOUT 180
+    )
+
+    add_executable(avatar_tracker_c_abi_compile tests/unit/tracker_c_api_c_compile.c)
+    target_include_directories(avatar_tracker_c_abi_compile PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/native/tracking/include"
+    )
+    set_target_properties(avatar_tracker_c_abi_compile PROPERTIES
+        C_STANDARD 11
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+    )
+    if(MSVC)
+        target_compile_options(avatar_tracker_c_abi_compile PRIVATE /W4 /WX)
+    else()
+        target_compile_options(avatar_tracker_c_abi_compile PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+
+    add_test(NAME avatar_tracker_c_abi_compile COMMAND avatar_tracker_c_abi_compile)
+    set_tests_properties(avatar_tracker_c_abi_compile PROPERTIES
+        LABELS "fast;task_T09"
+        TIMEOUT 60
     )
 endif()
 

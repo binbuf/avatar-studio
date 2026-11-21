@@ -130,7 +130,8 @@ a camera, or a GPU.
 |---|---|---|
 | Core primitives, clock, diagnostics | `native/core/` | Implemented (T01–T03) |
 | Frame model, `FrameRing`, `ICameraSource`, test/replay sources | `native/capture/` | Implemented (T04) |
-| `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04); real backend is T11 |
+| `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04) |
+| `ITrackingBackend`, tracker C ABI v1, contract harness, latency histogram | `native/tracking/`, `native/core/` | Implemented (T09); real backend is T11 |
 | Performance harness, hardware fingerprint, local baseline | `tests/performance/` | Implemented (T05); real render/transport gates are T26/T46 |
 | CI matrix, formatting, static analysis, licence manifest, design links | `.github/workflows/`, `scripts/` | Implemented (T06/T08); goldens/perf release gates are T26/T46 |
 | Clean-checkout audit and implementation-map gate | `tests/gates/T08.ps1`, `docs/design/implementation-map.md` | Implemented (T08) |
@@ -142,8 +143,11 @@ The T04 `ICameraSource` is the frame-producing subset of the sketch below: `star
 `ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. Device enumeration,
 capabilities and the capture-thread callback arrive with T10 and must not change the ring
 ownership contract. `TrackingResult` is implemented in
-`native/tracking/include/avatar/tracking/tracking_result.h`; `ITrackingBackend` itself lands with the
-T09 contract harness.
+`native/tracking/include/avatar/tracking/tracking_result.h`; `ITrackingBackend` and the versioned
+five-function C ABI are implemented in
+`native/tracking/include/avatar/tracking/itracking_backend.h` and
+`native/tracking/include/avatar/tracker/tracker_c_api.h`. The real MediaPipe backend behind that ABI
+is T11.
 
 T05 instruments the app-side latency definition in `tests/performance/avatar_bench`: frame start
 (capture callback proxy) to the transport-submit proxy at the end of the measured stage. The harness
@@ -184,6 +188,7 @@ Detail: [`camera-capture.md`](camera-capture.md).
 struct TrackingResult {
     uint64_t   source_timestamp_ns;  // timestamp of the frame that produced this
     bool       valid;
+    bool       features_valid;       // eyes and mouth present; gates the output
     float      confidence;
     HeadPose   pose;                 // rotation quaternion + translation, camera space
     std::array<Landmark, 478> landmarks;  // normalised image coords + relative depth
@@ -196,9 +201,14 @@ public:
     virtual bool initialize(const TrackerConfig&) = 0;
     virtual void submit(const VideoFrame&) = 0;   // async, non-blocking
     virtual std::optional<TrackingResult> latest() = 0;
+    virtual TrackerStats stats() const = 0;
     virtual void shutdown() = 0;
 };
 ```
+
+The implementation is `native/tracking/include/avatar/tracking/itracking_backend.h`; the real backend
+is a shared library behind `native/tracking/include/avatar/tracker/tracker_c_api.h`
+([ADR-0019](adr/0019-tracker-c-abi-v1.md)). `ScriptedTracker` implements both sides.
 
 Detail: [`tracking.md`](tracking.md).
 
