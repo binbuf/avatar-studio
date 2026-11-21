@@ -130,6 +130,28 @@ histogram (100 microsecond buckets, 102.4 ms window, exact max, saturating overf
 in the debug HUD and a percentile in the performance JSON use the same definition. The contract suite
 covers the empty, percentile, overflow and saturating-counter cases.
 
+### Capture suite and smoke (T10)
+
+`avatar_camera_unit` (labels `fast;task_T10`) drives the platform-neutral `CameraSource` through a
+fake `ICameraDeviceBackend`, so it runs on every platform without a camera:
+
+- enumeration, first-device selection and the negotiated mode;
+- exact preference matching, step-down after an advertised-mode miss and after a backend
+  `invalid_format` rejection (`CAP-003`);
+- busy and permission-denied open failures (`CAP-002`, `CAP-006`) and "no camera" (`CAP-008`);
+- source-timestamp mapping to `FrameClock`, `arrival_ns` preservation, and the one-per-episode
+  `CAP-005` re-anchor for backwards/duplicate timestamps;
+- the observed-interval watchdog (restart once, then step down/report, `CAP-004`);
+- the 2-second reconnect poll after `CAP-001`, a failed reopen (`CAP-007`), and recovery;
+- a mid-stream preemption as `CAP-002` with recovery;
+- suspend/resume timestamp-base reset;
+- ring saturation (four pinned slots) and the callback-to-publish latency histogram.
+
+`avatar_list_cameras_smoke` runs `avatar_list_cameras --list-cameras`, which enumerates without
+opening a device and exits 0 when none is present. The manual real-camera check is
+`avatar_list_cameras --capture 60 [--mode WxH@FPS] [--format nv12|yuy2|bgra8]`; it reports frame
+count, ring drops, restarts, timestamp resets, monotonicity, shape and `publish_latency()`.
+
 ### Replay sidecar format
 
 The sidecar is JSON, version 1, next to the `.y4m` (same stem by default). Width and height must

@@ -84,10 +84,17 @@ the registry (the message/action keys resolve to the string table).
 | `CAP-002` | Error | Camera is busy (exclusive access) | Name likely owners; Retry |
 | `CAP-003` | Warning | Requested format rejected; stepped down | Show negotiated mode; continue |
 | `CAP-004` | Error | Stream stalled without an OS error | Restart once; then report and stop |
-| `CAP-005` | Warning | Timestamps went backwards or repeated | Reset ring; re-map to arrival time; log once |
+| `CAP-005` | Warning | Timestamps went backwards or repeated | Re-anchor to arrival time, keep the mapped timeline monotonic, log once per episode; the ring is not reset |
 | `CAP-006` | Error | Camera permission denied by the OS | Deep-link to the OS privacy page |
 | `CAP-007` | Warning | Device returned but reopen failed | Retry with previous config; fall back to device picker |
 | `CAP-008` | Info | No camera found | Rescan; open settings |
+
+T10's `CameraSource` is the first emitter: `CAP-001` on device loss, `CAP-002` on exclusive access or
+mid-stream preemption, `CAP-003` on a format rejection or a rate-driven step-down, `CAP-004` on a
+stalled stream, `CAP-005` on a timestamp regression, `CAP-006` on an OS permission denial, `CAP-007`
+when a returning device fails to reopen, and `CAP-008` when enumeration finds nothing. Successful
+recoveries (`device_restored`, `resumed`) are `CameraEvent`s without a code: a recovery is not a
+diagnostic condition.
 
 ## TRK — Tracking
 

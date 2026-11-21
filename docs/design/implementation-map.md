@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T09 · **Last updated:** 2026-11-20
+**Status:** current as of T10 · **Last updated:** 2026-11-20
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,16 +24,22 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T09 the only `Implemented` rows are the foundation plus the tracker seam.** There is no camera
-backend, no real tracker, no renderer, no editor and no output. Everything that would let a user see
-an avatar is `Planned`. The tracker C ABI and `ScriptedTracker` exist so the rig and renderer can be
-built and tested before inference is proven; they are not a working tracker.
+**At T10 the `Implemented` rows are the foundation, the tracker seam, and the Windows capture
+backend.** There is no real tracker, no renderer, no editor and no output. Everything that would let
+a user see an avatar is `Planned`. The tracker C ABI and `ScriptedTracker` exist so the rig and
+renderer can be built and tested before inference is proven; they are not a working tracker. The
+Windows capture backend produces real NV12/YUY2/BGRA8 frames through `ICameraSource`, but nothing
+consumes them yet.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
 licence and design-link checks, and the performance harness against the local baseline all passed.
 The T09 tracker rows are verified by `tests/gates/T09.ps1`: the C header compiles as C11 and C++20
-with warnings-as-errors, and the contract suite runs under `fast;task_T09`.
+with warnings-as-errors, and the contract suite runs under `fast;task_T09`. The T10 capture rows are
+verified by `tests/gates/T10.ps1`: the state machine runs against a fake backend under
+`fast;task_T10`, `--list-cameras` enumerates without opening, and a real Logitech C920 produced
+866 NV12 frames over 60 s with monotonic timestamps and a p50 callback-to-publish latency of 27 us
+(`docs/progress/T10.md`).
 Rows that name `.github/workflows/` are verified as workflow definitions by `tests/gates/T06.ps1`;
 they have not been executed on hosted runners from this machine, which is the one residual
 foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
@@ -50,6 +56,7 @@ foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
 | Capture data plane: `VideoFrame`, `FrameRing`, `ICameraSource`, test-pattern/synthetic-face/replay sources, `FaceGroundTruth` | `native/capture/` | T04 | `Implemented` |
 | Tracking data plane: `TrackingResult`, `ScriptedTracker`, replay sidecar | `native/tracking/` | T04 | `Implemented` |
 | Tracker seam: `ITrackingBackend`, versioned five-function C ABI, `ScriptedTracker` contract harness, shared latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
+| Windows capture backend: `CameraSource`, `ICameraDeviceBackend`, async Media Foundation reader, `--list-cameras`/`--capture` smoke | `native/capture/`, `native/capture/windows/` | T10 | `Implemented` |
 | Golden comparator and replay fixtures | `tests/tools/golden_compare/`, `tests/fixtures/replay/` | T04 | `Implemented` |
 | Performance harness, hardware fingerprint, local baseline, result schema | `tests/performance/` | T05 | `Implemented` |
 | CI matrix, pinned clang-format/clang-tidy, licence manifest gate, diagnostics source scan | `.github/workflows/`, `scripts/`, `native/licenses.json` | T06 | `Implemented` |
@@ -69,7 +76,6 @@ The table is listed so that a later session cannot mistake a design section for 
 | Missing component | Expected location | Owning tasks |
 |---|---|---|
 | Real tracker backend (MediaPipe, ONNX fallback) and model files | `native/tracking/mediapipe/`, `models/` | T11 |
-| Windows Media Foundation capture | `native/capture/windows/` | T10 |
 | macOS AVFoundation capture | `native/capture/macos/` | T52 |
 | Linux V4L2/PipeWire capture | `native/capture/linux/` | T55 |
 | FaceRig math: pose filter, face frame, homography, head region, framing | `native/rig/` | T18, T19, T22 |
@@ -85,7 +91,7 @@ The table is listed so that a later session cannot mistake a design section for 
 | Installers, signing, notarisation, `NOTICE` | `installer/`, `NOTICE` | T57, T59, T60 |
 
 The **MVP** (Windows 11 + OBS, per [ADR-0017](adr/0017-windows-first-mvp-sequencing.md)) needs the
-rows owned by T10–T50. None of them exist yet.
+rows owned by T11–T50. The Windows capture row (T10) now exists; the rest do not.
 
 ---
 
@@ -117,7 +123,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Process and thread model: primitives | `native/core/` | T03 | `Implemented` |
 | Process and thread model: capture, tracking, render, output threads | `native/`, `app/` | T16, T24, T46 | `Planned` |
 | Subsystem contract — capture (`ICameraSource`, `VideoFrame`, `FrameRing`) | `native/capture/` | T04 | `Implemented` |
-| Subsystem contract — capture device enumeration, capabilities, callback | `native/capture/windows/` | T10 | `Planned` |
+| Subsystem contract — capture device enumeration, capabilities, callback | `native/capture/`, `native/capture/windows/` | T10 | `Implemented` |
 | Subsystem contract — tracking (`TrackingResult`, scripted tracker) | `native/tracking/` | T04 | `Implemented` |
 | Subsystem contract — tracking backend (`ITrackingBackend`, C ABI) | `native/tracking/` | T09 | `Implemented` |
 | Subsystem contract — real tracker backend | `native/tracking/mediapipe/` | T11 | `Planned` |
@@ -183,16 +189,19 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Section | Owning module | Tasks | Status |
 |---|---|---|---|
 | Frame model and `FrameRing` | `native/capture/` | T04 | `Implemented` |
-| Format negotiation and device enumeration | `native/capture/` | T10 | `Planned` |
-| Windows backend: Media Foundation | `native/capture/windows/` | T10 | `Planned` |
+| Format negotiation and device enumeration | `native/capture/` | T10 | `Implemented` |
+| Windows backend: Media Foundation | `native/capture/windows/` | T10 | `Implemented` |
 | macOS backend: AVFoundation | `native/capture/macos/` | T52 | `Planned` |
 | Linux backend: V4L2, PipeWire where required | `native/capture/linux/` | T55 | `Planned` |
-| Permissions and privacy gates | `native/capture/`, `app/` | T10, T41 | `Planned` |
+| Permission and busy detection (`CAP-002`, `CAP-006`) | `native/capture/` | T10 | `Implemented` |
+| Permission/privacy UI gates and deep links | `app/` | T41 | `Planned` |
 | Frame ring → GPU upload | `native/capture/`, `app/` | T16, T24 | `Planned` |
 | GPU zero-copy paths | — | — | `Deferred` (research spike, post-1.0) |
 | Test sources: test pattern, synthetic face, replay | `native/capture/` | T04 | `Implemented` |
-| Failure handling (unplug, busy, hot-plug) | `native/capture/`, `app/` | T10, T41 | `Planned` |
-| Performance targets | `tests/performance/` | T13, T26 | `Planned` |
+| Failure state machine: unplug, busy, preemption, stall, suspend/resume | `native/capture/` | T10 | `Implemented` |
+| Failure surfaces in the UI | `app/` | T41 | `Planned` |
+| Capture callback → ring publish (< 1 ms) | `native/capture/` | T10 | `Implemented` |
+| NV12 upload, downscale and long-run drop gates | `tests/performance/` | T13, T26 | `Planned` |
 
 ## [output-and-virtual-camera.md](output-and-virtual-camera.md)
 
@@ -351,6 +360,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0017](adr/0017-windows-first-mvp-sequencing.md) | Windows-first MVP sequencing | T07, T50, T51 | Proposed |
 | [ADR-0018](adr/0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | T08 | Accepted |
 | [ADR-0019](adr/0019-tracker-c-abi-v1.md) | Tracker C ABI v1: five functions, POD-only, latest-only | T09 | Accepted |
+| [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | T10, T52, T55 | Accepted |
 
 ---
 

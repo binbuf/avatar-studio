@@ -24,6 +24,7 @@ tell the difference between "we chose this" and "this happened".
 | [0017](0017-windows-first-mvp-sequencing.md) | Windows-first MVP sequencing | Proposed |
 | [0018](0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | Accepted |
 | [0019](0019-tracker-c-abi-v1.md) | Tracker C ABI v1: five functions, POD-only, latest-only | Accepted |
+| [0020](0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

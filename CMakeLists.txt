@@ -123,14 +123,35 @@ add_library(avatar_capture STATIC
     native/capture/src/synthetic_face_source.cpp
     native/capture/src/y4m_reader.cpp
     native/capture/src/replay_source.cpp
+    native/capture/src/camera_device.cpp
+    native/capture/src/camera_source.cpp
+    native/capture/src/null_camera_backend.cpp
 )
+# The Windows Media Foundation backend is the only platform implementation
+# today. It is compiled in place of the stub so every other platform still
+# builds the shared state machine and the --list-cameras smoke.
+if(WIN32)
+    target_sources(avatar_capture PRIVATE native/capture/windows/mf_capture.cpp)
+endif()
 add_library(avatar::capture ALIAS avatar_capture)
 target_include_directories(avatar_capture
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/capture/include"
 )
 target_compile_features(avatar_capture PUBLIC cxx_std_20)
 target_link_libraries(avatar_capture PUBLIC avatar::core PRIVATE avatar_json)
+if(WIN32)
+    # Media Foundation is an OS component: mfplat for the core API, mfreadwrite
+    # for IMFSourceReader, mfuuid for the format/attribute GUIDs, ole32 for COM.
+    target_link_libraries(avatar_capture PUBLIC mfplat mfreadwrite mfuuid mf ole32)
+endif()
 avatar_enable_warnings(avatar_capture)
+
+# Capture smoke command: --list-cameras (never opens a device) and --capture
+# <seconds> (the manual 60-second real-camera checklist).
+add_executable(avatar_list_cameras native/capture/tools/list_cameras.cpp)
+target_link_libraries(avatar_list_cameras PRIVATE avatar::capture)
+target_compile_features(avatar_list_cameras PRIVATE cxx_std_20)
+avatar_enable_warnings(avatar_list_cameras)
 
 add_library(avatar_tracking STATIC
     native/tracking/src/scripted_tracker.cpp
@@ -244,6 +265,32 @@ if(AVATAR_TESTS)
     add_test(NAME avatar_tracker_c_abi_compile COMMAND avatar_tracker_c_abi_compile)
     set_tests_properties(avatar_tracker_c_abi_compile PROPERTIES
         LABELS "fast;task_T09"
+        TIMEOUT 60
+    )
+
+    # Capture backend suite (T10): the platform-neutral CameraSource driven by
+    # a fake ICameraDeviceBackend, plus the --list-cameras smoke. Neither needs
+    # a camera, so both run in CI.
+    add_executable(avatar_camera_tests
+        tests/unit/test_camera_main.cpp
+        tests/unit/test_camera_source.cpp
+    )
+    target_include_directories(avatar_camera_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit"
+    )
+    target_link_libraries(avatar_camera_tests PRIVATE avatar::capture)
+    target_compile_features(avatar_camera_tests PRIVATE cxx_std_20)
+    avatar_enable_warnings(avatar_camera_tests)
+
+    add_test(NAME avatar_camera_unit COMMAND avatar_camera_tests)
+    set_tests_properties(avatar_camera_unit PROPERTIES
+        LABELS "fast;task_T10"
+        TIMEOUT 120
+    )
+
+    add_test(NAME avatar_list_cameras_smoke COMMAND avatar_list_cameras --list-cameras)
+    set_tests_properties(avatar_list_cameras_smoke PROPERTIES
+        LABELS "fast;task_T10"
         TIMEOUT 60
     )
 endif()

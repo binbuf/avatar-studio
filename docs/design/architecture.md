@@ -135,14 +135,15 @@ a camera, or a GPU.
 | Performance harness, hardware fingerprint, local baseline | `tests/performance/` | Implemented (T05); real render/transport gates are T26/T46 |
 | CI matrix, formatting, static analysis, licence manifest, design links | `.github/workflows/`, `scripts/` | Implemented (T06/T08); goldens/perf release gates are T26/T46 |
 | Clean-checkout audit and implementation-map gate | `tests/gates/T08.ps1`, `docs/design/implementation-map.md` | Implemented (T08) |
-| Windows Media Foundation capture | `native/capture/windows/` | Planned (T10) |
+| Windows Media Foundation capture | `native/capture/windows/` | Implemented (T10); macOS/Linux are T52/T55 |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
-`ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. Device enumeration,
-capabilities and the capture-thread callback arrive with T10 and must not change the ring
-ownership contract. `TrackingResult` is implemented in
+`ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. T10 added device
+enumeration, capabilities, the capture-thread callback and the Windows Media Foundation backend
+behind the platform-neutral `CameraSource`; the ring ownership contract is unchanged (ADR-0020).
+`TrackingResult` is implemented in
 `native/tracking/include/avatar/tracking/tracking_result.h`; `ITrackingBackend` and the versioned
 five-function C ABI are implemented in
 `native/tracking/include/avatar/tracking/itracking_backend.h` and
@@ -169,16 +170,31 @@ struct VideoFrame {
     // planes / strides / native handles omitted
 };
 
+// Producer seam shared by every source (T04), implemented by CameraSource.
 class ICameraSource {
 public:
-    virtual ~ICameraSource() = default;
-    virtual std::vector<CameraDevice> enumerate() = 0;
-    virtual bool open(const CameraConfig&) = 0;      // resolution, fps, format preference
-    virtual bool start(FrameCallback) = 0;           // called on the capture thread
+    virtual Status start() = 0;   // enumerate, negotiate, open, start
     virtual void stop() = 0;
-    virtual CameraCapabilities capabilities() const = 0;
+    virtual FrameRing& ring() noexcept = 0;
+    virtual bool produce() = 0;   // never blocks on consumers
+    virtual SourceInfo info() const noexcept = 0;
+};
+
+// Platform seam under CameraSource (T10, ADR-0020).
+class ICameraDeviceBackend {
+public:
+    virtual Status enumerate(std::vector<CameraDevice>&) = 0;
+    virtual CameraFailure capabilities(std::string_view id, CameraCapabilities&) = 0;
+    virtual CameraFailure open(std::string_view id, const CameraMode&) = 0;
+    virtual CameraFailure start(const CameraBackendCallbacks&) = 0;  // async
+    virtual void stop() noexcept = 0;
+    virtual void close() noexcept = 0;
 };
 ```
+
+The Windows implementation of `ICameraDeviceBackend` is an async `IMFSourceReader`; the capture
+callback is the producer thread and writes directly into a ring slot. Negotiation, timestamps, the
+watchdog, reconnect and the CAP mapping are in `CameraSource`, not in the platform backend.
 
 Detail: [`camera-capture.md`](camera-capture.md).
 
