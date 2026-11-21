@@ -87,8 +87,11 @@ if ($null -eq $node) {
 
 # 2. The map is current and does not repeat the defects T08 corrected.
 if ($map -ne '') {
-    if ($map -notmatch 'current as of T08') {
-        Add-Failure 'implementation-map.md is not marked "current as of T08"'
+    if ($map -match 'current as of T0[1-7]') {
+        Add-Failure 'implementation-map.md is stale (still marked current as of a pre-T08 task)'
+    }
+    if ($map -notmatch 'current as of T') {
+        Add-Failure 'implementation-map.md has no "current as of TNN" marker'
     }
     if ($map -match 'CMake,\s*presets') {
         Add-Failure 'implementation-map.md still claims a CMake presets feature that does not exist'
