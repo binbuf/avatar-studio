@@ -136,7 +136,7 @@ a camera, or a GPU.
 | CI matrix, formatting, static analysis, licence manifest, design links | `.github/workflows/`, `scripts/` | Implemented (T06/T08); goldens/perf release gates are T26/T46 |
 | Clean-checkout audit and implementation-map gate | `tests/gates/T08.ps1`, `docs/design/implementation-map.md` | Implemented (T08) |
 | Windows Media Foundation capture | `native/capture/windows/` | Implemented (T10); macOS/Linux are T52/T55 |
-| MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
+| MediaPipe tracker backend | `native/tracking/mediapipe/` | Implemented on Windows CPU (T11); app wiring remains T16 |
 | FaceRig math | `native/rig/` | Planned (T18) |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,

@@ -94,7 +94,12 @@ try {
         Invoke-Script (Join-Path $root 'scripts/bootstrap.ps1') @{ Fast = $true }
     }
 
-    Invoke-Native 'cmake' @('-S', '.', '-B', $BuildDir, '-DAVATAR_TESTS=ON', '-DAVATAR_BENCHMARKS=ON')
+    $configureArguments = @('-S', '.', '-B', $BuildDir, '-DAVATAR_TESTS=ON', '-DAVATAR_BENCHMARKS=ON')
+    if ($Task -eq 'T11') {
+        Invoke-Script (Join-Path $root 'scripts/build-tracker.ps1')
+        $configureArguments += '-DAVATAR_REAL_TRACKER=ON'
+    }
+    Invoke-Native 'cmake' $configureArguments
     Invoke-Native 'cmake' @('--build', $BuildDir, '--config', $Config, '--parallel')
 
     if ($Full) {

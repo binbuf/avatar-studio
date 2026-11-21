@@ -1,0 +1,7 @@
+LIBRARY libavatartracker
+EXPORTS
+    avatar_tracker_create
+    avatar_tracker_configure
+    avatar_tracker_push_frame
+    avatar_tracker_poll_result
+    avatar_tracker_destroy

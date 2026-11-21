@@ -1,0 +1,2 @@
+# Git's patch matcher requires LF context on the pristine upstream archive.
+native/tracking/mediapipe/patches/* text eol=lf

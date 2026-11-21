@@ -267,6 +267,24 @@ smoke, with the pass condition recorded per model rather than as a single boolea
 
 ---
 
+## Real tracker feasibility checks (T11)
+
+Windows `verify -Fast -Task T11` builds the separately pinned MediaPipe SDK and runs both the
+T09 scripted tests and the real DLL contracts. `avatar_real_tracker_contract` covers async input
+ownership, latest-only polling, nonblocking busy drops, timestamp preservation with duplicate and
+backwards input, frame/layout validation, reconfiguration, fault containment, letterbox mapping,
+colour conversion and the eye/iris/mouth predicate. `avatar_tracker_model_integrity` alters the
+actual bundled model and proves graph initialization rejects it. `tracker_sdk_integrity` parses the
+actual PE export table and checks its five symbols plus the bundled model SHA256.
+
+`avatar_record_tracker_clip` records a bounded, local-only BT.601 limited NV12 camera clip;
+`avatar_tracker_bench` runs that clip through the same real worker and reports prepared and model
+tensor sizes separately, warm-up count, p50/p95 graph inference and preprocessing, exact busy drops
+and confidence bins. 192/256 refer to prepared images; the upstream landmark network remains a
+fixed 256 tensor. These are feasibility observations, not a replacement for T13's 30-minute soak,
+T14's M0 gate or real-corpus pose/occlusion validation. The app HUD has no real-statistics query in
+ABI v1; it remains planned.
+
 ## Performance harness
 
 | Metric | Method | Gate (Reference) |

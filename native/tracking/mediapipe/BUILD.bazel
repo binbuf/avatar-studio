@@ -1,0 +1,29 @@
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "backend",
+    srcs = ["engine.cpp", "preprocessing.cpp", "runtime.cpp"],
+    hdrs = ["backend.h", "avatar/tracker/tracker_c_api.h"],
+    includes = ["."],
+    linkopts = ["bcrypt.lib"],
+    deps = [
+        "//mediapipe/framework/formats:image",
+        "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/tasks/cc/vision/face_landmarker:face_landmarker",
+    ],
+)
+
+cc_binary(
+    name = "libavatartracker.dll",
+    srcs = ["c_api.cpp"],
+    defines = ["AVATAR_TRACKER_SHARED", "AVATAR_TRACKER_BUILDING"],
+    linkshared = True,
+    win_def_file = "tracker.def",
+    deps = [":backend"],
+)
+
+cc_binary(
+    name = "avatar_tracker_bench",
+    srcs = ["benchmark.cpp", "clip_io.h"],
+    deps = [":backend"],
+)

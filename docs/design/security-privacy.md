@@ -102,10 +102,16 @@ an angle-bracket third-party include with no matching `include_prefixes` entry f
 manifest entry missing name/version/licence/url/modified or carrying a licence on the deny list.
 Reviewed exceptions are `{id, reason, adr}` entries in `policy.exceptions`; the gate warns and allows
 only those. Standard-library and platform headers are allow-listed in the script so a new SDK header is
-a reviewed change. The manifest currently records nlohmann/json, Godot and godot-cpp as active, and
-Eigen, MediaPipe, ONNX Runtime, Spout2 and Syphon as planned. CTest runs the gate as
-`license_manifest_check`; `scripts/ci.ps1|sh` runs it before configure. Asset provenance and model
-hashes remain later tasks (`assets.json`, tracker model checks).
+a reviewed change. The manifest records the active application dependencies plus MediaPipe, its isolated OpenCV
+runtime, and the Google Face Landmarker bundle. Evaluated ONNX weights are explicitly unshipped.
+Each downloaded model has an exact SHA256 and permissive weight-licence evidence; all three
+Google-authored model cards state Apache-2.0. The bundle records individual member hashes too.
+`build-tracker.ps1` verifies its download; the real DLL verifies the exact model size and SHA256
+before graph creation and rejects altered bytes with `INTERNAL`. CTest includes a real tampered
+model rejection and checks the bundled artifact hash and actual five-export PE table. No runtime
+download exists. `license_manifest_check` continues to enforce source includes and licence policy;
+`tracker_sdk_integrity` and `avatar_tracker_model_integrity` enforce the T11 model contract.
+Asset provenance for user-facing assets remains later work (`assets.json`).
 
 ---
 

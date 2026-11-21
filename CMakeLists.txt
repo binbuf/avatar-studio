@@ -165,6 +165,54 @@ target_compile_features(avatar_tracking PUBLIC cxx_std_20)
 target_link_libraries(avatar_tracking PUBLIC avatar::core avatar::capture)
 avatar_enable_warnings(avatar_tracking)
 
+# The vendor graph is built separately by scripts/build-tracker.ps1. The app
+# and its CMake graph see only the T09 C ABI and an offline, pinned SDK.
+if(WIN32)
+    add_executable(avatar_record_tracker_clip native/tracking/tools/record_tracker_clip.cpp)
+    target_include_directories(avatar_record_tracker_clip PRIVATE native/tracking/include)
+    target_link_libraries(avatar_record_tracker_clip PRIVATE avatar::capture)
+    avatar_enable_warnings(avatar_record_tracker_clip)
+    set(AVATAR_TRACKER_SDK "${AVATAR_TOOLS_DIR}/tracker-sdk" CACHE PATH "Prebuilt tracker SDK")
+    set(_avatar_tracker_default OFF)
+    if(EXISTS "${AVATAR_TRACKER_SDK}/libavatartracker.dll")
+        set(_avatar_tracker_default ON)
+    endif()
+    option(AVATAR_REAL_TRACKER "Use the separately built real tracker SDK" ${_avatar_tracker_default})
+    if(AVATAR_REAL_TRACKER)
+        foreach(_file libavatartracker.dll opencv_world3410.dll avatar_tracker_bench.exe tracker-models/face_landmarker.task)
+            if(NOT EXISTS "${AVATAR_TRACKER_SDK}/${_file}")
+                message(FATAL_ERROR "Tracker SDK missing ${_file}; run scripts/build-tracker.ps1")
+            endif()
+        endforeach()
+        add_custom_target(avatar_tracker_artifacts ALL
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/tracker-models"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AVATAR_TRACKER_SDK}/libavatartracker.dll"
+                "${AVATAR_TRACKER_SDK}/opencv_world3410.dll"
+                "${AVATAR_TRACKER_SDK}/avatar_tracker_bench.exe"
+                "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AVATAR_TRACKER_SDK}/tracker-models/face_landmarker.task"
+                "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/tracker-models/face_landmarker.task"
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/tracker-models"
+                "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/tracker-licenses"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AVATAR_TRACKER_SDK}/libavatartracker.dll"
+                "${AVATAR_TRACKER_SDK}/opencv_world3410.dll"
+                "${CMAKE_CURRENT_SOURCE_DIR}/app/bin"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AVATAR_TRACKER_SDK}/tracker-models/face_landmarker.task"
+                "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/tracker-models/face_landmarker.task"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AVATAR_TRACKER_SDK}/LICENSE-mediapipe.txt"
+                "${AVATAR_TRACKER_SDK}/LICENSE-opencv.txt"
+                "${CMAKE_CURRENT_SOURCE_DIR}/native/licenses.json"
+                "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/tracker-licenses"
+        )
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -288,11 +336,32 @@ if(AVATAR_TESTS)
         TIMEOUT 120
     )
 
-    add_test(NAME avatar_list_cameras_smoke COMMAND avatar_list_cameras --list-cameras)
-    set_tests_properties(avatar_list_cameras_smoke PROPERTIES
+add_test(NAME avatar_list_cameras_smoke COMMAND avatar_list_cameras --list-cameras)
+set_tests_properties(avatar_list_cameras_smoke PROPERTIES
         LABELS "fast;task_T10"
         TIMEOUT 60
+)
+if(WIN32 AND AVATAR_REAL_TRACKER)
+    add_executable(avatar_real_tracker_tests
+        tests/unit/test_real_tracker.cpp
+        native/tracking/mediapipe/preprocessing.cpp
     )
+    target_include_directories(avatar_real_tracker_tests PRIVATE
+        tests/unit native/tracking/include
+    )
+    add_dependencies(avatar_real_tracker_tests avatar_tracker_artifacts)
+    avatar_enable_warnings(avatar_real_tracker_tests)
+    add_test(NAME avatar_real_tracker_contract COMMAND avatar_real_tracker_tests
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libavatartracker.dll")
+    add_test(NAME avatar_tracker_model_integrity COMMAND avatar_real_tracker_tests
+        --reject-corrupt-model "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/libavatartracker.dll"
+        "${CMAKE_CURRENT_BINARY_DIR}/tracker-corrupt-model")
+    add_test(NAME avatar_tracker_worker_contract
+        COMMAND "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/avatar_tracker_bench.exe" --self-test
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/tracker-models/face_landmarker.task")
+    set_tests_properties(avatar_real_tracker_contract avatar_tracker_model_integrity avatar_tracker_worker_contract PROPERTIES
+        LABELS "fast;task_T09;task_T11" TIMEOUT 120)
+endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -333,8 +402,14 @@ endif()
 # ---------------------------------------------------------------------------
 if(AVATAR_TESTS)
     find_program(AVATAR_NODE_EXECUTABLE NAMES node)
-    if(AVATAR_NODE_EXECUTABLE)
-        add_test(NAME license_manifest_check
+if(AVATAR_NODE_EXECUTABLE)
+if(WIN32 AND AVATAR_REAL_TRACKER)
+add_test(NAME tracker_sdk_integrity COMMAND "${AVATAR_NODE_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-tracker-sdk.mjs" --self-test
+    --sdk "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
+set_tests_properties(tracker_sdk_integrity PROPERTIES LABELS "fast;task_T11" TIMEOUT 30)
+endif()
+add_test(NAME license_manifest_check
             COMMAND "${AVATAR_NODE_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-licenses.mjs"
                 --root "${CMAKE_CURRENT_SOURCE_DIR}" --self-test

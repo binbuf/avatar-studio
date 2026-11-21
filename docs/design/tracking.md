@@ -1,10 +1,10 @@
 # Face Tracking
 
-**Status:** proposal; the tracker C ABI v1, `ITrackingBackend` and the `ScriptedTracker` contract
-harness are implemented (T09). The real MediaPipe backend remains `Planned` (T11). · **Last
-updated:** 2026-11-20
-**Decision record:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
-[ADR-0019](adr/0019-tracker-c-abi-v1.md)
+**Status:** Windows CPU backend implemented and measured (T11); filtering, the app integration,
+and wider quality/platform validation remain planned. **Last updated:** 2026-11-20
+**Decision records:** [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md),
+[ADR-0019](adr/0019-tracker-c-abi-v1.md), [ADR-0021](adr/0021-real-mediapipe-windows-backend.md)
+
 
 Tracking turns a camera frame into a head pose and 478 landmarks. It is the only component with a
 large external dependency and the only one whose feasibility is not yet proven on all three
@@ -52,8 +52,9 @@ Properties the contract guarantees:
 - Results are published atomically; a reader sees a complete result or the previous one.
 
 The C++ side of this contract is `native/tracking/include/avatar/tracking/itracking_backend.h`
-(`ITrackingBackend`, `TrackerConfig`). `ScriptedTracker` implements it; T11's MediaPipe adapter will
-implement it on top of the C ABI rather than exposing vendor types.
+(`ITrackingBackend`, `TrackerConfig`). `ScriptedTracker` implements it. The T11 real DLL implements the C ABI below; connecting the
+Godot shell and its `ITrackingBackend` facade is app integration work (T16), with no vendor headers
+outside the wrapper. ABI v1 does not expose real-worker statistics to that future facade.
 
 ### C ABI v1 (T09)
 
@@ -195,46 +196,110 @@ never includes a MediaPipe header. This is not stylistic: MediaPipe's vendored A
 will collide with any other copy in the process, and symbol leakage across a GDExtension boundary is
 extremely hard to debug.
 
+## Realised Windows backend (T11)
+
+`native/tracking/mediapipe/` implements `libavatartracker.dll` with exactly the five T09 exports.
+`ScriptedTracker` remains a separate static test implementation; the real DLL never uses scripted
+scenarios or substitutes synthetic landmarks when inference fails. `num_faces = 1`, CPU execution,
+478 landmarks, 52 blendshapes and the facial transformation matrix are enabled. MediaPipe chooses
+one detected face and tracks it; selection is not a guaranteed largest-face or identity policy.
+
+The pinned build is MediaPipe **0.10.21**, commit
+`cad7f3ab99ebf175947e40c5252c642612aae927`, Bazel **6.5.0**, hermetic Python **3.12**, and
+OpenCV **3.4.10** (`opencv_world3410.dll`). MSYS2 bash and an installed MSVC/Windows SDK are
+prerequisites. T11 used MSVC 14.51.36231 / Windows SDK 10.0.26100.0. The build script downloads and
+hash-checks archives inside `.tools/`, points the vendor WORKSPACE at that local OpenCV, applies
+one MSVC preprocessor fix and a glog static-export patch, and defines `TFL_STATIC_LIBRARY_BUILD`.
+Patch files are LF-pinned; the build normalizes the patched header so clean extractions and older
+caches both apply correctly. The last custom-op compilation takes several minutes. CMake consumes the SDK without importing
+Bazel, Abseil, Protobuf, Eigen or OpenCV into the application's compile/link graph.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-tracker.ps1 -Jobs 6
+cmake -S . -B build -DAVATAR_REAL_TRACKER=ON -DAVATAR_TESTS=ON -DAVATAR_BENCHMARKS=ON
+cmake --build build --config RelWithDebInfo --parallel
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -Fast -Task T11
+```
+
+`verify -Task T11` invokes the tracker build itself. Other fast tasks can build without this SDK;
+`AVATAR_REAL_TRACKER=ON` fails explicitly if it is incomplete. The SDK and configured executable
+directory contain `libavatartracker.dll`, `opencv_world3410.dll`, the private measurement executable
+`avatar_tracker_bench.exe`, and `tracker-models/face_landmarker.task`. The DLL resolves the model
+relative to its own module, checks its size and SHA256, and passes the verified bytes to MediaPipe.
+CMake also stages the DLL, OpenCV, model and licence manifest/texts into `app/bin/` for offline
+application bundling. Missing/corrupt models fail `create` with `INTERNAL`; execution performs no
+model download.
+
+### Model provenance
+
+| Item | Pin / permission |
+|---|---|
+| Google Face Landmarker bundle | `face_landmarker/face_landmarker/float16/1/face_landmarker.task` |
+| Bundle SHA256 | `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff` |
+| Detector / landmarks / expressions | BlazeFace short-range / Face Mesh V2 (478) / Blendshape V2 (52) |
+| Weight licence | Apache-2.0, explicitly stated in each Google-authored model card |
+| Audit | `native/licenses.json`: exact download URL, individual bundle-member hashes, model-card URLs/hashes and evaluated ONNX alternatives |
+
+ONNX Runtime 1.20.1 and two permissively licensed ONNX conversions were evaluated locally and are
+recorded as unshipped. The 478-point ONNX model also has a fixed 256 tensor; changing its declared
+shape to 192 fails at its final convolution. No fallback DLL is shipped, and ADR-0003 is retained.
+
 ## Pipeline
 
-```
-VideoFrame (NV12/BGRA, 1920×1080)
-   │
-   ├─▶ downscale + letterbox to model input (default 256×256, configurable)
-   │     └─ YUV→RGB, aspect preserved, padding filled with edge pixels
-   │
-   ├─▶ FaceLandmarker::detect_async(image, timestamp_ms)
-   │     ├─ runs on the tracking thread
-   │     ├─ LIVE_STREAM mode: internally drops stale frames
-   │     └─ outputs: 478 landmarks, 4×4 facial transform, 52 blendshapes
-   │
-   └─▶ TrackingResult (source_timestamp_ns = input frame timestamp)
+```text
+Borrowed NV12 / YUY2 / BGRA / RGBA frame
+  -> validate layout and copy to one owned slot; busy input is dropped, never queued
+  -> worker: convert colour + bilinear downscale + edge-replicated square letterbox
+  -> FaceLandmarker::DetectForVideo(image, strictly increasing timestamp_ms), CPU
+  -> invert letterbox coordinates, convert pose centimetres to ABI metres
+  -> atomically replace newest unconsumed POD result; preserve source_timestamp_ns exactly
 ```
 
-Details that are easy to get wrong:
+The worker owns the synchronous VIDEO-mode graph rather than using a second, vendor-internal
+LIVE_STREAM queue. Push never waits for inference; poll consumes only the latest complete result.
+Worker failures latch `INTERNAL`, clear pending output, and require successful reconfiguration.
+Reconfigure replaces the graph, clears results and resets its internal timestamp base. Teardown joins
+the worker. Frames up to 8192 per dimension are validated before allocating/copying their declared
+layout. MJPEG and metadata-only input are rejected; unsupported input never produces fake output.
 
-- **Timestamps must be strictly monotonic** in milliseconds. MediaPipe rejects or misbehaves on
-  duplicates and non-monotonic input. The adapter converts from `FrameClock` nanoseconds and, on a
-  duplicate (camera reset, clock reuse), increments by 1 ms and logs once. A camera reconnect must
-  not silently corrupt the graph.
-- **Letterbox, do not stretch.** A stretched face changes the apparent inter-ocular distance and
-  the pose solver sees a systematically wrong head.
-- **Prefer 16:9 → square padding on the sides**, not a centre crop: cropping cuts the chin at close
-  range and the pose estimator loses the jaw.
-- **Run inference on a downscaled frame, sample pixels from the full-resolution frame.** Landmark
-  precision at 256² is ample for a homography; the decal needs the full-resolution texture.
-- **No undistortion in 1.0.** Tracking and decal sampling use the same distorted frame; the
-  assumption and its limits are in [`face-compositing.md`](face-compositing.md#lens-distortion).
-- **One face.** `num_faces = 1`; the largest/closest face wins. Multi-face is deferred.
+`config.input_width/input_height` select an equal square prepared image, 64..1024; zero chooses
+256. The other scenario/sequence fields exist for the scripted ABI harness and do not control the
+real graph. T11 compares **192x192 and 256x256 prepared images**. These are not alternate landmark
+network architectures: MediaPipe internally resizes detected face crops to its fixed **256x256**
+landmark tensor and uses a **128x128** detector. Benchmarks report all three resolutions explicitly.
 
-### Confidence
+- Internal graph time is `max(source_ns / 1,000,000, previous_ms + 1)`. Duplicate and backwards
+  inputs are counted; the public result retains the original nanosecond timestamp. No other epoch
+  or integer-unit substitution is applied.
+- Letterbox preserves aspect ratio and maps coordinates back to the original frame. A wide 16:9
+  input receives top/bottom padding; a tall input receives side padding. Edges are replicated.
+- ABI v1 carries one stride and no colour-space field. NV12 requires equal Y/UV strides, even
+  width/height and BT.601 limited input; YUY2 likewise assumes BT.601 limited. Other camera colour
+  spaces must be converted to RGBA/BGRA before calling this ABI. The T11 recorder explicitly checks
+  BT.601 and records the real 640x480 NV12 camera frames.
+- Pose is the upstream metric transform converted to a normalized quaternion and metres; it is
+  not camera-calibrated rig math. Pose quality and filtering remain T18.
+- Tracking uses reduced pixels; eventual decal sampling still uses the full-resolution source.
+  Lens distortion assumptions remain in [face-compositing](face-compositing.md#lens-distortion).
 
-A single number derived from: detection presence score, landmark reprojection error from the
-previous frame's fit, and pose plausibility (no 180° jumps). It is used by the rig for hold/decay
-behaviour and by the UI for the "face lost" indicator. It is *not* exposed as a raw model score,
-because those are not comparable across backends.
+### Confidence and feature validity
+
+MediaPipe Tasks C++ does not expose the detector/presence logits. The implemented confidence is
+therefore an explicit **geometric trust proxy**: the fraction of the 478 finite landmarks lying
+inside the original image, after the graph's detection/presence/tracking thresholds of 0.5. A lost
+face produces zero confidence, `valid = false`, zero landmarks and zero blendshapes. It is not a
+calibrated probability or the planned reprojection/pose-plausibility score.
+
+`features_valid` additionally requires both eye-corner pairs, both iris centres, mouth corners and
+lip centres to be finite, inside the source image and geometrically non-degenerate. Any available
+upstream visibility/presence flag below 0.5 also invalidates features. A present face can therefore
+have `valid = true` and `features_valid = false`. Face Mesh does not reliably supply per-feature
+occlusion probabilities; sunglasses/hand/profile rejection remains a real-corpus quality gate,
+not a capability implied by this geometric check. Output continues to require `features_valid`.
 
 ## Filtering and motion
+
+**Planned for T18.** T11 returns upstream pose and landmarks without this app-side filter stack.
 
 Raw landmarks and pose jitter at rest and lag under motion. The filter stack:
 
@@ -266,6 +331,8 @@ Rendering runs at the output rate (60 Hz). Tracking runs at the camera rate (30 
 
 ## Segmentation
 
+**Planned.** T11 does not load a segmentation model or emit a matte.
+
 The software matte ([`face-compositing.md`](face-compositing.md#face-matte)) is an optional output of
 the same runtime where it exists: MediaPipe Selfie Segmentation at 256×256, one pass, CPU or GPU
 delegate. The provider returns a low-resolution mask aligned with the camera frame; the compositor
@@ -277,6 +344,9 @@ landmarks, and a slow mask is dropped rather than delayed. If the provider is ab
 load, `TRK-009` is logged once and the decal falls back to the region mask.
 
 ## Failure behaviour
+
+This is the intended application policy. T11 implements no-face results, geometric feature gating
+and backend errors; the app output gate, recovery blending and UI diagnostics remain later tasks.
 
 | Situation | Detection | Behaviour |
 |---|---|---|
@@ -321,24 +391,28 @@ The tracker exposes, per session:
 These are shown in a debug HUD (hidden behind a flag) and included in opt-in diagnostics. Without
 them, "the face feels laggy" is unactionable.
 
-`TrackerStats` (`native/tracking/include/avatar/tracking/tracking_result.h`) implements the first four:
-`submitted`, `produced`, `dropped` plus a per-reason counter (`script_exhausted`, `backend_busy`,
-`invalid_frame`, `not_initialized`, `shutdown`) and `last_drop_reason`; `input_width`/`input_height`;
-a ten-bin `ConfidenceDistribution` with mean; and `inference_ns`, a
-`core::LatencyHistogram<>` with p50/p95/p99. The scripted tracker leaves `inference_ns` empty because
-it does no inference; T11 records one sample per produced result.
+`TrackerStats` (`native/tracking/include/avatar/tracking/tracking_result.h`) implements the
+scripted C++ instrumentation: submitted/produced/drop-reason counters, resolution, confidence bins
+and the shared latency histogram. The real DLL's private `Metrics` records exact submitted,
+produced and busy-drop counters, timestamp corrections, ten confidence bins, and at most 4096
+preprocessing/inference samples. Counters cover the whole session; the bounded sample reservoir
+covers its first 4096 results. `avatar_tracker_bench` reports exact sorted p50/p95 after warm-up.
+It uses the same worker/engine/preprocessing implementation as the DLL, compiled into a separate
+measurement executable; no extra instrumentation symbol is exported from the DLL.
 
-The histogram is the shared utility in `native/core/include/avatar/core/latency_histogram.h`
-(100 microsecond buckets over a 102.4 ms window, exact max, saturating overflow bucket). The
-performance harness uses the same type, so a percentile means the same thing in `TrackerStats` and in
-`avatar_bench`'s JSON. Landmark reprojection error remains a T13/T26 measurement.
+ABI v1 has no statistics query. Real counters are **not yet wired to the app's future debug HUD**;
+that requires a separate interface decision in T13/T26. Reprojection error and the normalized
+cross-backend confidence score also remain planned. CTest checks the real and scripted ABI
+contracts, letterbox/unprojection, supported colour conversion, feature predicates, model tamper
+rejection, and the actual five-symbol PE export table. A local eight-second camera clip supplies
+real inference measurements; the task findings remain in the gitignored progress workspace.
 
 ## Open questions
 
 | Question | Resolution path |
 |---|---|
-| Achievable CPU inference time on the reference hardware at 256² and 192²? | M0 benchmark on all three platforms |
-| Does MediaPipe's Windows build survive MSVC + our C++20 code in the same process? | M0; the C-ABI isolation is designed for this |
+| CPU inference at 256² and 192² prepared image sizes? | Windows measured in T11; graph tensors stay fixed. Other platforms remain planned |
+| Does MediaPipe's Windows build survive MSVC + C++20 in one process? | Proven by T11 real DLL contract tests; preserve isolated symbols |
 | Is the facial transformation matrix stable enough to drive rotation directly, or does it need the PnP/homography cross-check? | M1 A/B on recorded clips |
 | Do we need 60 Hz tracking for fast head turns, or is 30 Hz plus prediction sufficient? | M1 usability test |
 | Is the MediaPipe landmark index mapping stable across the pinned model versions? | M0 harness with an asymmetric marker; fail the build on drift |

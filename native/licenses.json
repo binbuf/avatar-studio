@@ -94,26 +94,28 @@
     {
       "id": "mediapipe",
       "name": "MediaPipe Face Landmarker",
-      "version": "0.10.x",
+      "version": "0.10.21",
       "license": "Apache-2.0",
       "url": "https://github.com/google-ai-edge/mediapipe",
-      "modified": false,
+      "modified": true,
       "shipped": true,
-      "status": "planned",
-      "require_usage": false,
+      "status": "active",
+      "require_usage": true,
       "include_prefixes": [
         "mediapipe/"
       ],
-      "notes": "Tracking backend behind the C-ABI wrapper (ADR-0003); version pinned when T11 adds the build."
+      "notes": "CPU-only separate Bazel DLL. Recorded MSVC preprocessor and glog static-export patches; TFL_STATIC_LIBRARY_BUILD. See ADR-0003 and tracking.md; vendor headers confined to native/tracking/mediapipe/.",
+      "commit": "cad7f3ab99ebf175947e40c5252c642612aae927",
+      "sha256": "6b7a48cbc3ca16048198c7a8482ef6d888e39a6a1c4641c60ac560277933f9c4"
     },
     {
       "id": "onnxruntime",
       "name": "ONNX Runtime",
-      "version": "1.20.x",
+      "version": "1.20.1",
       "license": "MIT",
       "url": "https://github.com/microsoft/onnxruntime",
       "modified": false,
-      "shipped": true,
+      "shipped": false,
       "status": "planned",
       "require_usage": false,
       "include_prefixes": [
@@ -121,7 +123,8 @@
         "onnxruntime_c_api.h",
         "onnxruntime_cxx_api.h"
       ],
-      "notes": "Fallback tracker runtime if MediaPipe is not viable; version pinned when selected."
+      "notes": "T11 evaluated official Microsoft.ML.OnnxRuntime NuGet SDK; not selected or shipped. ONNX candidate fixed 256 tensor rejected native 192 input.",
+      "sha256": "9c32108e9a1c78b090a95c2a219f244dd5f067d4caf68fb0f967103f3f20839c"
     },
     {
       "id": "spout2",
@@ -154,6 +157,127 @@
         "Syphon/"
       ],
       "notes": "macOS OBS/Syphon transport (T46)."
+    },
+    {
+      "id": "opencv_tracker",
+      "name": "OpenCV (isolated tracker dependency)",
+      "version": "3.4.10",
+      "license": "BSD-3-Clause",
+      "url": "https://github.com/opencv/opencv/releases/download/3.4.10/opencv-3.4.10-vc14_vc15.exe",
+      "modified": false,
+      "shipped": true,
+      "status": "active",
+      "require_usage": false,
+      "include_prefixes": [],
+      "sha256": "be79c1d4b73a4c6e74ed78caec342e6ef877b3d9c3c8a84dcb2499e2d8d4494d",
+      "notes": "The Windows BUILD rule pins opencv_world3410, independently of WORKSPACE's unused OpenCV source archive. Copied beside the tracker DLL."
+    },
+    {
+      "id": "face_landmarker_bundle",
+      "name": "Google MediaPipe Face Landmarker model bundle",
+      "version": "float16/1",
+      "license": "Apache-2.0",
+      "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      "modified": false,
+      "shipped": true,
+      "status": "active",
+      "require_usage": false,
+      "include_prefixes": [],
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "model_file": "tracker-models/face_landmarker.task",
+      "copyright": "Google LLC",
+      "license_evidence": [
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Short%20Range%29.pdf",
+          "sha256": "cd335c06fc0de7807cd815a0777a697932598bcdb28fa98adaaabf847485f758",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        },
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf",
+          "sha256": "c6add060f4ebfb37b2690136b6c711c7e5fcb7038baa2649ae3338b83979565a",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        },
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf",
+          "sha256": "c8e9cf60a39998f4b341740623917590e050d1c97004e2de4568d84e026445ae",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        }
+      ],
+      "notes": "All three Google-authored model cards explicitly license the models; source-code licence alone was not used as weight permission. Downloaded only after this audit. SHA256 is also enforced on the exact model bytes before MediaPipe initialization.",
+      "members": [
+        {
+          "file": "face_detector.tflite",
+          "sha256": "b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f",
+          "license": "Apache-2.0"
+        },
+        {
+          "file": "face_landmarks_detector.tflite",
+          "sha256": "c7d54204ce0448474c7f3fa9af494787c0965cbdd6f20fc72867e43046bd43d5",
+          "license": "Apache-2.0"
+        },
+        {
+          "file": "geometry_pipeline_metadata_landmarks.binarypb",
+          "sha256": "bdbcda96dfcb7da883da124aaa2c55dee49770d934f0fcc71747f8c21bdc75b4",
+          "license": "Apache-2.0"
+        },
+        {
+          "file": "face_blendshapes.tflite",
+          "sha256": "4f36dded049db18d76048567439b2a7f58f1daabc00d78bfe8f3ad396a2d2082",
+          "license": "Apache-2.0"
+        }
+      ]
+    },
+    {
+      "id": "face_landmarks_onnx_candidate",
+      "name": "Face Mesh V2 ONNX conversion (evaluated only)",
+      "version": "7d6e82dee82a",
+      "license": "Apache-2.0",
+      "url": "https://huggingface.co/senty-au/face_landmarks_detector-ONNX/resolve/337d58218b5b1cc597ca3c67360880b920f6ce7b/onnx/model.onnx",
+      "modified": false,
+      "shipped": false,
+      "status": "deprecated",
+      "require_usage": false,
+      "include_prefixes": [],
+      "sha256": "7d6e82dee82a1dca5fbddb282b3cc74571833a530de317fc22ae325c3358beeb",
+      "notes": "Downloaded for T11 Path B evaluation after upstream Google model-card and conversion-publisher Apache-2.0 audit. Not used by the selected backend. Original Google weights converted without retraining; conversion attribution retained here.",
+      "license_evidence": [
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Short%20Range%29.pdf",
+          "sha256": "cd335c06fc0de7807cd815a0777a697932598bcdb28fa98adaaabf847485f758",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        },
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf",
+          "sha256": "c6add060f4ebfb37b2690136b6c711c7e5fcb7038baa2649ae3338b83979565a",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        }
+      ]
+    },
+    {
+      "id": "blazeface_onnx_candidate",
+      "name": "BlazeFace ONNX conversion (evaluated only)",
+      "version": "2f2689b040be",
+      "license": "Apache-2.0",
+      "url": "https://github.com/yakhyo/mediapipe-face-mesh-onnx/releases/download/weights/face_detection_short_range.onnx",
+      "modified": false,
+      "shipped": false,
+      "status": "deprecated",
+      "require_usage": false,
+      "include_prefixes": [],
+      "sha256": "2f2689b040becf555706d2cb978d2f0e3296ea82413734fba9a856c66c5f2b17",
+      "notes": "Downloaded for T11 Path B evaluation after upstream Google model-card and conversion-publisher Apache-2.0 audit. Not used by the selected backend. Original Google weights converted without retraining; conversion attribution retained here.",
+      "license_evidence": [
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Short%20Range%29.pdf",
+          "sha256": "cd335c06fc0de7807cd815a0777a697932598bcdb28fa98adaaabf847485f758",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        },
+        {
+          "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf",
+          "sha256": "c6add060f4ebfb37b2690136b6c711c7e5fcb7038baa2649ae3338b83979565a",
+          "statement": "LICENSED UNDER Apache License, Version 2.0"
+        }
+      ]
     }
   ]
 }

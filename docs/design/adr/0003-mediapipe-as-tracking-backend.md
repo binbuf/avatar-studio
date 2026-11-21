@@ -1,6 +1,6 @@
 # ADR-0003: MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Related:** [`../tracking.md`](../tracking.md)
 
@@ -73,3 +73,12 @@ Use **MediaPipe Face Landmarker** as the first `ITrackingBackend`, but:
 2. Record the exact MediaPipe commit, Bazel version, OpenCV version and model hash in the manifest.
 3. Add a nightly job that rebuilds the tracker from a clean container, so drift is caught early.
 4. Confirm the model weight licence in writing before M5.
+
+## T11 validation
+
+The Windows CPU library and five-function DLL build succeeded with pinned MediaPipe 0.10.21,
+Bazel 6.5.0, OpenCV 3.4.10, MSVC 14.51 and hermetic Python 3.12. Real camera frames produce
+478 landmarks, a metric transform and blendshapes. The actual PE export table, model SHA256
+and ABI contracts are checked. [ADR-0021](0021-real-mediapipe-windows-backend.md) records the
+realised build, recorded MSVC/static-export fixes and remaining quality/platform validation.
+ADR-0003 is kept; an ONNX pivot is unnecessary.

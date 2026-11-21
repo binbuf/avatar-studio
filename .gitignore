@@ -48,3 +48,5 @@ CMakeUserPresets.json
 /app/bin/*.so
 /app/bin/*.dylib
 /app/bin/*.pdb
+/app/bin/tracker-models/
+/app/bin/tracker-licenses/

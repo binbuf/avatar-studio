@@ -7,7 +7,7 @@ tell the difference between "we chose this" and "this happened".
 |---|---|---|
 | [0001](0001-engine-and-language.md) | Godot 4.7 + C++20 GDExtension as the application platform | Proposed |
 | [0002](0002-native-camera-capture.md) | Native camera capture on all three platforms | Proposed |
-| [0003](0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | Proposed |
+| [0003](0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | Accepted |
 | [0004](0004-face-decal-projection.md) | Face decals rendered on the model's own surface in canonical face space | Proposed |
 | [0005](0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | Proposed |
 | [0006](0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | Proposed |
@@ -25,6 +25,7 @@ tell the difference between "we chose this" and "this happened".
 | [0018](0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | Accepted |
 | [0019](0019-tracker-c-abi-v1.md) | Tracker C ABI v1: five functions, POD-only, latest-only | Accepted |
 | [0020](0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | Accepted |
+| [0021](0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

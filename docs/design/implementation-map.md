@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T10 · **Last updated:** 2026-11-20
+**Status:** current as of T11 · **Last updated:** 2026-11-20
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,12 +24,12 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T10 the `Implemented` rows are the foundation, the tracker seam, and the Windows capture
-backend.** There is no real tracker, no renderer, no editor and no output. Everything that would let
-a user see an avatar is `Planned`. The tracker C ABI and `ScriptedTracker` exist so the rig and
-renderer can be built and tested before inference is proven; they are not a working tracker. The
-Windows capture backend produces real NV12/YUY2/BGRA8 frames through `ICameraSource`, but nothing
-consumes them yet.
+**At T11 the foundation, tracker seam, Windows capture and real Windows CPU tracker are
+implemented.** The isolated MediaPipe DLL consumes real camera pixels and produces landmarks,
+pose and blendshapes. There is no renderer, editor or output yet; seeing an avatar remains planned.
+The T11 recorder and benchmark connect capture to tracking for feasibility measurements, while
+Godot-shell integration remains T16. Real-worker HUD statistics and reprojection quality remain
+planned; the five-function ABI has no introspection query.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -39,7 +39,9 @@ with warnings-as-errors, and the contract suite runs under `fast;task_T09`. The 
 verified by `tests/gates/T10.ps1`: the state machine runs against a fake backend under
 `fast;task_T10`, `--list-cameras` enumerates without opening, and a real Logitech C920 produced
 866 NV12 frames over 60 s with monotonic timestamps and a p50 callback-to-publish latency of 27 us
-(`docs/progress/T10.md`).
+(`docs/progress/T10.md`). T11 adds the real tracker contracts, runtime model tamper rejection and
+five-symbol PE export validation under `fast;task_T11`; its recorded-camera measurements are in
+the local `docs/progress/T11-tracker-results.md` workspace.
 Rows that name `.github/workflows/` are verified as workflow definitions by `tests/gates/T06.ps1`;
 they have not been executed on hosted runners from this machine, which is the one residual
 foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
@@ -57,6 +59,7 @@ foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
 | Tracking data plane: `TrackingResult`, `ScriptedTracker`, replay sidecar | `native/tracking/` | T04 | `Implemented` |
 | Tracker seam: `ITrackingBackend`, versioned five-function C ABI, `ScriptedTracker` contract harness, shared latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
 | Windows capture backend: `CameraSource`, `ICameraDeviceBackend`, async Media Foundation reader, `--list-cameras`/`--capture` smoke | `native/capture/`, `native/capture/windows/` | T10 | `Implemented` |
+| Real Windows CPU tracker: pinned MediaPipe DLL, model integrity, five-export check, recorded-camera benchmark | `native/tracking/mediapipe/`, `scripts/build-tracker.ps1` | T11 | `Implemented` |
 | Golden comparator and replay fixtures | `tests/tools/golden_compare/`, `tests/fixtures/replay/` | T04 | `Implemented` |
 | Performance harness, hardware fingerprint, local baseline, result schema | `tests/performance/` | T05 | `Implemented` |
 | CI matrix, pinned clang-format/clang-tidy, licence manifest gate, diagnostics source scan | `.github/workflows/`, `scripts/`, `native/licenses.json` | T06 | `Implemented` |
@@ -75,7 +78,7 @@ The table is listed so that a later session cannot mistake a design section for 
 
 | Missing component | Expected location | Owning tasks |
 |---|---|---|
-| Real tracker backend (MediaPipe, ONNX fallback) and model files | `native/tracking/mediapipe/`, `models/` | T11 |
+| Real tracker builds on macOS/Linux | `native/tracking/mediapipe/` | T52, T55 |
 | macOS AVFoundation capture | `native/capture/macos/` | T52 |
 | Linux V4L2/PipeWire capture | `native/capture/linux/` | T55 |
 | FaceRig math: pose filter, face frame, homography, head region, framing | `native/rig/` | T18, T19, T22 |
@@ -126,7 +129,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — capture device enumeration, capabilities, callback | `native/capture/`, `native/capture/windows/` | T10 | `Implemented` |
 | Subsystem contract — tracking (`TrackingResult`, scripted tracker) | `native/tracking/` | T04 | `Implemented` |
 | Subsystem contract — tracking backend (`ITrackingBackend`, C ABI) | `native/tracking/` | T09 | `Implemented` |
-| Subsystem contract — real tracker backend | `native/tracking/mediapipe/` | T11 | `Planned` |
+| Subsystem contract — real Windows tracker backend | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Subsystem contract — face rig | `native/rig/` | T18, T19, T22 | `Planned` |
 | Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
@@ -175,14 +178,16 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Backend contract (five-function C ABI, versioned) | `native/tracking/` | T09 | `Implemented` |
 | `TrackingResult` and the scripted tracker | `native/tracking/` | T04 | `Implemented` |
 | Landmark map, asymmetric marker, profile correspondences | `native/tracking/` | T12 | `Planned` |
-| MediaPipe Face Landmarker backend | `native/tracking/mediapipe/`, `models/` | T11 | `Planned` |
-| Pipeline and confidence handling | `native/tracking/` | T11, T13 | `Planned` |
+| MediaPipe Face Landmarker Windows CPU backend and pinned model | `native/tracking/mediapipe/`, `.tools/tracker-sdk/` | T11 | `Implemented` |
+| Worker, letterbox/unprojection, geometric confidence and feature validity | `native/tracking/mediapipe/` | T11 | `Implemented` |
+| Reprojection/pose confidence and real-corpus occlusion validation | `native/tracking/` | T13, T18 | `Planned` |
 | Filtering, motion model, tracking rate vs render rate | `native/rig/` | T18, T24 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Planned` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x) |
 | Instrumentation: `TrackerStats` and latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
-| Instrumentation: real backend inference time and reprojection error | `native/tracking/`, `tests/performance/` | T11, T13, T26 | `Planned` |
+| Instrumentation: real backend private inference/preprocessing timing, drop counters and confidence distribution | `native/tracking/mediapipe/` | T11 | `Implemented` |
+| Instrumentation: app-facing real tracker stats and reprojection error | `native/tracking/`, `tests/performance/` | T13, T26 | `Planned` |
 
 ## [camera-capture.md](camera-capture.md)
 
@@ -343,7 +348,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 |---|---|---|---|
 | [ADR-0001](adr/0001-engine-and-language.md) | Godot 4.7 + C++20 GDExtension as the application platform | T02 | Proposed |
 | [ADR-0002](adr/0002-native-camera-capture.md) | Native camera capture on all three platforms | T10, T52, T55 | Proposed |
-| [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | T11, T14 | Proposed |
+| [ADR-0003](adr/0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | T11, T14 | Accepted |
 | [ADR-0004](adr/0004-face-decal-projection.md) | Face decals on the model's own surface in canonical face space | T20, T21 | Proposed |
 | [ADR-0005](adr/0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | T46, T53, T57 | Proposed |
 | [ADR-0006](adr/0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | T29 | Proposed |
@@ -361,6 +366,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0018](adr/0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | T08 | Accepted |
 | [ADR-0019](adr/0019-tracker-c-abi-v1.md) | Tracker C ABI v1: five functions, POD-only, latest-only | T09 | Accepted |
 | [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) | Platform-neutral capture state machine with a thin Media Foundation backend | T10, T52, T55 | Accepted |
+| [ADR-0021](adr/0021-real-mediapipe-windows-backend.md) | Real MediaPipe Windows backend and its isolated build | T11 | Accepted |
 
 ---
 

@@ -1,0 +1,10 @@
+--- a/bazel/glog.bzl
++++ b/bazel/glog.bzl
+@@ -111,6 +111,6 @@
+     windows_only_copts = [
+         # Override -DGLOG_EXPORT= from the cc_library's defines.
+-        "-DGLOG_EXPORT=__declspec(dllexport)",
++        "-DGLOG_EXPORT=",
+         "-DGLOG_NO_ABBREVIATED_SEVERITIES",
+         "-DHAVE_SNPRINTF",
+         "-I" + src_windows,
