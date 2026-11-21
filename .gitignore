@@ -7,3 +7,26 @@ assets/models/**/*.blend
 assets/models/**/*.blend1
 assets/models/**/*.py
 assets/models/**/previews/
+
+# symphony harness (local tool, not tracked)
+.symphony/
+.stop
+
+# symphony planning workspace (local; only docs/design is a tracked deliverable)
+docs/ROADMAP.md
+docs/PROGRESS.md
+docs/INDEX.md
+docs/tasks/
+docs/progress/
+docs/logs/
+docs/design/adr/0000-template.md
+
+# Build, bootstrap, and test output (local)
+/build/
+/build-*/
+/.tools/
+/out/
+/artifacts/
+/tests/performance/results/
+/tests/golden/artifacts/
+*.user
