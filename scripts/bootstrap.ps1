@@ -44,8 +44,78 @@ $deps = @(
     }
 )
 
+# SHA256 without assuming any particular cmdlet is present. Locked-down hosts (restricted
+# language mode, trimmed module sets, some CI agents) do not expose Get-FileHash even though
+# Write-Host works, so the .NET implementation is the primary path and the cmdlet is a fallback.
 function Get-Sha256([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    $algorithm = $null
+    try {
+        $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    } catch {
+        $algorithm = $null
+    }
+    if ($null -ne $algorithm) {
+        $stream = $null
+        try {
+            $stream = [System.IO.File]::Open(
+                $Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read)
+            $bytes = $algorithm.ComputeHash($stream)
+            return ([System.BitConverter]::ToString($bytes) -replace '-', '')
+        } catch {
+            # Fall through to the cmdlet / OS tool paths below.
+        } finally {
+            if ($null -ne $stream) { $stream.Dispose() }
+            $algorithm.Dispose()
+        }
+    }
+
+    $fileHash = Get-Command Get-FileHash -ErrorAction SilentlyContinue
+    if ($null -ne $fileHash) {
+        return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    }
+
+    $certUtil = Get-Command certutil.exe -ErrorAction SilentlyContinue
+    if ($null -ne $certUtil) {
+        $output = & $certUtil.Source -hashfile $Path SHA256 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            foreach ($line in $output) {
+                $candidate = ([string]$line) -replace '\s', ''
+                if ($candidate -match '^[0-9A-Fa-f]{64}$') {
+                    return $candidate.ToUpperInvariant()
+                }
+            }
+        }
+    }
+
+    throw "cannot compute SHA256 for $Path (tried .NET, Get-FileHash and certutil)"
+}
+
+# Download with the same rule: .NET first, Invoke-WebRequest as the fallback.
+function Save-Download([string]$Url, [string]$Destination) {
+    $client = $null
+    try {
+        $client = New-Object System.Net.WebClient
+    } catch {
+        $client = $null
+    }
+    if ($null -ne $client) {
+        try {
+            $client.Headers.Add('User-Agent', 'avatar-studio-bootstrap')
+            $client.DownloadFile($Url, $Destination)
+            return
+        } catch {
+            if (Test-Path -LiteralPath $Destination) {
+                Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "  note     .NET download failed ($($_.Exception.Message)); retrying with Invoke-WebRequest"
+        } finally {
+            $client.Dispose()
+        }
+    }
+    Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
 }
 
 function Install-Dependency([pscustomobject]$Dep) {
@@ -74,7 +144,7 @@ function Install-Dependency([pscustomobject]$Dep) {
         }
         Write-Host "  download $($Dep.Name) $($Dep.Version)"
         Write-Host "           $($Dep.Url)"
-        Invoke-WebRequest -Uri $Dep.Url -OutFile $partialPath -UseBasicParsing
+        Save-Download -Url $Dep.Url -Destination $partialPath
         $actual = Get-Sha256 $partialPath
         if ($actual -ne $Dep.Sha256) {
             Remove-Item -LiteralPath $partialPath -Force -ErrorAction SilentlyContinue
