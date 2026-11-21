@@ -14,7 +14,8 @@
       5. bootstrap of the pinned dependencies,
       6. CMake configure and a RelWithDebInfo build,
       7. CTest label "fast" (the "perf" label is opt-in with -Full),
-      8. the headless Godot shell smoke test (unless -NativeOnly).
+      8. the headless Godot shell smoke test, runtime pacing and GLB import
+         tests (unless -NativeOnly).
 
     The GitHub Actions matrix runs the same sequence on Windows, macOS and
     Linux. This script is not a replacement for scripts/verify.ps1: verify also
@@ -128,8 +129,8 @@ try {
     }
 
     if (-not $NativeOnly) {
-        Write-Step 'headless Godot shell smoke and runtime pacing test'
-        Invoke-PsScript (Join-Path $root 'scripts/smoke.ps1') @{ Required = $true; Runtime = $true }
+        Write-Step 'headless Godot shell smoke, runtime pacing and GLB import tests'
+        Invoke-PsScript (Join-Path $root 'scripts/smoke.ps1') @{ Required = $true; Runtime = $true; Model = $true }
     }
 
     Write-Host ''
