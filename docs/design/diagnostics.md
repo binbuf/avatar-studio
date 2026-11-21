@@ -61,7 +61,7 @@ human-readable registry and are generated from that header from T06 onwards.
 - `Error` carries a `DiagnosticCode`, a short message and an optional detail string. `Status`
   carries a coarse `StatusCode`, a short message and an optional detail string; neither throws
   across the public core API.
-- `Logger` emits the code, its registry severity, a `FrameClock` timestamp and up to eight
+- `Logger` emits the code, its registry area and severity, a `FrameClock` timestamp and up to eight
   structured `LogField` key/value pairs. It performs no allocation and is not on the per-frame data
   plane. The logger rejects keys that would carry frame data, landmark values, image contents or
   other private payloads (`frame_data`, `landmarks`, `pixels`, `face_profile`, ...) and counts the
@@ -200,7 +200,7 @@ Every log record carries:
 - camera device name and negotiated format, transport state,
 - a correlation id for the session.
 
-The T03 `Logger` emits the code, registry severity, FrameClock timestamp and a fixed set of
+The T03 `Logger` emits the code, registry area and severity, FrameClock timestamp and a fixed set of
 structured key/value fields. The redaction list is enforced by `is_forbidden_log_key` in the API:
 `frame`, `frame_data`, `frame_pixels`, `pixels`, `pixel_data`, `image`, `image_data`, `landmark`,
 `landmarks`, `landmark_values`, `face_profile`, `profile_contents`, `file_contents`,

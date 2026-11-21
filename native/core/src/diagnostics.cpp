@@ -126,6 +126,7 @@ void Logger::log_at(TimestampNs timestamp_ns,
     LogRecord record;
     record.timestamp_ns = timestamp_ns;
     record.code = code;
+    record.area = diagnostic_area(code);
     record.severity = diagnostic_severity(code);
 
     for (const LogField& field : fields) {

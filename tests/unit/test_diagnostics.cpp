@@ -121,6 +121,7 @@ TEST_CASE(logger_emits_the_code_severity_timestamp_and_structured_fields) {
     CHECK(captured.called);
     CHECK_EQ(captured.record.timestamp_ns, avatar::core::TimestampNs{1234});
     CHECK(captured.record.code == DiagnosticCode::cap_002);
+    CHECK(captured.record.area == DiagnosticArea::cap);
     CHECK(captured.record.severity == Severity::error);
     CHECK_EQ(captured.record.field_count, std::uint8_t{2});
     CHECK_EQ(captured.record.fields[0].key, std::string_view("device"));

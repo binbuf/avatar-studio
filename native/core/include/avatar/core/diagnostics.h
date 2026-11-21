@@ -405,6 +405,7 @@ struct LogField {
 struct LogRecord {
     TimestampNs timestamp_ns = 0;
     DiagnosticCode code = DiagnosticCode::unknown;
+    DiagnosticArea area = DiagnosticArea::unknown;
     Severity severity = Severity::info;
     std::array<LogField, kMaxLogFields> fields{};
     std::uint8_t field_count = 0;
