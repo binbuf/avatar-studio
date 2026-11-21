@@ -1,8 +1,8 @@
 # Avatar Studio — Design Documentation
 
-**Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02).
-Rendering, capture, tracking, the editor and output remain `Planned` unless explicitly marked
-otherwise.
+**Status:** proposal; the foundation is implemented (native core T01, headless Godot shell T02,
+data-plane primitives and diagnostics registry T03). Rendering, capture, tracking, the editor and
+output remain `Planned` unless explicitly marked otherwise.
 **Last updated:** 2026-11-20
 **Origin:** an exported research conversation ("the brief", 2026-11-20), not retained in this
 repository. It is the origin of this design, not a specification. Its reviewed claims are quoted in
@@ -56,8 +56,9 @@ Used consistently in every document:
 | `Deferred` | Deliberately out of the current plan, with a documented re-entry condition |
 | `Rejected` | Considered and discarded; reason recorded in an ADR |
 
-Current reality: the foundation is implemented — the framework-free C++20 core, the pinned
-bootstrap/verification contract, and the headless Godot shell with a loadable GDExtension (T01–T02).
+Current reality: the foundation is implemented — the framework-free C++20 core (including the SPSC
+ring, latest-value slot, `FrameClock` and diagnostics registry from T03), the pinned
+bootstrap/verification contract, and the headless Godot shell with a loadable GDExtension (T01–T03).
 The avatar pipeline, capture, tracking, editor and output subsystems are still `Planned`; the first
 spike is M0 in [`roadmap.md`](roadmap.md). The only concrete prior art is the original research
 conversation and the third-party projects reviewed in

@@ -1,6 +1,8 @@
 # Diagnostics and Support Codes
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal; the enum, metadata registry and structured logger are implemented (T03). The
+generated string table and CI drift check are T06.
+**Last updated:** 2026-11-20
 
 Every failure in this application has a stable code, a human sentence, and one recovery action.
 Codes are the join between the UI, the log, the test suite, and a support conversation: a user can
@@ -41,6 +43,34 @@ Areas:
 
 Severity values: `Info`, `Warning`, `Error`, `Fatal`. `Fatal` means the affected feature stops;
 the app itself keeps running.
+
+---
+
+## Implemented registry (T03)
+
+The source of truth is `native/core/include/avatar/core/diagnostics.h`; the tables below are the
+human-readable registry and are generated from that header from T06 onwards.
+
+- `DiagnosticCode` is a stable `enum class : uint32_t`. The numeric value is
+  `<area digit><NNN>`: `CAP-001` is 1001, `TRK-002` is 2002, `AVT-101` is 4101. Codes are never
+  reused or renumbered; a retired code stays in the enum and the table with a `Deprecated` note.
+- `DiagnosticInfo` carries `code`, `area`, `severity`, `message_key` and `action_key`. Keys are
+  stable string-table identifiers of the form `diag.<area>.<NNN>.message` and
+  `diag.<area>.<NNN>.action`; they are never the user-facing sentence.
+- `format_diagnostic_code` and `parse_diagnostic_code` implement the canonical `AREA-NNN` text.
+- `Error` carries a `DiagnosticCode`, a short message and an optional detail string. `Status`
+  carries a coarse `StatusCode`, a short message and an optional detail string; neither throws
+  across the public core API.
+- `Logger` emits the code, its registry severity, a `FrameClock` timestamp and up to eight
+  structured `LogField` key/value pairs. It performs no allocation and is not on the per-frame data
+  plane. The logger rejects keys that would carry frame data, landmark values, image contents or
+  other private payloads (`frame_data`, `landmarks`, `pixels`, `face_profile`, ...) and counts the
+  redaction; `frame_id` and similar metadata keys remain allowed.
+- A unit test asserts unique codes, unique message/action keys, non-empty keys, complete area
+  coverage and canonical formatting. T06 adds the generated table and the source scan.
+
+The severity and recovery text below is the reviewed intent for each code; it is not compiled into
+the registry (the message/action keys resolve to the string table).
 
 ---
 
@@ -170,6 +200,12 @@ Every log record carries:
 - camera device name and negotiated format, transport state,
 - a correlation id for the session.
 
+The T03 `Logger` emits the code, registry severity, FrameClock timestamp and a fixed set of
+structured key/value fields. The redaction list is enforced by `is_forbidden_log_key` in the API:
+`frame`, `frame_data`, `frame_pixels`, `pixels`, `pixel_data`, `image`, `image_data`, `landmark`,
+`landmarks`, `landmark_values`, `face_profile`, `profile_contents`, `file_contents`,
+`window_title`, `raw_payload`. Metadata keys such as `frame_id` are allowed.
+
 Never logged: frame data, landmark coordinates, face profile contents, file contents, window titles
 of other applications, IP addresses, or the user's name. The redaction rules are enforced by the
 logging API, not by reviewer discipline.
@@ -199,12 +235,13 @@ is a local file; the app does not upload it.
 
 ## CI enforcement
 
-- `native/core/diagnostics.h` is the enum and metadata source of truth.
+- `native/core/include/avatar/core/diagnostics.h` is the enum and metadata source of truth.
 - The registry tables in this document are generated from the header and compared in CI; drift
-  fails the build.
+  fails the build (T06).
 - A source scan rejects a literal `AREA-NNN` that is not in the enum, and a log call without a code.
 - The string table must contain a message and an action for every code.
-- Unit tests assert that every code has a unique value and a non-empty message.
+- Unit tests assert that every code has a unique value, a unique message/action key pair and
+  non-empty keys. `avatar_core_unit` is the fast-label gate for this today.
 
 ---
 

@@ -222,6 +222,24 @@ not enough.
 | Warning policy | `-Wall -Wextra -Werror`, MSVC `/W4 /WX` | Every build |
 | libFuzzer | glTF importer, JSON loader, shared-memory header parser, archive path handling | Nightly, 30 min per target |
 
+### ThreadSanitizer job (T06)
+
+The ring and latest-slot contracts are only credible under TSan. T06 adds a Linux job
+(clang or GCC; MSVC has no equivalent):
+
+```bash
+cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+cmake --build build-tsan --parallel
+ctest --test-dir build-tsan -C RelWithDebInfo -L fast --output-on-failure
+```
+
+`avatar_core_unit` contains the two-thread 1,000,000-item `SpscRing` stress test and the
+concurrent `LatestSlot` torn-read test, so the `fast` label is the whole TSan surface for the
+primitives. The same job also covers the tracking handoff and output queues once those land. T03
+ran the stress test locally on Windows; the Linux TSan job is the blocking gate from T06.
+
 The shared-memory header is a versioned binary interface shared with a process we do not control. It
 gets the same fuzzing treatment as a file parser, including truncated, oversized, and
 version-mismatched inputs. A crash there is a `VCAM-005`/`SEC-004` class bug, not a cosmetic one.

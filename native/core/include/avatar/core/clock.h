@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 
 namespace avatar::core {
@@ -25,6 +26,27 @@ public:
 class SteadyTimeSource final : public TimeSource {
 public:
     [[nodiscard]] TimestampNs now_ns() const override;
+};
+
+/// Deterministic time source for tests and scripted harnesses.
+///
+/// It is part of the core, not a test-only header, so a component test can
+/// inject it without duplicating a fake in every test file.
+class ManualTimeSource final : public TimeSource {
+public:
+    explicit ManualTimeSource(TimestampNs start_ns = 0) noexcept;
+
+    [[nodiscard]] TimestampNs now_ns() const override;
+
+    /// Moves the timeline to an absolute value. It may move backwards; that is
+    /// exactly the case FrameClock is required to clamp.
+    void set(TimestampNs now_ns) noexcept;
+
+    /// Advances by a non-negative delta.
+    void advance(TimestampNs delta_ns) noexcept;
+
+private:
+    std::atomic<TimestampNs> now_ns_;
 };
 
 /// Monotonic view of an injected TimeSource.

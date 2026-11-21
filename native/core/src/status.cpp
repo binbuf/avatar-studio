@@ -24,9 +24,10 @@ std::string_view status_code_name(StatusCode code) noexcept {
     return "unknown";
 }
 
-Status::Status(StatusCode code, std::string message) : code_(code) {
+Status::Status(StatusCode code, std::string message, std::string detail) : code_(code) {
     if (code_ != StatusCode::ok) {
         message_ = std::move(message);
+        detail_ = std::move(detail);
     }
 }
 
@@ -34,8 +35,8 @@ Status Status::success() noexcept {
     return Status{};
 }
 
-Status Status::error(StatusCode code, std::string message) {
-    return Status{code, std::move(message)};
+Status Status::error(StatusCode code, std::string message, std::string detail) {
+    return Status{code, std::move(message), std::move(detail)};
 }
 
 std::string Status::to_string() const {
@@ -46,6 +47,11 @@ std::string Status::to_string() const {
     if (!message_.empty()) {
         result += ": ";
         result += message_;
+    }
+    if (!detail_.empty()) {
+        result += " (detail: ";
+        result += detail_;
+        result += ')';
     }
     return result;
 }

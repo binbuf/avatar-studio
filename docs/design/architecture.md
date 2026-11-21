@@ -98,6 +98,24 @@ Synchronisation primitives:
 - **Godot thread affinity is respected.** Workers never touch scene nodes or the rendering server
   directly; results are marshalled with `call_deferred` or consumed at a frame boundary.
 
+The core implementations live in `native/core/include/avatar/core/`:
+
+| Primitive | Contract |
+|---|---|
+| `SpscRing<T, Capacity>` | Fixed-capacity single-producer/single-consumer ring. `try_push`/`try_pop` never block or allocate; a full ring is reported and `dropped()` counts rejected pushes. Head and tail indices are on separate cache lines. |
+| `DropOldestRing<T, Capacity>` | Policy wrapper over `SpscRing`. The ring primitive never evicts; this wrapper discards the oldest item when full and counts the eviction. It is a policy layer, not a second synchronisation primitive. |
+| `LatestSlot<T, Slots>` | Single-writer latest-value slot. The writer publishes into a slot that is neither current nor reader-held, then flips an atomic index. Readers copy one complete value or the previous one; a slow reader can make the writer drop a value, never block. |
+| `FrameClock` / `TimeSource` | The only time path. `SteadyTimeSource` is the sole OS-clock reader; `ManualTimeSource` drives deterministic tests. |
+
+All memory orders are explicit and documented at the declaration: acquire/release pair the producer's
+data write with the consumer's read, and the latest slot's per-slot reader counts keep the writer off
+a slot a reader is copying. The data plane is allocation-free and lock-free; logging and `Status`
+formatting are transition/error paths, not per-frame paths.
+
+The drop-oldest wrapper is safe for the producer-side policy when the consumer is not inside `pop`
+during an eviction. The output manager (T46) owns the concurrent drop-oldest queue with per-slot
+state; until then, output-queue call sites must not use the wrapper across a live consumer.
+
 The alternative — one thread per stage with unbounded queues — was rejected: it converts transient
 slowdowns into permanent latency, which is the worst failure mode for a live avatar.
 
@@ -459,12 +477,14 @@ The native core builds without Godot; the shell adds the engine when it is boots
   and bindings for native-only work.
 - CMake consumes `.tools/` and fails configuration with an actionable message when a pinned
   dependency is missing. Configure and build never touch the network.
-- Targets: `avatar_core` (static library, C++20, framework-free), `avatar_core_tests`, and
-  `avatar_gdextension` (shared library, added only when `.tools/godot-cpp` exists). The adapter is
-  copied to `app/bin/avatar_studio.<os>.<arch>.<ext>` for Godot to load. Options: `AVATAR_TESTS`
-  (default ON), `AVATAR_GODEXTENSION` (default ON), and `AVATAR_WARNINGS_AS_ERRORS` (default ON;
-  MSVC `/W4 /WX`, GCC/Clang `-Wall -Wextra -Wpedantic -Werror`). godot-cpp headers are marked as
-  system headers so the warning policy applies to our code, not generated bindings.
+- Targets: `avatar_core` (static library, C++20, framework-free), `avatar_core_tests`,
+  `avatar_core_bench` (microbenchmarks, reported not gated), and `avatar_gdextension` (shared
+  library, added only when `.tools/godot-cpp` exists). The adapter is copied to
+  `app/bin/avatar_studio.<os>.<arch>.<ext>` for Godot to load. Options: `AVATAR_TESTS` (default ON),
+  `AVATAR_BENCHMARKS` (default ON), `AVATAR_GODEXTENSION` (default ON), and
+  `AVATAR_WARNINGS_AS_ERRORS` (default ON; MSVC `/W4 /WX`, GCC/Clang
+  `-Wall -Wextra -Wpedantic -Werror`). godot-cpp headers are marked as system headers so the warning
+  policy applies to our code, not generated bindings.
 - Windows uses the default Visual Studio generator; Linux/macOS use the default CMake generator.
   Ninja is not required.
 - `scripts/verify.ps1` / `scripts/verify.sh` are the verification contract. `-Fast` bootstraps,

@@ -54,6 +54,21 @@ TEST_CASE(clock_never_goes_backwards_when_the_source_does) {
     CHECK_EQ(clock.now_ns(), TimestampNs{3'000});
 }
 
+TEST_CASE(manual_time_source_drives_the_clock_deterministically) {
+    avatar::core::ManualTimeSource source(500);
+    FrameClock clock(source);
+
+    CHECK_EQ(clock.now_ns(), TimestampNs{500});
+    source.advance(250);
+    CHECK_EQ(clock.now_ns(), TimestampNs{750});
+
+    // set() may move backwards; FrameClock still clamps the frame timeline.
+    source.set(100);
+    CHECK_EQ(clock.now_ns(), TimestampNs{750});
+    source.set(1'000);
+    CHECK_EQ(clock.now_ns(), TimestampNs{1'000});
+}
+
 TEST_CASE(status_ok_formats_as_ok) {
     const Status status;
     CHECK(status.ok());

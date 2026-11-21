@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(avatar_studio LANGUAGES CXX)
 
 option(AVATAR_TESTS "Build the native unit test suite" ON)
+option(AVATAR_BENCHMARKS "Build the native microbenchmark suite" ON)
 option(AVATAR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(AVATAR_GODEXTENSION "Build the Godot GDExtension adapter when godot-cpp is present" ON)
 
@@ -62,6 +63,7 @@ target_include_directories(avatar_json INTERFACE "${AVATAR_NLOHMANN_JSON_INCLUDE
 add_library(avatar_core STATIC
     native/core/src/clock.cpp
     native/core/src/status.cpp
+    native/core/src/diagnostics.cpp
 )
 add_library(avatar::core ALIAS avatar_core)
 target_include_directories(avatar_core
@@ -77,16 +79,43 @@ avatar_enable_warnings(avatar_core)
 if(AVATAR_TESTS)
     enable_testing()
 
-    add_executable(avatar_core_tests tests/unit/test_main.cpp)
+    add_executable(avatar_core_tests
+        tests/unit/test_main.cpp
+        tests/unit/test_spsc_ring.cpp
+        tests/unit/test_latest_slot.cpp
+        tests/unit/test_diagnostics.cpp
+    )
     target_link_libraries(avatar_core_tests PRIVATE avatar::core)
     target_compile_features(avatar_core_tests PRIVATE cxx_std_20)
     avatar_enable_warnings(avatar_core_tests)
 
     add_test(NAME avatar_core_unit COMMAND avatar_core_tests)
     set_tests_properties(avatar_core_unit PROPERTIES
-        LABELS "fast;task_T01"
+        LABELS "fast;task_T01;task_T03"
         TIMEOUT 30
     )
+endif()
+
+# ---------------------------------------------------------------------------
+# Microbenchmarks
+#
+# Numbers are reported, not gated: a tight nanosecond threshold on shared CI
+# runners is noise, not a regression signal. T05 owns the real performance
+# harness and thresholds.
+# ---------------------------------------------------------------------------
+if(AVATAR_BENCHMARKS)
+    add_executable(avatar_core_bench tests/performance/bench_primitives.cpp)
+    target_link_libraries(avatar_core_bench PRIVATE avatar::core)
+    target_compile_features(avatar_core_bench PRIVATE cxx_std_20)
+    avatar_enable_warnings(avatar_core_bench)
+
+    if(AVATAR_TESTS)
+        add_test(NAME avatar_core_bench COMMAND avatar_core_bench)
+        set_tests_properties(avatar_core_bench PROPERTIES
+            LABELS "bench;task_T03"
+            TIMEOUT 120
+        )
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
