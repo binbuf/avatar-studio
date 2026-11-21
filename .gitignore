@@ -32,6 +32,15 @@ docs/design/adr/0000-template.md
 /tests/golden/artifacts/
 /tests/fixtures/generated/
 *.user
+*.log
+*.ilk
+*.exp
+
+# Local tool and editor scratch
+node_modules/
+__pycache__/
+*.pyc
+CMakeUserPresets.json
 
 # Godot import cache and built GDExtension artifacts (local)
 /app/.godot/

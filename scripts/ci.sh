@@ -5,10 +5,11 @@
 #      installs it and passes AVATAR_REQUIRE_FORMAT=1),
 #   2. the third-party licence manifest (scripts/check-licenses.mjs),
 #   3. the diagnostics source scan (advisory until T41),
-#   4. bootstrap of the pinned dependencies,
-#   5. CMake configure and a RelWithDebInfo build,
-#   6. CTest label "fast" (the "perf" label is opt-in with --full),
-#   7. the headless Godot shell smoke test (unless --native-only).
+#   4. the design-link checker (scripts/check-design-links.mjs),
+#   5. bootstrap of the pinned dependencies,
+#   6. CMake configure and a RelWithDebInfo build,
+#   7. CTest label "fast" (the "perf" label is opt-in with --full),
+#   8. the headless Godot shell smoke test (unless --native-only).
 #
 # The GitHub Actions matrix runs the same sequence on Windows, macOS and Linux.
 # This script is not a replacement for scripts/verify.sh: verify also runs the
@@ -60,7 +61,7 @@ write_step() {
 cd "$root"
 
 if ! command -v node >/dev/null 2>&1; then
-    echo "ci: node is required for the licence and diagnostics checks" >&2
+    echo "ci: node is required for the licence, diagnostics and design-link checks" >&2
     exit 1
 fi
 
@@ -72,6 +73,9 @@ run node scripts/check-licenses.mjs
 
 write_step "diagnostics source scan (advisory until T41)"
 run node scripts/check-diagnostics.mjs
+
+write_step "design links"
+run node scripts/check-design-links.mjs
 
 if [[ "$skip_bootstrap" -eq 1 ]]; then
     echo "ci: bootstrap skipped (--skip-bootstrap)"

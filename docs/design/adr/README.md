@@ -15,13 +15,14 @@ tell the difference between "we chose this" and "this happened".
 | [0008](0008-eigen-for-rig-math.md) | Eigen for native rig math | Proposed |
 | [0009](0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | Proposed |
 | [0010](0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | Proposed |
-| [0011](0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | Proposed |
+| [0011](0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | Accepted |
 | [0012](0012-godot-shell-bootstrap.md) | Godot shell bootstrap, godot-cpp 10 pinning, and CMake build | Accepted |
 | [0013](0013-core-data-plane-primitives.md) | Core data-plane primitives and the stable diagnostics registry | Accepted |
 | [0014](0014-deterministic-sources-and-golden-comparator.md) | Deterministic sources, ground truth, and the golden comparator | Accepted |
 | [0015](0015-performance-harness-and-local-baseline.md) | Performance harness result schema and local baselines | Accepted |
 | [0016](0016-ci-quality-gates.md) | CI quality gates, pinned formatting, and the licence manifest | Accepted |
 | [0017](0017-windows-first-mvp-sequencing.md) | Windows-first MVP sequencing | Proposed |
+| [0018](0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

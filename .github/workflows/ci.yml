@@ -2,7 +2,7 @@
 #
 # Release-blocking jobs:
 #   - format                 (clang-format 18.1.8 drift)
-#   - licence                (native/licenses.json + diagnostics scan)
+#   - licence                (native/licenses.json + diagnostics scan + design links)
 #   - build-windows-msvc     (bootstrap, RelWithDebInfo build, ctest -L fast, smoke)
 #   - build-macos-arm64      (same)
 #   - build-linux-gcc        (same)
@@ -68,6 +68,8 @@ jobs:
         run: node scripts/check-licenses.mjs
       - name: Diagnostics source scan (advisory until T41)
         run: node scripts/check-diagnostics.mjs
+      - name: Design links, anchors and ADR index
+        run: node scripts/check-design-links.mjs
 
   build:
     name: build-${{ matrix.name }} (release-blocking)

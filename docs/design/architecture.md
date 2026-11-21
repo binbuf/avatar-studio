@@ -124,7 +124,7 @@ slowdowns into permanent latency, which is the worst failure mode for a live ava
 Interfaces are narrow and framework-free so that each subsystem is unit-testable without a window,
 a camera, or a GPU.
 
-### Foundation implementation status (T05)
+### Foundation implementation status (T08)
 
 | Module | Path | Status |
 |---|---|---|
@@ -132,7 +132,8 @@ a camera, or a GPU.
 | Frame model, `FrameRing`, `ICameraSource`, test/replay sources | `native/capture/` | Implemented (T04) |
 | `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04); real backend is T11 |
 | Performance harness, hardware fingerprint, local baseline | `tests/performance/` | Implemented (T05); real render/transport gates are T26/T46 |
-| CI matrix, formatting, static analysis, licence manifest | `.github/workflows/`, `scripts/` | Implemented (T06); goldens/perf release gates are T26/T46 |
+| CI matrix, formatting, static analysis, licence manifest, design links | `.github/workflows/`, `scripts/` | Implemented (T06/T08); goldens/perf release gates are T26/T46 |
+| Clean-checkout audit and implementation-map gate | `tests/gates/T08.ps1`, `docs/design/implementation-map.md` | Implemented (T08) |
 | Windows Media Foundation capture | `native/capture/windows/` | Planned (T10) |
 | MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
 | FaceRig math | `native/rig/` | Planned (T18) |

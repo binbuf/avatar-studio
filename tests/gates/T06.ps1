@@ -90,7 +90,14 @@ $ciSh = Read-Required 'scripts/ci.sh'
 $smokePs1 = Read-Required 'scripts/smoke.ps1'
 $smokeSh = Read-Required 'scripts/smoke.sh'
 $adr = Read-Required 'docs/design/adr/0016-ci-quality-gates.md'
-$progress = Read-Required 'docs/progress/T06.md'
+# The progress note is a gitignored local workspace file, so a clean checkout
+# does not have it. Read it when present; never fail the gate because the
+# planning workspace is absent (T08 clean-checkout audit).
+$progressPath = Join-Path $root 'docs/progress/T06.md'
+$progress = ''
+if (Test-Path -LiteralPath $progressPath) {
+    $progress = Get-Content -LiteralPath $progressPath -Raw
+}
 
 # 2. Fast CI matrix.
 if ($ci -ne '') {
@@ -98,7 +105,7 @@ if ($ci -ne '') {
                           'scripts/bootstrap', 'cmake -S . -B build',
                           '--config RelWithDebInfo', '-L fast',
                           'upload-artifact', 'if: failure()',
-                          'check-licenses.mjs', 'format-check')) {
+                          'check-licenses.mjs', 'check-design-links.mjs', 'format-check')) {
         if ($ci -notmatch [regex]::Escape($needle)) {
             Add-Failure "ci.yml is missing '$needle'"
         }
@@ -347,8 +354,8 @@ if ($fastList.Code -ne 0 -or $fastList.Output -notmatch 'license_manifest_check'
 foreach ($script in @(@{ Path = 'scripts/ci.ps1'; Text = $ciPs1 },
                       @{ Path = 'scripts/ci.sh'; Text = $ciSh })) {
     if ($script.Text -eq '') { continue }
-    foreach ($needle in @('check-licenses.mjs', 'check-diagnostics.mjs', 'format-check',
-                          'ctest', 'bootstrap')) {
+    foreach ($needle in @('check-licenses.mjs', 'check-diagnostics.mjs', 'check-design-links.mjs',
+                          'format-check', 'ctest', 'bootstrap')) {
         if ($script.Text -notmatch [regex]::Escape($needle)) {
             Add-Failure "$($script.Path) is missing '$needle'"
         }
@@ -367,7 +374,7 @@ if ($progress -ne '') {
         }
     }
 } else {
-    Add-Failure 'missing progress note: docs/progress/T06.md'
+    Write-Host 'T06 gate: note - docs/progress/T06.md not present (gitignored workspace note); skipped'
 }
 $quality = Read-Required 'docs/design/testing-and-quality.md'
 if ($quality -ne '') {

@@ -330,8 +330,8 @@ is the most common long-term maintenance failure for this class of app.
 **Status:** implemented (T06). `.github/workflows/ci.yml` runs the fast matrix on every push and pull
 request; `.github/workflows/nightly.yml` owns the slow, GPU-dependent and sanitizer suites. The local
 mirror is `scripts/ci.ps1` (Windows) / `scripts/ci.sh` (macOS, Linux), which runs the same format,
-licence, configure, build, `ctest -L fast` and smoke sequence. `scripts/verify.ps1|sh` remains the
-task-level objective contract and adds `tests/gates/TNN.ps1`.
+licence, diagnostics, design-link, configure, build, `ctest -L fast` and smoke sequence.
+`scripts/verify.ps1|sh` remains the task-level objective contract and adds `tests/gates/TNN.ps1`.
 
 | Job | OS | Trigger | Notes |
 |---|---|---|---|
@@ -355,7 +355,7 @@ until the self-hosted reference runner exists.
 | Job | Workflow | Blocking | What runs |
 |---|---|---|---|
 | `format` | `ci.yml` | Yes | clang-format 18.1.8 via `scripts/format-check.sh --require`; `.clang-format` is the contract |
-| `licence` | `ci.yml` | Yes | `node scripts/check-licenses.mjs`; the diagnostics scan runs advisory |
+| `licence` | `ci.yml` | Yes | `node scripts/check-licenses.mjs`; the diagnostics scan runs advisory; `node scripts/check-design-links.mjs` checks links, anchors and ADR indexing |
 | `build-windows-msvc`, `build-macos-arm64`, `build-linux-gcc` | `ci.yml` | Yes | bootstrap, configure, RelWithDebInfo build, `ctest -L fast -LE perf`, headless smoke, failure artifacts |
 | `full-suite-*` | `nightly.yml` | Yes | complete CTest suite on all three platforms |
 | `sanitizers-asan-ubsan-tsan` | `nightly.yml` | Yes | ASan+UBSan and TSan over the fast label |
@@ -364,10 +364,27 @@ until the self-hosted reference runner exists.
 | `performance-advisory` | `nightly.yml` | No until the reference runner | `avatar_bench` plus `tests/performance/check.mjs`; uploads results |
 
 Formatting drift, a third-party include without a `native/licenses.json` entry, a denied licence, a
-missing manifest field, and a broken fast test all fail a blocking job. Jobs whose name contains
-`(release-blocking)` are required for a green build; the exact list and the branch-protection
-expectations are repeated in `docs/progress/T06.md`. Action versions are pinned by major tag today;
-commit-SHA pinning is a T06 follow-up because each SHA must be verified upstream.
+missing manifest field, a broken design link or ADR index, and a broken fast test all fail a blocking
+job. Jobs whose name contains `(release-blocking)` are required for a green build; the exact list and
+the branch-protection expectations are recorded below and in [ADR-0016](adr/0016-ci-quality-gates.md).
+Action versions are pinned by major tag today; commit-SHA pinning is a T06 follow-up because each SHA
+must be verified upstream.
+
+### Branch protection (required checks)
+
+Configure on `main` and any release branch:
+
+1. Require a pull request with at least one approval; dismiss stale approvals on new commits.
+2. Require the `ci.yml` checks `format (release-blocking)`, `licence manifest (release-blocking)`,
+   `build-windows-msvc (release-blocking)`, `build-macos-arm64 (release-blocking)` and
+   `build-linux-gcc (release-blocking)`.
+3. Require branches to be up to date before merging.
+4. Require linear history; squash merges are the project convention (`AGENTS.md`).
+5. Block force-pushes and deletion of `main`.
+6. A release tag needs a green `nightly.yml` run on the release commit; nightly jobs are not required
+   for every pull request.
+
+Renaming a job is a branch-protection change, not a cosmetic edit.
 
 ---
 
@@ -480,6 +497,37 @@ written reason.
 Every bug report template asks for the diagnostics archive, which is why the diagnostics design
 ([`security-privacy.md`](security-privacy.md#logging-and-diagnostics)) matters to QA as much as to
 privacy.
+
+---
+
+## Clean-checkout audit (T08)
+
+The foundation is proven from a clean checkout, not from incremental local state. On 2026-11-20 a
+detached worktree of the T07 commit was bootstrapped and verified on Windows:
+
+| Command | Result |
+|---|---|
+| `scripts/bootstrap.ps1 -Fast` | PASS — downloaded and SHA256-verified nlohmann/json 3.11.3, Godot 4.7.2 and godot-cpp 10.0.0-stable into a fresh `.tools/` |
+| `scripts/verify.ps1 -Fast -Task T08` | PASS — configure, RelWithDebInfo build, 6/6 `fast` CTest tests, headless smoke |
+| `scripts/ci.ps1` | PASS — format, licence, advisory diagnostics, design links, bootstrap, configure, build, fast CTest, smoke |
+| `scripts/format-check.ps1 -Require` | PASS — clang-format 18.1.8, 50 files |
+| `node scripts/check-licenses.mjs` (+ `--self-test`) | PASS — 8 components (3 active) |
+| `node scripts/check-diagnostics.mjs` (+ `--self-test`) | PASS — 69 codes, 32 files |
+| `node scripts/check-design-links.mjs --require-tasks` | PASS — 35 design files, 239 links, 18 ADRs |
+| `tests/performance/run.ps1 -Scenario rig -Frames 300 -Warmup 30` | PASS — 300 measured frames, 0 drops |
+| `node tests/performance/check.mjs --baseline ... --result ...` | PASS — 7/7 checks against `foundation-local.json` |
+
+Rules that follow from this audit:
+
+- **A task gate must not require a gitignored workspace file.** `docs/progress/`, `docs/tasks/`,
+  `docs/ROADMAP.md`, `docs/PROGRESS.md` and `docs/INDEX.md` are local planning artifacts. Gates may
+  read them when present but must skip them in a clean checkout. `tests/gates/T06.ps1` was corrected
+  after the audit failed on the absent `docs/progress/T06.md`.
+- **A map row is `Implemented` only when its code path exists and a test or gate exercises it.**
+  Correct the map rather than the code when a claim is premature. CI-only rows are verified as
+  workflow definitions; their first hosted run remains a residual risk until it is observed.
+- **The clean checkout is the acceptance environment for the foundation.** A green incremental build
+  is not proof.
 
 ---
 

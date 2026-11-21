@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T07 · **Last updated:** 2026-11-20
+**Status:** current as of T08 · **Last updated:** 2026-11-20
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -24,8 +24,15 @@ Status vocabulary (from [README.md](README.md#status-vocabulary)): `Planned` —
 by tests; `Deferred` — out of the current plan with a documented re-entry condition; `Rejected` —
 considered and discarded.
 
-**At T07 the only `Implemented` rows are the foundation.** There is no camera backend, no tracker, no
+**At T08 the only `Implemented` rows are the foundation.** There is no camera backend, no tracker, no
 renderer, no editor and no output. Everything that would let a user see an avatar is `Planned`.
+
+The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
+RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
+licence and design-link checks, and the performance harness against the local baseline all passed.
+Rows that name `.github/workflows/` are verified as workflow definitions by `tests/gates/T06.ps1`;
+they have not been executed on hosted runners from this machine, which is the one residual
+foundation risk recorded in [ADR-0018](adr/0018-clean-checkout-verification.md).
 
 ---
 
@@ -33,7 +40,7 @@ renderer, no editor and no output. Everything that would let a user see an avata
 
 | Subsystem | Owning module | Tasks | Status |
 |---|---|---|---|
-| Native build: CMake, presets, warnings-as-errors, CTest harness, `verify` contract | `CMakeLists.txt`, `tests/unit/`, `scripts/verify.*` | T01 | `Implemented` |
+| Native build: CMake, warnings-as-errors, CTest harness, `verify` contract | `CMakeLists.txt`, `tests/unit/`, `scripts/verify.*` | T01 | `Implemented` |
 | Core primitives: `FrameClock`, SPSC ring, latest-value slot, status codes, diagnostics registry | `native/core/` | T01, T03 | `Implemented` |
 | Godot 4.7.2 shell, godot-cpp 10 pinning, GDExtension load, headless smoke | `app/`, `native/gdextension/`, `app/tests/smoke.gd` | T02 | `Implemented` |
 | Capture data plane: `VideoFrame`, `FrameRing`, `ICameraSource`, test-pattern/synthetic-face/replay sources, `FaceGroundTruth` | `native/capture/` | T04 | `Implemented` |
@@ -50,8 +57,9 @@ It does not produce a frame that a user can see.
 
 ## What does not exist yet
 
-Nothing in this list has a directory, a header or a test. It is listed so that a later session cannot
-mistake a design section for a stub.
+Nothing in this list is implemented. Most of these paths do not exist yet; `app/scenes/` contains only
+the shell's `main.tscn`, and `assets/models/` contains one development model (see the legal note below).
+The table is listed so that a later session cannot mistake a design section for a stub.
 
 | Missing component | Expected location | Owning tasks |
 |---|---|---|
@@ -69,7 +77,7 @@ mistake a design section for a stub.
 | Editor, library, live and settings screens | `app/ui/` | T33–T42 |
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
-| Bundled CC0 examples and provenance manifests | `examples/` | T43a, T60 |
+| Bundled CC0 examples and provenance manifests | `examples/`, `assets/models/` (one unmanifested dev model exists) | T43a, T60 |
 | Installers, signing, notarisation, `NOTICE` | `installer/`, `NOTICE` | T57, T59, T60 |
 
 The **MVP** (Windows 11 + OBS, per [ADR-0017](adr/0017-windows-first-mvp-sequencing.md)) needs the
@@ -94,8 +102,9 @@ rows owned by T10–T50. None of them exist yet.
 | Legal posture and per-asset provenance | `native/licenses.json`, package `assets.json` | T06, T29, T43a, T60 | `Planned` |
 | Deferred capabilities and non-goals | — | — | `Deferred` |
 
-The legal *policy* is written; no bundled asset exists to apply it to, so the row is not
-`Implemented`.
+The legal *policy* is written. One original development model is tracked at
+`assets/models/avocado_half.glb`, but it has no per-asset provenance manifest and there is no bundled
+example set; T43a/T60 own the manifests and the `examples/` package, so the row stays `Planned`.
 
 ## [architecture.md](architecture.md)
 
@@ -333,6 +342,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0015](adr/0015-performance-harness-and-local-baseline.md) | Performance harness result schema and local baselines | T05 | Accepted |
 | [ADR-0016](adr/0016-ci-quality-gates.md) | CI quality gates, pinned formatting, and the licence manifest | T06 | Accepted |
 | [ADR-0017](adr/0017-windows-first-mvp-sequencing.md) | Windows-first MVP sequencing | T07, T50, T51 | Proposed |
+| [ADR-0018](adr/0018-clean-checkout-verification.md) | Clean-checkout verification and the implementation-map audit | T08 | Accepted |
 
 ---
 

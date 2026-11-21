@@ -10,10 +10,11 @@
          installs it and passes AVATAR_REQUIRE_FORMAT=1),
       2. the third-party licence manifest (scripts/check-licenses.mjs),
       3. the diagnostics source scan (advisory until T41),
-      4. bootstrap of the pinned dependencies,
-      5. CMake configure and a RelWithDebInfo build,
-      6. CTest label "fast" (the "perf" label is opt-in with -Full),
-      7. the headless Godot shell smoke test (unless -NativeOnly).
+      4. the design-link checker (scripts/check-design-links.mjs),
+      5. bootstrap of the pinned dependencies,
+      6. CMake configure and a RelWithDebInfo build,
+      7. CTest label "fast" (the "perf" label is opt-in with -Full),
+      8. the headless Godot shell smoke test (unless -NativeOnly).
 
     The GitHub Actions matrix runs the same sequence on Windows, macOS and
     Linux. This script is not a replacement for scripts/verify.ps1: verify also
@@ -87,7 +88,7 @@ Push-Location $root
 try {
     $node = Get-Command node -ErrorAction SilentlyContinue
     if ($null -eq $node) {
-        throw 'node is required for the licence and diagnostics checks'
+        throw 'node is required for the licence, diagnostics and design-link checks'
     }
 
     Write-Step 'clang-format drift'
@@ -98,6 +99,9 @@ try {
 
     Write-Step 'diagnostics source scan (advisory until T41)'
     Invoke-Native 'node' @('scripts/check-diagnostics.mjs')
+
+    Write-Step 'design links'
+    Invoke-Native 'node' @('scripts/check-design-links.mjs')
 
     if ($SkipBootstrap) {
         Write-Host 'ci: bootstrap skipped (-SkipBootstrap)'

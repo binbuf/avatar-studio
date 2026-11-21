@@ -1,6 +1,6 @@
 # ADR-0011: Pinned local dependencies and one verification entry point
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Supersedes:** —
 - **Related:** [`../architecture.md`](../architecture.md), [`../testing-and-quality.md`](../testing-and-quality.md)
