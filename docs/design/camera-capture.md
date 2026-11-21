@@ -55,6 +55,14 @@ Rules:
 - `timestamp_ns` is the camera's own timestamp mapped onto `FrameClock` when the API provides one;
   `arrival_ns` is always available. Latency instrumentation reports both.
 
+The T04 implementation is `native/capture/include/avatar/capture/frame_ring.h`. A `FrameRing` owns
+`capacity` (default 4) fixed slots. The producer reserves a slot that is neither the newest nor
+pinned, writes pixels directly into it, and publishes. A consumer calls
+`try_acquire_latest()` and holds the returned `FrameLease` (a pin) for the duration of its read; the
+lease destructor releases it. If every reusable slot is pinned, the producer drops the frame and
+increments `dropped()`. `VideoFrame::planes` point into slot storage, so a frame is never copied
+implicitly. The same interface is what T10's real Windows backend will implement.
+
 ## Format negotiation
 
 Preference order, resolved against device capabilities:
@@ -177,18 +185,41 @@ The v1 implementation uploads from CPU (`glTexSubImage`-equivalent through `Imag
 
 ## Test sources
 
-Capture must be testable without hardware, so two synthetic sources are first-class:
+Capture must be testable without hardware, so the synthetic and replay sources are first-class:
 
 | Source | Purpose | Determinism |
 |---|---|---|
 | `TestPatternSource` | Colour bars, moving square, timestamp burn-in, alpha checkerboard | Fully deterministic |
 | `SyntheticFaceSource` | A rendered face that translates/rotates on a scripted path, with a known ground-truth pose | Fully deterministic |
 | `SyntheticFaceSource` (distorted) | The same face with a synthetic barrel distortion, to quantify the accepted lens error | Fully deterministic |
-| `ReplaySource` | Recorded `.y4m`/`.mkv` clip with a sidecar pose track | Frame-exact |
+| `ReplaySource` | Recorded `.y4m` clip with a sidecar pose track (`.mkv` is deferred) | Frame-exact |
 
 `SyntheticFaceSource` is what makes CI possible: it feeds the real tracker (or the scripted tracker)
 and lets golden-frame tests assert both pose accuracy and decal placement without a person in front
 of a camera.
+
+### Implemented test sources (T04)
+
+The capture sources implement `native/capture/include/avatar/capture/icamera_source.h`, own their
+`FrameRing`, and take an injected `FrameClock`; none reads a wall clock or uses unseeded randomness.
+`ScriptedTracker` implements the tracking contract instead and lives in `native/tracking/`.
+
+- **`TestPatternSource`** supports 1280×720 and 1920×1080 in NV12 and BGRA8. The card combines colour
+  bars, a moving marker, a decimal timestamp burn-in and an alpha checkerboard. The marker rectangle
+  is a pure function of elapsed time (`marker_rect_at()`), so a test can assert the exact pixel.
+- **`SyntheticFaceSource`** renders a canonical face plane through the exact plane-induced homography
+  for a scripted 6-DOF path. It emits a row-major `camera_from_head` 4x4 and 23 canonical
+  correspondences with pinhole and post-distortion image points. The barrel variant applies a radial
+  `k1` model to both the render and the ground truth.
+- **`ReplaySource`** reads YUV4MPEG2 4:2:0/4:2:2/4:4:4 and a versioned JSON sidecar (see
+  [`testing-and-quality.md`](testing-and-quality.md#replay-sidecar-format)). The sidecar supplies the
+  frame timestamp and ground truth; the clock supplies `arrival_ns`.
+- **`ScriptedTracker`** (`native/tracking/`) is the canned `TrackingResult` source used when a test
+  needs pose/filter behaviour without inference.
+
+The Y4M reader deliberately rejects compressed or unknown chroma rather than guessing. Large clips
+are not tracked; `scripts/gen_fixtures.ps1 -Large` generates them into the gitignored
+`tests/fixtures/generated/`.
 
 ## Failure handling
 

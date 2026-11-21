@@ -124,6 +124,24 @@ slowdowns into permanent latency, which is the worst failure mode for a live ava
 Interfaces are narrow and framework-free so that each subsystem is unit-testable without a window,
 a camera, or a GPU.
 
+### Foundation implementation status (T04)
+
+| Module | Path | Status |
+|---|---|---|
+| Core primitives, clock, diagnostics | `native/core/` | Implemented (T01–T03) |
+| Frame model, `FrameRing`, `ICameraSource`, test/replay sources | `native/capture/` | Implemented (T04) |
+| `TrackingResult` contract and `ScriptedTracker` | `native/tracking/` | Implemented (T04); real backend is T11 |
+| Windows Media Foundation capture | `native/capture/windows/` | Planned (T10) |
+| MediaPipe tracker backend | `native/tracking/mediapipe/` | Planned (T11) |
+| FaceRig math | `native/rig/` | Planned (T18) |
+
+The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
+`ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. Device enumeration,
+capabilities and the capture-thread callback arrive with T10 and must not change the ring
+ownership contract. `TrackingResult` is implemented in
+`native/tracking/include/avatar/tracking/tracking_result.h`; `ITrackingBackend` itself lands with the
+T09 contract harness.
+
 ### Capture
 
 ```cpp
@@ -390,8 +408,8 @@ avatar-studio/
 │   └── assets/
 ├── native/
 │   ├── core/                  # frame types, clock, ring buffers, logging, diagnostics, config
-│   ├── capture/               # windows/ macos/ linux/ + test_pattern/
-│   ├── tracking/              # itracking_backend.h, mediapipe/ (C-ABI wrapper)
+│   ├── capture/               # frame ring, ICameraSource, test/replay sources; windows/ later
+│   ├── tracking/              # tracking_result.h, scripted_tracker.h, mediapipe/ (C-ABI wrapper)
 │   ├── rig/                   # pose filter, face frame, homography, calibration
 │   ├── avatar/                # package load/save/validate, anchors, presets
 │   ├── output/                # manager, queue, transports/{spout,syphon,pipewire,mf,cmio,v4l2}
@@ -402,7 +420,7 @@ avatar-studio/
 │   └── linux/vcam/            # PipeWire node helper / v4l2loopback glue
 ├── models/                    # tracker model files + checksums (no weights in git LFS unless audited)
 ├── examples/                  # CC0 avatars and props with provenance manifests
-├── tests/                     # unit/, integration/, golden/, performance/, fixtures/
+├── tests/                     # unit/, integration/, golden/, performance/, fixtures/, tools/
 ├── scripts/                   # build, package, sign, notarize, model-fetch
 ├── docs/design/               # this document set
 ├── CMakeLists.txt

@@ -18,6 +18,7 @@ tell the difference between "we chose this" and "this happened".
 | [0011](0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | Proposed |
 | [0012](0012-godot-shell-bootstrap.md) | Godot shell bootstrap, godot-cpp 10 pinning, and CMake build | Accepted |
 | [0013](0013-core-data-plane-primitives.md) | Core data-plane primitives and the stable diagnostics registry | Accepted |
+| [0014](0014-deterministic-sources-and-golden-comparator.md) | Deterministic sources, ground truth, and the golden comparator | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

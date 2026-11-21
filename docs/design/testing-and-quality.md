@@ -1,6 +1,9 @@
 # Testing and Quality
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal; the deterministic source set, scripted tracker, replay fixtures and golden
+comparator are implemented (T04). Rendering, real capture/tracking and the first avatar goldens remain
+`Planned`. · **Last updated:** 2026-11-20
+**Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -79,6 +82,76 @@ driver.
 known path, and lets a test assert that the estimated pose matches ground truth within tolerance and
 that a canonical point lands on the expected pixel. A regression in the homography or the filter
 shows up as a numeric failure, not as "it looked weird".
+
+### Implemented sources (T04)
+
+The sources live in `native/capture/` and `native/tracking/` and are framework-free. They are part
+of the application tree, not `tests/`, because T10 and T11 implement the real backends against the
+same interfaces.
+
+| Item | Implementation |
+|---|---|
+| Frame ownership | `FrameRing` owns fixed slots (default 4). `ICameraSource::ring()` returns the producer's ring; a consumer holds a `FrameLease` (pin) while reading and the producer never overwrites a pinned slot. `VideoFrame::planes` point into slot storage, so there is no hidden copy. |
+| Clock | Every source takes an injected `FrameClock`. `produce()` publishes at most one frame and returns false when the clock has not advanced or every slot is pinned. |
+| `TestPatternSource` | 1280×720 and 1920×1080, NV12 and BGRA8. Colour bars, a marker whose rectangle is a pure function of elapsed time (`marker_rect_at`), a decimal timestamp burn-in and an alpha checkerboard. |
+| `SyntheticFaceSource` | Deterministic CPU render of a canonical face through the exact plane-induced homography for a scripted 6-DOF path. Emits `camera_from_head` and 23 canonical correspondences with both pinhole (`ideal_*`) and post-distortion (`x/y`) image points. A `barrel_k1` variant applies the same radial model to the render and the ground truth. |
+| `ScriptedTracker` | Six scenarios: valid tracking, dropouts, seeded jitter, outliers, missing mouth, left/right swap. `submit()` stamps each result with the input frame's timestamp. |
+| `ReplaySource` | YUV4MPEG2 4:2:0/4:2:2/4:4:4 reader plus a versioned JSON sidecar. The sidecar supplies the frame timestamp and ground truth; the injected clock supplies `arrival_ns`. |
+
+Component tests: `avatar_capture_unit` (labels `fast;task_T04`) covers the ring, both synthetic
+sources, the scripted tracker, the replay fixture and the comparator library. `golden_compare_cli`
+runs the comparator's `--self-test` through the real command line.
+
+### Replay sidecar format
+
+The sidecar is JSON, version 1, next to the `.y4m` (same stem by default). Width and height must
+match the Y4M header. `frames` is ordered; `timestamp_ns` must be non-decreasing.
+
+```json
+{
+  "version": 1,
+  "width": 64,
+  "height": 48,
+  "color_space": "bt601_limited",
+  "frames": [
+    {
+      "timestamp_ns": 0,
+      "features_valid": true,
+      "pose": [1,0,0,0, 0,1,0,0, 0,0,1,-0.6, 0,0,0,1],
+      "correspondences": [
+        {"name": "eye_outer_r", "u": 0.70, "v": 0.0, "x": 0.40, "y": 0.45,
+         "ideal_x": 0.40, "ideal_y": 0.45}
+      ]
+    }
+  ]
+}
+```
+
+`pose` is row-major `camera_from_head`. Unknown correspondence names are ignored, matching the
+runtime `LandmarkMap` rule. The checked-in fixture is `tests/fixtures/replay/tiny.{y4m,json}`; large
+clips are generated with `scripts/gen_fixtures.ps1 -Large` into the gitignored
+`tests/fixtures/generated/`.
+
+### Golden comparator
+
+`tests/tools/golden_compare` is both a library and a command:
+
+```powershell
+golden_compare --actual build/actual.ppm --baseline tests/golden/frame.ppm `
+  --artifacts build/golden-artifacts --name frame
+```
+
+It compares 8-bit RGB PPM (P6) images with global SSIM over 8x8 luma windows (default minimum
+0.995) and a maximum per-channel delta guard (default 8). On request it writes
+`<name>.actual.ppm`, `<name>.baseline.ppm` and `<name>.diff.ppm`; the diff is the amplified absolute
+difference tinted red. Exit codes are 0 for pass, 1 for a threshold failure and 2 for usage or I/O
+errors, so CTest can treat it as a normal test and a later golden task can attach the three
+artifacts. `--self-test <dir>` exercises the pass, fail, max-delta and artifact paths and is
+registered as the `golden_compare_cli` test.
+
+PPM is chosen because it needs no third-party decoder and is trivial to inspect; T26 can add a PNG
+converter if CI viewers need one. The guard is global in T04; the decal-bounding-box region mask is
+T26 work.
 
 ---
 

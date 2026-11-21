@@ -30,6 +30,7 @@ docs/design/adr/0000-template.md
 /Testing/
 /tests/performance/results/
 /tests/golden/artifacts/
+/tests/fixtures/generated/
 *.user
 
 # Godot import cache and built GDExtension artifacts (local)

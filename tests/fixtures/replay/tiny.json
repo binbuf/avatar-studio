@@ -1,0 +1,215 @@
+{
+    "version":  1,
+    "width":  64,
+    "height":  48,
+    "color_space":  "bt601_limited",
+    "frames":  [
+                   {
+                       "timestamp_ns":  0,
+                       "features_valid":  true,
+                       "pose":  [
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    -0.6,
+                                    0,
+                                    0,
+                                    0,
+                                    1
+                                ],
+                       "correspondences":  [
+                                               {
+                                                   "name":  "eye_outer_r",
+                                                   "u":  0.7,
+                                                   "v":  0,
+                                                   "x":  0.4,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.4,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "eye_outer_l",
+                                                   "u":  -0.7,
+                                                   "v":  0,
+                                                   "x":  0.6,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.6,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "nose_tip",
+                                                   "u":  0,
+                                                   "v":  -0.32,
+                                                   "x":  0.5,
+                                                   "y":  0.58,
+                                                   "ideal_x":  0.5,
+                                                   "ideal_y":  0.58
+                                               },
+                                               {
+                                                   "name":  "mouth_corner_r",
+                                                   "u":  0.3,
+                                                   "v":  -0.78,
+                                                   "x":  0.45,
+                                                   "y":  0.66,
+                                                   "ideal_x":  0.45,
+                                                   "ideal_y":  0.66
+                                               },
+                                               {
+                                                   "name":  "marker_right_cheek",
+                                                   "u":  0.62,
+                                                   "v":  -0.25,
+                                                   "x":  0.42,
+                                                   "y":  0.6,
+                                                   "ideal_x":  0.42,
+                                                   "ideal_y":  0.6
+                                               }
+                                           ]
+                   },
+                   {
+                       "timestamp_ns":  16666667,
+                       "features_valid":  true,
+                       "pose":  [
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    -0.6,
+                                    0,
+                                    0,
+                                    0,
+                                    1
+                                ],
+                       "correspondences":  [
+                                               {
+                                                   "name":  "eye_outer_r",
+                                                   "u":  0.7,
+                                                   "v":  0,
+                                                   "x":  0.4,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.4,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "eye_outer_l",
+                                                   "u":  -0.7,
+                                                   "v":  0,
+                                                   "x":  0.6,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.6,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "nose_tip",
+                                                   "u":  0,
+                                                   "v":  -0.32,
+                                                   "x":  0.5,
+                                                   "y":  0.58,
+                                                   "ideal_x":  0.5,
+                                                   "ideal_y":  0.58
+                                               },
+                                               {
+                                                   "name":  "mouth_corner_r",
+                                                   "u":  0.3,
+                                                   "v":  -0.78,
+                                                   "x":  0.45,
+                                                   "y":  0.66,
+                                                   "ideal_x":  0.45,
+                                                   "ideal_y":  0.66
+                                               },
+                                               {
+                                                   "name":  "marker_right_cheek",
+                                                   "u":  0.62,
+                                                   "v":  -0.25,
+                                                   "x":  0.42,
+                                                   "y":  0.6,
+                                                   "ideal_x":  0.42,
+                                                   "ideal_y":  0.6
+                                               }
+                                           ]
+                   },
+                   {
+                       "timestamp_ns":  33333334,
+                       "features_valid":  true,
+                       "pose":  [
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    1,
+                                    -0.6,
+                                    0,
+                                    0,
+                                    0,
+                                    1
+                                ],
+                       "correspondences":  [
+                                               {
+                                                   "name":  "eye_outer_r",
+                                                   "u":  0.7,
+                                                   "v":  0,
+                                                   "x":  0.4,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.4,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "eye_outer_l",
+                                                   "u":  -0.7,
+                                                   "v":  0,
+                                                   "x":  0.6,
+                                                   "y":  0.45,
+                                                   "ideal_x":  0.6,
+                                                   "ideal_y":  0.45
+                                               },
+                                               {
+                                                   "name":  "nose_tip",
+                                                   "u":  0,
+                                                   "v":  -0.32,
+                                                   "x":  0.5,
+                                                   "y":  0.58,
+                                                   "ideal_x":  0.5,
+                                                   "ideal_y":  0.58
+                                               },
+                                               {
+                                                   "name":  "mouth_corner_r",
+                                                   "u":  0.3,
+                                                   "v":  -0.78,
+                                                   "x":  0.45,
+                                                   "y":  0.66,
+                                                   "ideal_x":  0.45,
+                                                   "ideal_y":  0.66
+                                               },
+                                               {
+                                                   "name":  "marker_right_cheek",
+                                                   "u":  0.62,
+                                                   "v":  -0.25,
+                                                   "x":  0.42,
+                                                   "y":  0.6,
+                                                   "ideal_x":  0.42,
+                                                   "ideal_y":  0.6
+                                               }
+                                           ]
+                   }
+               ]
+}

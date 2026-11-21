@@ -55,7 +55,9 @@ endif()
 
 add_library(avatar_json INTERFACE)
 add_library(nlohmann_json::nlohmann_json ALIAS avatar_json)
-target_include_directories(avatar_json INTERFACE "${AVATAR_NLOHMANN_JSON_INCLUDE_DIR}")
+# Third-party headers are consumed with SYSTEM so the project's /W4 /WX policy
+# does not turn library-internal warnings into build failures.
+target_include_directories(avatar_json SYSTEM INTERFACE "${AVATAR_NLOHMANN_JSON_INCLUDE_DIR}")
 
 # ---------------------------------------------------------------------------
 # Native core (framework-free; no Godot headers, no engine dependency)
@@ -72,6 +74,41 @@ target_include_directories(avatar_core
 target_compile_features(avatar_core PUBLIC cxx_std_20)
 target_link_libraries(avatar_core PRIVATE avatar_json)
 avatar_enable_warnings(avatar_core)
+
+# ---------------------------------------------------------------------------
+# Capture and tracking foundations
+#
+# Framework-free like the core: no Godot, no OS headers. The synthetic sources
+# and the replay reader are the deterministic inputs every later component test
+# uses, so they live in the application tree, not in tests/.
+# ---------------------------------------------------------------------------
+add_library(avatar_capture STATIC
+    native/capture/src/video_frame.cpp
+    native/capture/src/face_ground_truth.cpp
+    native/capture/src/frame_ring.cpp
+    native/capture/src/test_pattern_source.cpp
+    native/capture/src/synthetic_face_source.cpp
+    native/capture/src/y4m_reader.cpp
+    native/capture/src/replay_source.cpp
+)
+add_library(avatar::capture ALIAS avatar_capture)
+target_include_directories(avatar_capture
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/capture/include"
+)
+target_compile_features(avatar_capture PUBLIC cxx_std_20)
+target_link_libraries(avatar_capture PUBLIC avatar::core PRIVATE avatar_json)
+avatar_enable_warnings(avatar_capture)
+
+add_library(avatar_tracking STATIC
+    native/tracking/src/scripted_tracker.cpp
+)
+add_library(avatar::tracking ALIAS avatar_tracking)
+target_include_directories(avatar_tracking
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/tracking/include"
+)
+target_compile_features(avatar_tracking PUBLIC cxx_std_20)
+target_link_libraries(avatar_tracking PUBLIC avatar::core avatar::capture)
+avatar_enable_warnings(avatar_tracking)
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -93,6 +130,68 @@ if(AVATAR_TESTS)
     set_tests_properties(avatar_core_unit PROPERTIES
         LABELS "fast;task_T01;task_T03"
         TIMEOUT 30
+    )
+
+    # Component suite for the deterministic sources, the scripted tracker and
+    # the golden comparator library. Kept separate from avatar_core_tests so the
+    # T01 core target stays dependency-free.
+    add_executable(avatar_capture_tests
+        tests/unit/test_capture_main.cpp
+        tests/unit/test_frame_ring.cpp
+        tests/unit/test_test_pattern_source.cpp
+        tests/unit/test_synthetic_face_source.cpp
+        tests/unit/test_scripted_tracker.cpp
+        tests/unit/test_replay_source.cpp
+        tests/unit/test_golden_compare.cpp
+        tests/tools/golden_compare/golden_compare.cpp
+    )
+    target_include_directories(avatar_capture_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/golden_compare"
+    )
+    target_compile_definitions(avatar_capture_tests PRIVATE
+        AVATAR_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+    )
+    target_link_libraries(avatar_capture_tests PRIVATE
+        avatar::core
+        avatar::capture
+        avatar::tracking
+        avatar_json
+    )
+    target_compile_features(avatar_capture_tests PRIVATE cxx_std_20)
+    avatar_enable_warnings(avatar_capture_tests)
+
+    add_test(NAME avatar_capture_unit COMMAND avatar_capture_tests)
+    set_tests_properties(avatar_capture_unit PROPERTIES
+        LABELS "fast;task_T04"
+        TIMEOUT 180
+    )
+endif()
+
+# ---------------------------------------------------------------------------
+# Golden comparator command
+#
+# Standalone so later golden tasks can attach artifacts from CTest or a manual
+# run. The --self-test mode is registered as a CTest test so the CLI exit-code
+# contract (0 pass, 1 fail, 2 usage/IO) is exercised, not just the library.
+# ---------------------------------------------------------------------------
+if(AVATAR_TESTS)
+    add_executable(golden_compare
+        tests/tools/golden_compare/main.cpp
+        tests/tools/golden_compare/golden_compare.cpp
+    )
+    target_include_directories(golden_compare PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/tools/golden_compare"
+    )
+    target_compile_features(golden_compare PRIVATE cxx_std_20)
+    avatar_enable_warnings(golden_compare)
+
+    add_test(NAME golden_compare_cli
+        COMMAND golden_compare --self-test "${CMAKE_CURRENT_BINARY_DIR}/golden_compare_selftest"
+    )
+    set_tests_properties(golden_compare_cli PROPERTIES
+        LABELS "fast;task_T04"
+        TIMEOUT 60
     )
 endif()
 

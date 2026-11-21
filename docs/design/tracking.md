@@ -48,6 +48,27 @@ Properties the contract guarantees:
   is what makes pose/pixel pairing possible.
 - Results are published atomically; a reader sees a complete result or the previous one.
 
+### Scripted tracker (T04)
+
+`native/tracking/include/avatar/tracking/scripted_tracker.h` implements the contract without
+inference. It pre-builds a deterministic sequence and `submit(frame)` stamps each result with that
+frame's `timestamp_ns`; `latest()` returns the most recent result. The scenarios cover the failure
+modes the rig and the output gate must survive:
+
+| Scenario | Behaviour |
+|---|---|
+| `valid_tracking` | Valid pose and landmarks, smooth yaw/pitch/roll path |
+| `dropouts` | `valid = false` and `features_valid = false` for a contiguous window |
+| `jitter` | Seeded LCG noise on pose and landmarks, bounded so a test can assert the envelope |
+| `outliers` | Periodic 60° pose jumps and shifted landmarks with low confidence |
+| `missing_mouth` | `valid = true`, `features_valid = false`, mouth landmarks zeroed |
+| `left_right_swap` | Landmark x mirrored and yaw negated for a segment, to catch mirroring bugs |
+
+The first `kScriptedLandmarkCount` landmarks have a documented order (eye corners, iris centres,
+nose, mouth, chin, jaw, temples, cheeks, `marker_right_cheek`) so a test can address them without the
+runtime `LandmarkMap`; T12 resolves the names to backend indices. The sequence is seeded, so two
+trackers with the same config produce byte-identical results.
+
 ## Landmark map
 
 The rig never hard-codes backend indices. `LandmarkMap` is the named correspondence set: a stable
