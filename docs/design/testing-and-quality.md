@@ -821,3 +821,44 @@ references. `tests/gates/T20.ps1` runs both modes and rejects `SCRIPT ERROR`, `S
 and `FAIL:` in the render log. The flat mode's yaw limit and lack of self-occlusion are documented in
 [`face-compositing.md`](face-compositing.md#mode-1--flat) and [ADR-0030](adr/0030-flat-decal-quad-pass.md);
 the goldens do not claim surface-mode quality.
+
+### T21 surface-decal regression gate
+
+`tests/gates/T21.ps1` runs `app/tests/face_decal_surface.gd` headlessly for component checks,
+then in hidden real Compatibility **and Forward+** windows. The oracle in
+`app/tests/face_decal_surface_oracle.gd` independently deforms rest vertices with Quaternion.slerp,
+rasterizes triangles with a CPU depth buffer, interpolates rest attributes and posed normals, and
+composites the analytic mask/homography sample over a model-only render. It never uses native posed
+vertex output or the production shader to create the decal reference. Forward+ capture is sRGB,
+so its model-only image is decoded before blending and the composite encoded afterwards;
+Compatibility capture stays linear. Separate committed references live under
+`tests/golden/face-decal-surface/{gl_compatibility,forward_plus}/`.
+
+Twenty-two 320×320 cases per renderer cover the avocado and original flat, spherical and
+sculpted-nose GLBs (`python scripts/gen_surface_fixtures.py`), each at rest, yaw ±30°, combined
+cut deformation and a rigid 180° rear view. The sculpted nose must occlude >10 far-eye pixels at
+each yaw (local references: 310/307). Rear views must have **zero** changed decal pixels while the
+model remains visible. The rear case rotates all vertices rigidly; a 180° cut pose folds the neck
+band through itself and is not a valid rear-only view. Four repeated front frames per model must
+be identical (no coplanar flicker). A sampling variant checks rotation, anchor, partial opacity,
+gain/lift and off-frame discard; a `head_node` case checks subtree deformation with authored
+`face_submesh`. Headless checks also cover pass replacement/cleanup, all-mesh fallback, atomic
+validation and immutable CUSTOM0/1 attributes under nested nonuniform transforms. T19's reference
+mesh builder preserves both custom-channel format flags.
+
+Live-versus-oracle mean maximum-channel RGB error must be <0.003 and fewer than 150 pixels may
+differ by >0.1. Committed golden mean error must be <0.003. Regenerate only intentionally with the
+pinned engine and each renderer using `--script res://tests/face_decal_surface.gd -- --render
+--update-goldens`, inspect images, then commit; the gate never rewrites them. Synthetic tests cover
+geometry, not human review or real-model corpus quality.
+
+The performance phase uses the real Forward+ renderer, 1920×1080 and T19's 20k-triangle mesh.
+It confirms visible decal pixels and exactly one additional draw for three regions. Vsync and the
+frame cap are disabled; GPU viewport timestamps exclude CPU deformation, readback and presentation.
+Six alternating off/on blocks each discard 30 warmup frames and retain 60 samples (180 per state).
+`.tools/T21-surface-perf.json` records adapter/API, baseline/combined median and p95, signed median
+delta and `max(0, p95_on - p05_off)` spread. Both delta and spread must be <0.7 ms; the spread is a
+conservative noise check, not a statistical confidence interval. Verified local RTX 4080/Vulkan
+measurement: 0.036 ms base, 0.048 ms combined, **0.012 ms delta**, 0.021 ms spread. Negative signed
+deltas are retained as unresolved timing noise and never described as physical speedups. These
+figures do not certify the documented hardware tiers. [ADR-0031](adr/0031-surface-decal-shared-pass.md).

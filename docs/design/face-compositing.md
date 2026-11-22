@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** core math and flat decal implemented (T18/T20); surface, shaded and editor planned · **Last updated:** 2026-11-22
+**Status:** core math, flat and planar surface decals implemented (T18/T20/T21); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -205,7 +205,8 @@ Dynamic meshes carry conservative swept bounds around the pivot.
 `create_decal_pass(ShaderMaterial)` creates children of the imported mesh instances referencing
 **the same live ArrayMesh**. It respects face_submesh, replaces the previous pass and returns the
 first instance for inspection; AvatarModel owns all instances. `clear_decal_pass()` removes them.
-CUSTOM0 is reserved for immutable rest model positions. Include `app/shaders/head_decal.gdshaderinc`,
+CUSTOM0/1 are reserved for immutable rest model positions/normals (normals use inverse transpose).
+The T19 diagnostic can include `app/shaders/head_decal.gdshaderinc`,
 assign `head_rest_position = CUSTOM0.xyz` in vertex(), and project that varying in fragment().
 `get_decal_vertices()` remains rest space. The diagnostic target shader and independent render oracle
 are in `app/tests/`; camera face sampling is still T20/T21, tracker-to-engine wiring T24.
@@ -324,6 +325,27 @@ the region masks. See [ADR-0030](adr/0030-flat-decal-quad-pass.md).
 
 ### Mode 2 — `surface` (default)
 
+**Implemented surface decal (T21).** `app/scenes/face_decal_surface.gd` validates the same
+face/region settings as flat mode and owns `AvatarModel.create_decal_pass` with
+`app/shaders/face_decal_surface.gdshader`. Calibration stays in rest model space; neither head
+deformation nor a presentation transform needs face-uniform rebinding. Fixed arrays evaluate all
+three masks in one pass, with anchors, enabled state, opacity and per-region gain/lift; overlapping
+regions composite in input order. Rebuild after changing the authored face/region settings.
+
+The shader carries `rest_pos`/`rest_normal` from CUSTOM0/1 and posed world position/normal from
+the live mesh. Rest orientation rejects the back hemisphere; posed `N·V` supplies the squared
+grazing fade. Rest projection uses the plane, not the deformed vertex. Mask SDFs, frame-edge and
+`w <= 0` discard, sRGB camera decoding and colour transform follow the realised T20 contract.
+Cylindrical calibration is still planned. Shading and matte remain T39/T40; package decoding and
+timestamp-paired live camera/pose wiring remain later tasks, including T24/T29.
+
+Godot's depth test is enabled by default. The specified LEQUAL policy maps to reversed-depth
+GEQUAL in **both pinned 4.7.2 renderers**. The shader adds `1e-6 * clip.w` to clip Z, moving the
+decal towards the camera (the conventional negative bias), and never writes depth. A normal-Z
+subtraction hides the pass on this engine. The bias never changes rest sampling or live geometry.
+See [ADR-0031](adr/0031-surface-decal-shared-pass.md) and the
+[T21 regression gate](testing-and-quality.md#t21-surface-decal-regression-gate).
+
 The **head mesh is drawn a second time** with the decal shader. No extra geometry, no projected
 boxes, no depth tricks:
 
@@ -376,7 +398,7 @@ img_uv   = H · (u, v, 1)                             // canonical → camera im
 rgb      = sample_camera_linear(img_uv)              // YUV→RGB, sRGB→linear
 facing   = smoothstep(0.10, 0.35, dot(N, V))         // fade at grazing angles
 ALBEDO   = rgb * colour_gain + colour_lift
-ALPHA    = mask * facing * opacity * matte
+ALPHA    = mask * facing * facing * opacity * matte
 ```
 
 Two details that matter:
@@ -440,8 +462,9 @@ The realised flat shader (`app/shaders/face_decal_flat.gdshader`) keeps the sket
 order but adds `region_shape`/`corner_radius` for the rounded-rect mask, uses a normalised signed
 distance so both shapes have the same `-1` centre / `0` edge convention, discards `w <= 0`, and
 uses world-space face uniforms. The matte and `lighting_influence` uniforms are intentionally
-absent from flat mode; they arrive with T40 and T39. The sketch remains the shared target for the
-surface and shaded passes.
+absent from flat mode; they arrive with T40 and T39. The implemented surface shader uses the
+same mask convention and clamp/colour contract with three fixed uniform slots in one draw.
+The sketch remains the target for shaded mode and matte.
 
 ---
 

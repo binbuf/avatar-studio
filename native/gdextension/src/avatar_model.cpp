@@ -542,21 +542,31 @@ bool AvatarModel::build_scene(const String& path) {
             // for a Skeleton3D that this importer never creates.
             arrays[Mesh::ARRAY_BONES] = Variant();
             arrays[Mesh::ARRAY_WEIGHTS] = Variant();
-            // CUSTOM0 is reserved for immutable rest model position, even when vertices move.
+            // CUSTOM0/1 are immutable rest model position/normal, even when vertices move.
             const PackedVector3Array rest = arrays[Mesh::ARRAY_VERTEX];
+            const PackedVector3Array normals = arrays[Mesh::ARRAY_NORMAL];
             PackedFloat32Array rest_bytes;
+            PackedFloat32Array normal_bytes;
             rest_bytes.resize(rest.size() * 3);
+            normal_bytes.resize(rest.size() * 3);
+            const Basis normal_basis = record.model_xform.basis.inverse().transposed();
             for (int64_t v = 0; v < rest.size(); ++v) {
                 const Vector3 p = record.model_xform.xform(rest[v]);
+                const Vector3 n =
+                    v < normals.size() ? normal_basis.xform(normals[v]).normalized() : Vector3();
                 const float xyz[3] = {p.x, p.y, p.z};
+                const float nxyz[3] = {n.x, n.y, n.z};
                 std::memcpy(rest_bytes.ptrw() + v * 3, xyz, 12);
+                std::memcpy(normal_bytes.ptrw() + v * 3, nxyz, 12);
             }
             arrays[Mesh::ARRAY_CUSTOM0] = rest_bytes;
+            arrays[Mesh::ARRAY_CUSTOM1] = normal_bytes;
             array_mesh->add_surface_from_arrays(
                 importer_mesh->get_surface_primitive_type(surface_index), arrays, Array(),
                 Dictionary(),
                 Mesh::ARRAY_FLAG_USE_DYNAMIC_UPDATE |
-                    (uint64_t(Mesh::ARRAY_CUSTOM_RGB_FLOAT) << Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT));
+                    (uint64_t(Mesh::ARRAY_CUSTOM_RGB_FLOAT) << Mesh::ARRAY_FORMAT_CUSTOM0_SHIFT) |
+                    (uint64_t(Mesh::ARRAY_CUSTOM_RGB_FLOAT) << Mesh::ARRAY_FORMAT_CUSTOM1_SHIFT));
             array_mesh->surface_set_material(surface_index, material);
 
             if (include_in_decal) {

@@ -8,7 +8,7 @@ tell the difference between "we chose this" and "this happened".
 | [0001](0001-engine-and-language.md) | Godot 4.7 + C++20 GDExtension as the application platform | Proposed |
 | [0002](0002-native-camera-capture.md) | Native camera capture on all three platforms | Proposed |
 | [0003](0003-mediapipe-as-tracking-backend.md) | MediaPipe Face Landmarker behind a replaceable, C-ABI-isolated backend | Accepted |
-| [0004](0004-face-decal-projection.md) | Face decals rendered on the model's own surface in canonical face space | Proposed |
+| [0004](0004-face-decal-projection.md) | Face decals rendered on the model's own surface in canonical face space | Accepted |
 | [0005](0005-output-transports.md) | Render once, distribute many; OS virtual cameras as separate processes | Proposed |
 | [0006](0006-avatar-package-format.md) | Directory-based `.avatar` package with versioned declarative JSON | Proposed |
 | [0007](0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | Proposed |
@@ -35,6 +35,7 @@ tell the difference between "we chose this" and "this happened".
 | [0028](0028-facerig-estimation-and-temporal-contract.md) | FaceRig estimation and temporal contract | Accepted |
 | [0029](0029-shared-cpu-head-deformation.md) | Shared CPU vertex buffers for head deformation | Accepted |
 | [0030](0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | Accepted |
+| [0031](0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

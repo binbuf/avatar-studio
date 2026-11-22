@@ -263,6 +263,11 @@ Only complete accepted samples extend the 150 ms hold; after it the output gate
 must blank. No decay to neutral occurs. T19 implements cut/node head-region rotation in
 AvatarModel, sharing live geometry and immutable rest positions with the decal pass
 ([ADR-0029](adr/0029-shared-cpu-head-deformation.md)); CPU cut cost exceeds the 0.15 ms target.
+T21 adds immutable rest model normals in CUSTOM1 beside CUSTOM0 positions, and implements the
+planar surface shader on this shared geometry. One additional draw per selected mesh handles all
+three regions, rest-orientation rear rejection and posed facing; authored `face_submesh` narrows
+the draw. [ADR-0031](adr/0031-surface-decal-shared-pass.md) records the reverse-Z bias and local
+GPU measurement. Camera/pose timestamp pairing is still T24 work.
 Avatar calibration, framing and tracker-to-engine binding remain T22/T24. Exact constants and transform
 conventions are fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 

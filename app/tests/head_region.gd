@@ -132,7 +132,9 @@ func reference(m: Node3D, q: Quaternion, mode: String) -> Node3D:
         arrays[Mesh.ARRAY_VERTEX] = out
         arrays[Mesh.ARRAY_NORMAL] = ns
         var mesh := ArrayMesh.new()
-        mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+        mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {},
+            (Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) |
+            (Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT))
         mesh.surface_set_material(0, instances[s].mesh.surface_get_material(0))
         var instance := MeshInstance3D.new()
         instance.mesh = mesh

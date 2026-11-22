@@ -1,6 +1,6 @@
 # ADR-0004: Face decals rendered on the model's own surface in canonical face space
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
 - **Related:** [`../face-compositing.md`](../face-compositing.md)
 
@@ -67,6 +67,10 @@ geometry that carries the decal.
   simplification (the face is not a PBR material).
 
 ## Follow-ups
+
+T21 validates the surface geometry decision in [ADR-0031](0031-surface-decal-shared-pass.md)
+with two-renderer CPU-reference goldens and a measured second draw. Timestamp pairing remains
+T24; the validation does not claim live tracker integration or cylindrical calibration.
 
 1. M1: validate planar projection on three archetypes; decide whether cylinder ships in 1.0 (Q2 in
    [`../roadmap.md`](../roadmap.md#consolidated-open-questions)).
