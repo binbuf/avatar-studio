@@ -32,9 +32,9 @@ tell the difference between "we chose this" and "this happened".
 | [0025](0025-m0-windows-scope-and-deferred-platform-evidence.md) | Close M0 on Windows feasibility and defer cross-platform evidence | Accepted |
 | [0026](0026-fixed-60hz-pacing-and-one-viewport-preview.md) | Fixed 60 Hz pacing, one viewport, and a preview copy | Accepted |
 | [0027](0027-runtime-glb-import.md) | Runtime GLB import builds a rigid bind-pose scene from GLTFState | Accepted |
-
 | [0028](0028-facerig-estimation-and-temporal-contract.md) | FaceRig estimation and temporal contract | Accepted |
 | [0029](0029-shared-cpu-head-deformation.md) | Shared CPU vertex buffers for head deformation | Accepted |
+| [0030](0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

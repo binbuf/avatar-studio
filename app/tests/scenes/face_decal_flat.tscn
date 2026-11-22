@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/face_decal_flat_stage.gd" id="1_stage"]
+
+[node name="FaceDecalFlatStage" type="Node3D"]
+script = ExtResource("1_stage")
+
+[node name="Camera" type="Camera3D" parent="."]
+projection = 1
+size = 0.225
+near = 0.01
+far = 10.0
+current = true

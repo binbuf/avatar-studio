@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** core math implemented (T18); rendering and editor planned · **Last updated:** 2026-11-21
+**Status:** core math and flat decal implemented (T18/T20); surface, shaded and editor planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -275,6 +275,53 @@ transparent pass with depth test enabled but depth write disabled.
 - Fails: at yaw beyond ~25° the quad does not foreshorten like the model and reads as a sticker;
   the model cannot occlude it (a nose never covers the far eye).
 
+#### Implemented flat decal (T20)
+
+`app/scenes/face_decal_flat.gd` builds one quad per region under the head node.
+Each quad is sized to `region.size × face.scale`, placed at the region centre on
+the calibrated face plane, rotated by `rotation_deg`, and offset along the face
+normal by 1% of the face scale. The material is `unshaded`, `blend_mix`,
+`depth_draw_never` (depth test stays on), `render_priority = 1`, and
+`app/shaders/face_decal_flat.gdshader` is shared by all three quads.
+
+The shader projects the fragment's **world** position onto the face plane with
+world-space `face_origin`, `face_right`, `face_up` and `face_scale` uniforms.
+This is the flat-mode equivalent of the rest-position varying used by the
+surface pass: the quad geometry is authored in head space, so a presentation
+transform cannot separate the mask from the pixels. `region_uv`,
+`region_anchor`, `region_rot`, `feather`, `region_shape`, `corner_radius`,
+`colour_gain`, `colour_lift`, `opacity` and `canonical_to_image` are bound per
+quad. The mask is a normalised signed distance (`ellipse` or `rounded_rect`)
+with a feathered inner edge; the fragment is discarded outside the mask, when
+the homography's `w <= 0`, and when the image UV leaves `[0,1]`. The camera
+sampler is `repeat_disable`, so sampling is clamped by discard, never wrapped.
+
+Camera sRGB is converted to linear with the IEC curve before blending. The
+captured `SubViewport` image is linear in the Compatibility renderer: a 0.5
+sRGB camera texel renders at 0.214 linear, and the T20 test asserts that value.
+Final sRGB encoding belongs to the output path (T23), not the decal.
+
+`ALPHA = mask * facing² * opacity`, with `facing = smoothstep(0.10, 0.35,
+dot(world_normal, view))`. The flat pass has no matte and no lighting
+integration: the matte is T40 and the shaded mode is T39. `region_anchor` is
+bound, but the quad is only as large as the region; an anchor that moves the
+mask beyond that rectangle clips until the region authoring/gizmo work (T35)
+sizes it. The quads do not follow the CPU cut deformation; T24 must apply the
+same head rotation to the decal anchor (node mode already follows its parent).
+
+The known flat limitation is unchanged and deliberately not hidden: at yaw
+beyond roughly 25° the quad does not foreshorten like the model and cannot
+self-occlude. Surface remains the default. The flat pass is a fallback and a
+debugging mode, not the product.
+
+Evidence: `app/tests/scenes/face_decal_flat.tscn` (avocado + synthetic camera
+texture), `app/tests/face_decal_flat.gd`, four 320×320 PNGs in
+`tests/golden/face-decal-flat/` (coverage, edge clamp, mirroring, colour space),
+and `tests/gates/T20.ps1`. The analytic reference composites the independently
+computed mask, homography sample, sRGB→linear conversion and gain/lift over a
+model-only render; the black-camera diff asserts every changed pixel is inside
+the region masks. See [ADR-0030](adr/0030-flat-decal-quad-pass.md).
+
 ### Mode 2 — `surface` (default)
 
 The **head mesh is drawn a second time** with the decal shader. No extra geometry, no projected
@@ -388,6 +435,13 @@ void fragment() {
 
 `ALPHA` is squared on `facing` so the silhouette fades faster than the interior; a linear fade
 leaves a visible rim.
+
+The realised flat shader (`app/shaders/face_decal_flat.gdshader`) keeps the sketch's sampling
+order but adds `region_shape`/`corner_radius` for the rounded-rect mask, uses a normalised signed
+distance so both shapes have the same `-1` centre / `0` edge convention, discards `w <= 0`, and
+uses world-space face uniforms. The matte and `lighting_influence` uniforms are intentionally
+absent from flat mode; they arrive with T40 and T39. The sketch remains the shared target for the
+surface and shaded passes.
 
 ---
 

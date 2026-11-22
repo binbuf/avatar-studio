@@ -4,10 +4,11 @@
 comparator, foundation performance harness (T05), the CI/format/licence gates (T06), the tracker
 C ABI contract harness (T09), the real Windows tracker contracts (T11), the landmark-map/profile
 tests (T12), the headless M0 harness with its 30-minute soak (T13), the Windows-scoped M0 contract
-audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16) and the runtime GLB import with
-its fixture set (T17) and FaceRig numerical/CPU gates (T18) are implemented. The 10-minute app soak and the first avatar goldens remain
-`Planned`. ·
-**Last updated:** 2026-11-21
+audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16), the runtime GLB import with
+its fixture set (T17), FaceRig numerical/CPU gates (T18), head-region cut/node geometry and goldens
+(T19), and the flat decal pass with its analytic-reference goldens (T20) are implemented. The
+10-minute app soak and the central golden-image suite remain `Planned`. ·
+**Last updated:** 2026-11-22
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
 [ADR-0016](adr/0016-ci-quality-gates.md),
@@ -791,3 +792,32 @@ The gate never updates references. Cut and node benchmarks each use 20k triangle
 buffer submission median/p95 in `.tools/T19-head-region-render.json` (300 measured updates, 30 warmup,
 one update per rendered frame). GPU completion and other draw cost are excluded. ADR-0029 explicitly
 records the cut path's overrun of 0.15 ms; the gate does not pretend that the budget was met.
+
+### T20 flat-decal regression gate
+
+`app/tests/face_decal_flat.gd` runs headlessly for the component contract (three quads parented to the
+head, placement on the face plane, every required uniform, camera/homography propagation, validation
+and rotation) and through a hidden real OpenGL Compatibility window for images. The test scene
+`app/tests/scenes/face_decal_flat.tscn` imports `assets/models/avocado_half.glb` and supplies a
+generated 256×256 synthetic camera texture; no camera or third-party image is used.
+
+Four 320×320 references live in `tests/golden/face-decal-flat/`: mask coverage, edge clamp, mirroring
+and colour space. They are produced from an **independent analytic reference**, not from the live
+shader: the reference computes the region signed-distance mask, the homography sample, the sRGB→linear
+conversion, gain/lift and alpha, then composites over a model-only render. RGB mean absolute error
+must be <0.01. The black-camera component test renders the same scene twice and asserts every changed
+pixel is inside the analytic region masks (T20 measured 2,565 changed pixels and 0 outside). The
+edge-clamp case shifts the homography so part of an eye and the mouth sample outside `[0,1]`; no
+changed pixel may sample outside the camera frame. A half-opacity mouth render must match the same
+analytic composite. The mirroring case puts a magenta marker at image
+`(0.30, 0.45)`; it must land on the subject's right eye, which is on the viewer's left, and not on the
+other eye. The colour-space case hides the model and asserts a 0.5 sRGB texel renders at 0.214 linear;
+0.5 would mean the conversion was skipped and 0.038 would mean it was applied twice. The
+Compatibility `SubViewport` capture is linear; final sRGB encoding is the output path's job (T23).
+
+To regenerate the references intentionally, run the windowed script with `-- --render
+--update-goldens`, inspect the PNGs, and commit them with an explanation. The gate never updates
+references. `tests/gates/T20.ps1` runs both modes and rejects `SCRIPT ERROR`, `SHADER ERROR`, `ERROR:`
+and `FAIL:` in the render log. The flat mode's yaw limit and lack of self-occlusion are documented in
+[`face-compositing.md`](face-compositing.md#mode-1--flat) and [ADR-0030](adr/0030-flat-decal-quad-pass.md);
+the goldens do not claim surface-mode quality.

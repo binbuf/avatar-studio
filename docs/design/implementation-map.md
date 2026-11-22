@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T19 (head-region cut/node geometry and shared rest-space decal buffers implemented; CPU budget overrun documented; pure FaceRig math, numerical tests and CPU gate implemented; runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-21
+**Status:** current as of T20 (flat decal pass implemented end to end with clamped sampling, linear camera colour, analytic-reference goldens and a black-camera mask invariant; head-region cut/node geometry and shared rest-space decal buffers implemented; CPU budget overrun documented; pure FaceRig math, numerical tests and CPU gate implemented; runtime GLB import and model-check surface implemented; one avatar viewport, preview copy, 60 Hz pacing and C++ stats implemented; M0 audited and closed for the Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -84,7 +84,15 @@ math. `avatar_rig_unit` compares synthetic ground truth and failure paths;
 in `AvatarModel`, shared model/decal buffers and immutable CUSTOM0 rest positions. The indexed
 20k-triangle cut path exceeds 0.15 ms (ADR-0029); node mode changes one subtree transform. T19's
 unit/engine suite and twelve independent rendered goldens are gated by `tests/gates/T19.ps1`.
-Face sampling shaders, tracker engine wiring and transport blanking remain T20–T24.
+T20 implements the flat decal: `app/scenes/face_decal_flat.gd` builds three region quads under the
+head on the calibrated face plane, and `app/shaders/face_decal_flat.gdshader` projects world
+position to canonical space, applies the feathered ellipse/rounded-rect mask, discards outside the
+mask and the `[0,1]` camera frame, converts camera sRGB to linear, and applies gain/lift, facing²
+and opacity. `app/tests/face_decal_flat.gd` runs headlessly and in a real Compatibility window;
+`app/tests/scenes/face_decal_flat.tscn` is the avocado + synthetic camera scene, four analytic
+reference goldens live in `tests/golden/face-decal-flat/`, and the black-camera diff asserts every
+changed pixel is inside a mask. `tests/gates/T20.ps1` gates both modes. Surface and shaded modes,
+the matte, tracker wiring and transport blanking remain T21–T24/T39/T40.
 
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
@@ -203,8 +211,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24 | `Planned` |
 | Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
 | Rendering strategy: runtime GLB import, bind pose, units/axes, model check | `native/gdextension/`, `app/scenes/`, `app/tests/` | T17 | `Implemented` |
-| Rendering strategy: decal pass | `app/shaders/` | T20, T21 | `Planned` |
-| Colour and alpha | `app/shaders/`, `native/output/` | T20, T39, T48 | `Planned` |
+| Rendering strategy: decal pass | `app/shaders/`, `app/scenes/face_decal_flat.gd` | T20, T21 | `Implemented (flat); surface T21` |
+| Colour and alpha | `app/shaders/`, `native/output/` | T20, T39, T48 | `Implemented (flat linear camera, gain/lift, facing², opacity); T39/T48 planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
 | Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
 | Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T41, T46, T58 | `Planned` |
@@ -226,13 +234,13 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 |---|---|---|---|
 | Coordinate spaces: canonical face space and face-frame estimation | `native/rig/`, `native/tracking/` | T18 | `Implemented` |
 | Region centroid tracking, inverse H, filtering and clamp | `native/rig/` | T18 | `Implemented` |
-| Avatar region shape authoring and shader consumption | `native/avatar/`, `app/` | T21, T32, T34 | `Planned` |
+| Avatar region shape authoring and shader consumption | `native/avatar/`, `app/` | T21, T32, T34 | `Planned (flat shader consumption implemented in T20)` |
 | Head motion and placement: rotation scope (node/cut) | `native/gdextension/src/avatar_head.cpp`, `app/shaders/head_decal.gdshaderinc` | T19 | `Implemented; CPU overrun documented` |
 | Head motion and placement: presentation and framing | `native/rig/`, `app/` | T22 | `Planned` |
-| Projection mode `flat` | `app/shaders/` | T20 | `Planned` |
+| Projection mode `flat` | `app/shaders/face_decal_flat.gdshader`, `app/scenes/face_decal_flat.gd` | T20 | `Implemented` |
 | Projection mode `surface` | `app/shaders/` | T21 | `Planned` |
 | Projection mode `shaded surface` | `app/shaders/` | T39 | `Planned` |
-| Sampling math and the decal shader | `app/shaders/` | T20, T21 | `Planned` |
+| Sampling math and the decal shader | `app/shaders/` | T20, T21 | `Implemented (flat); surface T21` |
 | Face matte: chroma and software segmentation | `native/`, `app/shaders/` | T40 | `Planned` |
 | Output contract: the avatar or nothing | `native/output/` | T23 | `Planned` |
 | Lens distortion | — | — | `Deferred` |
@@ -457,6 +465,8 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0026](adr/0026-fixed-60hz-pacing-and-one-viewport-preview.md) | Fixed 60 Hz pacing, one viewport, and a preview copy | T16, T26, T46 | Accepted |
 | [ADR-0027](adr/0027-runtime-glb-import.md) | Runtime GLB import builds a rigid bind-pose scene from GLTFState | T17, T19, T21 | Accepted |
 | [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) | FaceRig estimation and temporal contract | T18, T19, T24 | Accepted |
+| [ADR-0029](adr/0029-shared-cpu-head-deformation.md) | Shared CPU vertex buffers for head deformation | T19, T43, T64 | Accepted |
+| [ADR-0030](adr/0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | T20, T21, T24 | Accepted |
 
 ---
 
@@ -477,3 +487,8 @@ Phase 5 is sequenced after the MVP gate by
 
 T19 mechanism: [ADR-0029](adr/0029-shared-cpu-head-deformation.md), shared CPU vertex buffers,
 rest-position decal attribute, measured performance debt. Tracker wiring remains T24.
+
+T20 mechanism: [ADR-0030](adr/0030-flat-decal-quad-pass.md), three head-parented region quads,
+world-space face projection, normalised ellipse/rounded-rect mask, clamped `[0,1]` sampling with
+discard, sRGB→linear camera colour, facing² and opacity. Surface/shaded modes and the matte remain
+T21/T39/T40.
