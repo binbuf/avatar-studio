@@ -268,8 +268,11 @@ planar surface shader on this shared geometry. One additional draw per selected 
 three regions, rest-orientation rear rejection and posed facing; authored `face_submesh` narrows
 the draw. [ADR-0031](adr/0031-surface-decal-shared-pass.md) records the reverse-Z bias and local
 GPU measurement. Camera/pose timestamp pairing is still T24 work.
-Avatar calibration, framing and tracker-to-engine binding remain T22/T24. Exact constants and transform
-conventions are fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
+T22 implements the fixed presentation transform, fit, distance, frustum and mirroring math in
+`native/rig/`; `AvatarRuntime` applies it and exposes the bounds overlay as data
+([ADR-0032](adr/0032-presentation-framing-and-mirroring.md)). Avatar calibration and
+tracker-to-engine binding remain T32/T24. Exact FaceRig constants and transform conventions are
+fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 The math is the heart of the product: [`face-compositing.md`](face-compositing.md).
 
@@ -360,8 +363,10 @@ The GDExtension boundary is cheap per call and expensive per marshalled value. R
   input size); compositing samples the full-resolution camera texture.
 - **Head motion.** Rotation-only in 1.0, applied to the head region (a node or a neck cut) so the
   body stays still. The whole model is placed by a fixed presentation transform (180° yaw plus fit);
-  the camera is perspective at 35° vertical FOV. Fit, zoom, offset and margin are per-avatar with
-  Show overrides ([`face-compositing.md`](face-compositing.md#head-motion-and-placement)).
+  the camera is perspective at 35° vertical FOV, `KEEP_HEIGHT`. Fit, zoom, offset and margin are
+  per-avatar with Show overrides; T22 clamps zoom to 0.5–2.0 and margin to 0–0.5, guarantees
+  containment at zoom ≤ 1 and treats zoom > 1 as a deliberate crop
+  ([`face-compositing.md`](face-compositing.md#implemented-framing-t22)).
 - **Output gate.** The output is the rendered avatar or a blank frame. No passthrough, no frozen
   face, no camera fallback; the invariant is tested
   ([`testing-and-quality.md`](testing-and-quality.md#output-invariant)).

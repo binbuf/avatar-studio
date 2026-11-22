@@ -167,6 +167,13 @@ Framing controls how the whole avatar is placed and never moves with the head. T
 A bounds overlay shows the model's AABB and the camera frustum while framing. Leaning does not move
 the avatar; a translation gain is `Deferred`. The `Show` may override the package's framing.
 
+The T22 adapter already exposes the overlay data through `AvatarRuntime.get_bounds_overlay()`:
+rest and swept AABBs, the fitted sphere, six world-space frustum planes, eight frustum corners, the
+head sweep and containment flags. It is data only; T36 draws it outside the output `SubViewport`.
+Zoom clamps to 0.5–2.0 and margin to 0–0.5. Containment is guaranteed at zoom ≤ 1; zoom > 1 is the
+deliberate crop control. Preview mirroring flips the preview copy only; output mirroring flips the
+final composited frame.
+
 ### Quality presets
 
 | Preset | Output | Tracking | Rendering |

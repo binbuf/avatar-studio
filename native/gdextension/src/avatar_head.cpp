@@ -107,6 +107,8 @@ bool AvatarModel::configure_head_region(const Dictionary& input, const Dictionar
     const String mode = region.get("mode", "");
     int32_t selected = -1;
     Vector3 new_pivot, cut_origin, cut_normal;
+    AABB head_bounds;
+    bool has_head_bounds = false;
     double falloff = 0;
     if (mode == "node") {
         const String name = region.get("node", "");
@@ -127,6 +129,8 @@ bool AvatarModel::configure_head_region(const Dictionary& input, const Dictionar
             }
         if (!found || !bounds.grow(scale * 0.01f).has_point(origin))
             return invalid();
+        head_bounds = bounds;
+        has_head_bounds = true;
         // An explicit face_submesh must belong entirely to this subtree.
         if (!face_submesh_.is_empty())
             for (const auto& s : head_surfaces_)
@@ -184,6 +188,29 @@ bool AvatarModel::configure_head_region(const Dictionary& input, const Dictionar
                     ? 0
                     : avatar::rig::head_weight(point(nodes_[s.node].model_xform.xform(s.rest[i])),
                                                point(cut_origin), point(cut_normal), cut_falloff_);
+    if (selected < 0) {
+        // Cut mode has no node AABB: derive the head bounds from the vertices
+        // that actually move. The framing sweep then bounds only the head, not
+        // the untouched body.
+        has_head_bounds = false;
+        for (const auto& s : head_surfaces_) {
+            const Transform3D& transform = nodes_[s.node].model_xform;
+            for (int64_t i = 0; i < s.rest.size(); ++i) {
+                if (s.weights[static_cast<size_t>(i)] <= 0)
+                    continue;
+                const Vector3 vertex = transform.xform(s.rest[i]);
+                if (!has_head_bounds) {
+                    head_bounds = AABB(vertex, Vector3());
+                    has_head_bounds = true;
+                } else {
+                    head_bounds.expand_to(vertex);
+                }
+            }
+        }
+    }
+    head_aabb_ = has_head_bounds ? head_bounds : AABB();
+    has_head_aabb_ = has_head_bounds;
+    face_surface_ = face.duplicate(true);
     float radius = 0;
     for (const auto& s : head_surfaces_)
         for (int64_t i = 0; i < s.rest.size(); ++i)
@@ -256,6 +283,12 @@ void AvatarModel::set_head_rotation(const Quaternion& rotation) {
 }
 Dictionary AvatarModel::get_head_region() const {
     return head_region_.duplicate(true);
+}
+AABB AvatarModel::get_head_aabb() const {
+    return has_head_aabb_ ? head_aabb_ : AABB();
+}
+Dictionary AvatarModel::get_face_surface() const {
+    return face_surface_.duplicate(true);
 }
 Node3D* AvatarModel::create_decal_pass(const Ref<ShaderMaterial>& material) {
     if (material.is_null() || !loaded_)

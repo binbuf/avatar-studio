@@ -106,7 +106,8 @@ blocker to starting M1. Its gap list and readiness statement are in the local
 T16 landed the render-loop shell: one 1920x1080 transparent `SubViewport`, a preview that samples
 its `ViewportTexture`, a fixed 180° presentation node, 60 Hz pacing with vsync only on integer
 refresh multiples, and a hidden C++ HUD. T17 adds runtime GLB import with a rigid bind-pose
-scene, units/axes conversion and the model-check surface; decals and framing remain T20-T22.
+scene, units/axes conversion and the model-check surface; T20/T21 add flat and surface decals and
+T22 adds the fixed presentation, swept fit, bounds overlay data and mirroring.
 
 **Exit criteria**
 
@@ -150,7 +151,7 @@ scene, units/axes conversion and the model-check surface; decals and framing rem
 | Face quality at ±30° yaw | No "floating sticker" in blind A/B against a reference clip |
 | Colour mismatch | Reviewers cannot identify the face as a separate photograph in 4 of 5 scenes |
 | Profile reuse | One profile, three avatars, no recalibration; quality unchanged |
-| Framing | No clipping or drift across model/head fit and zoom extremes |
+| Framing | No clipping or drift across model/head fit at zoom ≤ 1; zoom > 1 crops by design; the bounds overlay shows the honest extent |
 | Library | 20 imports, duplicate id, delete; originals untouched |
 | Existing-model corpus | 10 typical downloaded GLBs import; 8 calibrate within 10 minutes without re-export |
 | Matte | No coloured fringe on green or blue; the software path adds ≤ 2 ms and degrades gracefully |

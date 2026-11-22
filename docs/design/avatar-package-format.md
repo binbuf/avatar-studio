@@ -369,9 +369,9 @@ avatar is first loaded; outfits override it.
 | Field | Type | Meaning |
 |---|---|---|
 | `fit` | `"model"` \| `"head"` | Fit the whole model, or a head region around the face plane. Default `model` |
-| `zoom` | number > 0 | Multiplier on the fitted camera distance; 1.0 is the computed fit |
+| `zoom` | number > 0 | Multiplier on the fitted camera distance; 1.0 is the computed fit. T22 clamps the realised value to 0.5–2.0; zoom > 1 deliberately crops |
 | `offset` | `[x, y]` | Nudge in fractions of the visible half-extent; positive x moves the avatar right |
-| `margin` | 0–0.5 | Padding around the fitted extent; default 0.10 |
+| `margin` | 0–0.5 | Padding around the fitted extent; default 0.10. T22 clamps the realised value to 0–0.5 |
 
 **`output.background`**
 

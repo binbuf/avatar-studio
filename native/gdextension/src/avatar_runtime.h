@@ -3,10 +3,12 @@
 #include "avatar/core/clock.h"
 #include "avatar/core/frame_pacer.h"
 #include "avatar/core/latency_histogram.h"
+#include "avatar/rig/framing.h"
 #include "platform_timer.h"
 
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -86,6 +88,27 @@ public:
     bool is_avatar_loaded() const;
     godot::Dictionary get_avatar_import_summary() const;
 
+    // Presentation and framing (T22). `configure_framing` accepts fit, zoom,
+    // offset and margin; finite values outside the documented ranges are
+    // clamped, non-finite or unknown values are rejected with AVT-113.
+    bool configure_framing(const godot::Dictionary& framing);
+    godot::Dictionary get_framing() const;
+    bool refresh_framing();
+    godot::Dictionary get_bounds_overlay() const;
+    bool is_avatar_inside_viewport() const;
+    bool is_fitted_volume_inside_viewport() const;
+    godot::String get_last_error_code() const;
+    godot::String get_last_error_message() const;
+
+    // Preview mirroring is a display-only TextureRect flip. Output mirroring is
+    // a final-frame flip applied after compositing; mirror_frame returns the
+    // flipped copy for the output path (T23) and tests.
+    void set_mirror_preview(bool mirrored);
+    bool is_mirror_preview() const;
+    void set_mirror_output(bool mirrored);
+    bool is_mirror_output() const;
+    godot::Ref<godot::Image> mirror_frame(const godot::Ref<godot::Image>& frame) const;
+
     // Debug HUD: hidden by default, updated from C++ at ~4 Hz. No GDScript
     // runs per frame.
     void set_debug_hud_visible(bool visible);
@@ -102,7 +125,8 @@ private:
     void configure_viewport();
     void configure_preview();
     void load_default_avatar();
-    void frame_avatar_camera();
+    bool apply_framing();
+    void set_framing_error(const godot::String& code, const godot::String& message);
     void configure_pacing();
     void create_debug_hud();
     void update_debug_hud();
@@ -115,6 +139,14 @@ private:
     godot::Camera3D* avatar_camera_ = nullptr;
     godot::CanvasLayer* hud_layer_ = nullptr;
     godot::Label* hud_label_ = nullptr;
+
+    avatar::rig::FramingSettings framing_settings_;
+    avatar::rig::FramingResult framing_;
+    bool framing_valid_ = false;
+    bool mirror_preview_ = true;
+    bool mirror_output_ = false;
+    godot::String last_error_code_;
+    godot::String last_error_message_;
 
     avatar::platform::FrameTimerResolution timer_resolution_;
     avatar::core::SteadyTimeSource time_source_;

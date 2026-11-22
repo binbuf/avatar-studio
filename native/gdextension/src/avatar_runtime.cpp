@@ -18,9 +18,13 @@
 #include <godot_cpp/core/math_defs.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/core/object.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/plane.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/vector3.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -44,6 +48,51 @@ constexpr TimestampNs kHudIntervalNs = 250'000'000;
 
 String pacing_mode_name(PacingMode mode) {
     return mode == PacingMode::vsync ? String("vsync") : String("deadline");
+}
+
+avatar::rig::Vec3 to_rig(const Vector3& value) {
+    return {value.x, value.y, value.z};
+}
+
+Vector3 to_godot(const avatar::rig::Vec3& value) {
+    return Vector3(static_cast<real_t>(value.x), static_cast<real_t>(value.y),
+                   static_cast<real_t>(value.z));
+}
+
+avatar::rig::Aabb to_rig(const AABB& value) {
+    return {{value.position.x, value.position.y, value.position.z},
+            {value.position.x + value.size.x, value.position.y + value.size.y,
+             value.position.z + value.size.z}};
+}
+
+AABB to_godot(const avatar::rig::Aabb& value) {
+    return AABB(to_godot(value.min), Vector3(static_cast<real_t>(value.max.x - value.min.x),
+                                             static_cast<real_t>(value.max.y - value.min.y),
+                                             static_cast<real_t>(value.max.z - value.min.z)));
+}
+
+Transform3D to_godot(const avatar::rig::Mat4& value) {
+    const Basis basis(Vector3(static_cast<real_t>(value.m[0]), static_cast<real_t>(value.m[1]),
+                              static_cast<real_t>(value.m[2])),
+                      Vector3(static_cast<real_t>(value.m[4]), static_cast<real_t>(value.m[5]),
+                              static_cast<real_t>(value.m[6])),
+                      Vector3(static_cast<real_t>(value.m[8]), static_cast<real_t>(value.m[9]),
+                              static_cast<real_t>(value.m[10])));
+    return Transform3D(basis,
+                       Vector3(static_cast<real_t>(value.m[3]), static_cast<real_t>(value.m[7]),
+                               static_cast<real_t>(value.m[11])));
+}
+
+bool read_number(const Variant& value, double& number) {
+    if (value.get_type() != Variant::FLOAT && value.get_type() != Variant::INT) {
+        return false;
+    }
+    number = static_cast<double>(value);
+    return std::isfinite(number);
+}
+
+String fit_name(avatar::rig::FramingFit fit) {
+    return fit == avatar::rig::FramingFit::head ? String("head") : String("model");
 }
 
 } // namespace
@@ -382,6 +431,7 @@ void AvatarRuntime::configure_preview() {
     preview_->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
     preview_->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
     preview_->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+    preview_->set_flip_h(mirror_preview_);
 
     const Ref<Texture2D> preview_texture = preview_->get_texture();
     preview_is_copy_ = viewport_texture.is_valid() && preview_texture.is_valid() &&
@@ -415,28 +465,303 @@ void AvatarRuntime::load_default_avatar() {
                                      avatar_model_->get_last_error_message());
         return;
     }
-    frame_avatar_camera();
+    apply_framing();
 }
 
-void AvatarRuntime::frame_avatar_camera() {
+bool AvatarRuntime::apply_framing() {
     if (avatar_camera_ == nullptr || avatar_model_ == nullptr || presentation_ == nullptr ||
         !avatar_model_->is_loaded()) {
-        return;
+        framing_valid_ = false;
+        return false;
     }
-    const AABB local_aabb = avatar_model_->get_model_aabb();
-    if (!local_aabb.has_volume()) {
-        return;
+    const AABB model = avatar_model_->get_model_aabb();
+    if (!model.has_volume() || !model.position.is_finite() || !model.size.is_finite()) {
+        set_framing_error("AVT-113", "framing needs a finite model AABB with volume");
+        framing_valid_ = false;
+        return false;
     }
-    const Vector3 center = presentation_->get_transform().xform(local_aabb.get_center());
-    const Vector3 size = local_aabb.size;
-    const double fov_radians = static_cast<double>(avatar_camera_->get_fov()) * Math::PI / 180.0;
-    const double extent = std::max(static_cast<double>(size.x), static_cast<double>(size.y));
-    const double fit_distance = extent * 1.35 / (2.0 * std::tan(fov_radians * 0.5));
-    const double distance = std::max(fit_distance, 0.05);
-    avatar_camera_->look_at_from_position(center +
-                                              Vector3(0.0F, 0.0F, static_cast<real_t>(distance)),
-                                          center, Vector3(0.0F, 1.0F, 0.0F));
+
+    avatar::rig::FramingInput input;
+    input.model_bounds = to_rig(model);
+
+    const AABB head = avatar_model_->get_head_aabb();
+    input.has_head_bounds = head.has_volume() && head.position.is_finite() && head.size.is_finite();
+    if (input.has_head_bounds) {
+        input.head_bounds = to_rig(head);
+    }
+
+    const Dictionary region = avatar_model_->get_head_region();
+    if (region.has("pivot") && region["pivot"].get_type() == Variant::VECTOR3) {
+        input.head_pivot = to_rig(Vector3(region["pivot"]));
+    } else {
+        input.head_pivot = to_rig(model.get_center());
+    }
+
+    const Dictionary face = avatar_model_->get_face_surface();
+    const bool has_face =
+        face.has("origin") && face["origin"].get_type() == Variant::VECTOR3 && face.has("scale") &&
+        (face["scale"].get_type() == Variant::FLOAT || face["scale"].get_type() == Variant::INT);
+    if (has_face) {
+        input.face_origin = to_rig(Vector3(face["origin"]));
+        input.face_scale = static_cast<double>(face["scale"]);
+    } else {
+        input.face_origin = to_rig(model.position + model.size * Vector3(0.5F, 0.75F, 0.0F));
+        input.face_scale = static_cast<double>(model.size.y) * 0.2;
+    }
+
+    const Vector2i viewport_size = get_avatar_viewport_size();
+    input.aspect = viewport_size.x > 0 && viewport_size.y > 0
+                       ? static_cast<double>(viewport_size.x) / static_cast<double>(viewport_size.y)
+                       : 16.0 / 9.0;
+    input.vertical_fov_degrees = avatar::rig::kDefaultVerticalFovDegrees;
+    input.head_sweep_degrees = avatar::rig::kHeadSweepDegrees;
+
+    framing_ = avatar::rig::make_framing(input, framing_settings_);
+    if (!framing_.valid) {
+        set_framing_error("AVT-113", "framing values do not produce a finite fit");
+        framing_valid_ = false;
+        return false;
+    }
+    framing_settings_ = framing_.settings;
+    framing_valid_ = true;
+    last_error_code_ = String();
+    last_error_message_ = String();
+
+    presentation_->set_transform(to_godot(framing_.view_from_model));
+    avatar_camera_->set_projection(Camera3D::PROJECTION_PERSPECTIVE);
+    avatar_camera_->set_fov(static_cast<real_t>(framing_.vertical_fov_degrees));
+    avatar_camera_->set_keep_aspect_mode(Camera3D::KEEP_HEIGHT);
+    avatar_camera_->set_near(static_cast<real_t>(framing_.near_plane));
+    avatar_camera_->set_far(static_cast<real_t>(framing_.far_plane));
+    avatar_camera_->look_at_from_position(to_godot(framing_.camera_position),
+                                          Vector3(0.0F, 0.0F, 0.0F), Vector3(0.0F, 1.0F, 0.0F));
     avatar_camera_->set_current(true);
+    if (preview_ != nullptr) {
+        preview_->set_flip_h(mirror_preview_);
+    }
+    return true;
+}
+
+void AvatarRuntime::set_framing_error(const String& code, const String& message) {
+    last_error_code_ = code;
+    last_error_message_ = message;
+    UtilityFunctions::push_warning(code + String(": ") + message);
+}
+
+bool AvatarRuntime::configure_framing(const Dictionary& framing) {
+    avatar::rig::FramingSettings next = framing_settings_;
+    if (framing.has("fit")) {
+        if (framing["fit"].get_type() != Variant::STRING) {
+            set_framing_error("AVT-113", "framing.fit must be 'model' or 'head'");
+            return false;
+        }
+        const String fit = framing["fit"];
+        if (fit == String("model")) {
+            next.fit = avatar::rig::FramingFit::model;
+        } else if (fit == String("head")) {
+            next.fit = avatar::rig::FramingFit::head;
+        } else {
+            set_framing_error("AVT-113", "framing.fit must be 'model' or 'head'");
+            return false;
+        }
+    }
+    if (framing.has("zoom")) {
+        double zoom = 0.0;
+        if (!read_number(framing["zoom"], zoom) || !avatar::rig::clamp_zoom(zoom, next.zoom)) {
+            set_framing_error("AVT-113", "framing.zoom must be a finite number");
+            return false;
+        }
+    }
+    if (framing.has("margin")) {
+        double margin = 0.0;
+        if (!read_number(framing["margin"], margin) ||
+            !avatar::rig::clamp_margin(margin, next.margin)) {
+            set_framing_error("AVT-113", "framing.margin must be a finite number");
+            return false;
+        }
+    }
+    if (framing.has("offset")) {
+        const Variant value = framing["offset"];
+        if (value.get_type() == Variant::VECTOR2) {
+            const Vector2 offset = value;
+            next.offset_x = offset.x;
+            next.offset_y = offset.y;
+        } else if (value.get_type() == Variant::ARRAY) {
+            const Array offset = value;
+            if (offset.size() != 2 || !read_number(offset[0], next.offset_x) ||
+                !read_number(offset[1], next.offset_y)) {
+                set_framing_error("AVT-113", "framing.offset must be [x, y] finite numbers");
+                return false;
+            }
+        } else {
+            set_framing_error("AVT-113", "framing.offset must be a Vector2 or [x, y]");
+            return false;
+        }
+        if (!std::isfinite(next.offset_x) || !std::isfinite(next.offset_y)) {
+            set_framing_error("AVT-113", "framing.offset must be finite");
+            return false;
+        }
+    }
+    framing_settings_ = next;
+    if (avatar_model_ == nullptr || !avatar_model_->is_loaded()) {
+        framing_valid_ = false;
+        return true;
+    }
+    return apply_framing();
+}
+
+bool AvatarRuntime::refresh_framing() {
+    return apply_framing();
+}
+
+Dictionary AvatarRuntime::get_framing() const {
+    Dictionary result;
+    result["schema"] = "avatar_framing.result.v1";
+    result["valid"] = framing_valid_;
+    result["fit"] = fit_name(framing_settings_.fit);
+    result["zoom"] = framing_settings_.zoom;
+    result["margin"] = framing_settings_.margin;
+    result["offset"] = Vector2(static_cast<real_t>(framing_settings_.offset_x),
+                               static_cast<real_t>(framing_settings_.offset_y));
+    if (framing_valid_) {
+        result["distance"] = framing_.distance;
+        result["fitted_centre"] = to_godot(framing_.fitted_centre);
+        result["fitted_radius"] = framing_.fitted_radius;
+        result["theta_degrees"] = framing_.theta * 180.0 / 3.14159265358979323846;
+        result["vertical_fov_degrees"] = framing_.vertical_fov_degrees;
+        result["aspect"] = framing_.aspect;
+        result["camera_position"] = to_godot(framing_.camera_position);
+        result["near"] = framing_.near_plane;
+        result["far"] = framing_.far_plane;
+        result["visible_half_extent"] = Vector2(static_cast<real_t>(framing_.visible_half_width),
+                                                static_cast<real_t>(framing_.visible_half_height));
+    }
+    return result;
+}
+
+Dictionary AvatarRuntime::get_bounds_overlay() const {
+    Dictionary result;
+    result["schema"] = "avatar_framing.overlay.v1";
+    result["overlay_is_output"] = false;
+    result["valid"] = framing_valid_;
+    result["fit"] = fit_name(framing_settings_.fit);
+    result["zoom"] = framing_settings_.zoom;
+    result["margin"] = framing_settings_.margin;
+    result["offset"] = Vector2(static_cast<real_t>(framing_settings_.offset_x),
+                               static_cast<real_t>(framing_settings_.offset_y));
+    if (!framing_valid_) {
+        return result;
+    }
+    result["model_aabb"] = to_godot(framing_.model_bounds);
+    result["swept_aabb"] = to_godot(framing_.swept_bounds);
+    Dictionary sphere;
+    sphere["centre"] = to_godot(framing_.fitted_centre);
+    sphere["radius"] = framing_.fitted_radius;
+    result["fitted_sphere"] = sphere;
+    Dictionary sweep;
+    sweep["pivot"] = to_godot(framing_.head_sweep.pivot);
+    sweep["radius"] = framing_.head_sweep.radius;
+    sweep["sweep_degrees"] = framing_.head_sweep.sweep_degrees;
+    sweep["aabb"] = to_godot(framing_.head_sweep.bounds);
+    result["head_sweep"] = sweep;
+    Dictionary camera;
+    camera["position"] = to_godot(framing_.camera_position);
+    camera["distance"] = framing_.distance;
+    camera["vertical_fov_degrees"] = framing_.vertical_fov_degrees;
+    camera["aspect"] = framing_.aspect;
+    camera["near"] = framing_.near_plane;
+    camera["far"] = framing_.far_plane;
+    result["camera"] = camera;
+    Array planes;
+    for (const avatar::rig::Plane& plane : framing_.frustum_planes) {
+        planes.append(Plane(Vector3(static_cast<real_t>(plane.a), static_cast<real_t>(plane.b),
+                                    static_cast<real_t>(plane.c)),
+                            static_cast<real_t>(plane.d)));
+    }
+    result["frustum_planes"] = planes;
+    PackedVector3Array corners;
+    for (const avatar::rig::Vec3& corner : framing_.frustum_corners) {
+        corners.append(to_godot(corner));
+    }
+    result["frustum_corners"] = corners;
+    result["visible_half_extent"] = Vector2(static_cast<real_t>(framing_.visible_half_width),
+                                            static_cast<real_t>(framing_.visible_half_height));
+    result["view_from_model"] = to_godot(framing_.view_from_model);
+    result["fitted_volume_inside"] = is_fitted_volume_inside_viewport();
+    result["avatar_inside"] = is_avatar_inside_viewport();
+    return result;
+}
+
+bool AvatarRuntime::is_fitted_volume_inside_viewport() const {
+    if (!framing_valid_) {
+        return false;
+    }
+    // Exact for a convex intersection of half-spaces: a sphere is inside when
+    // its centre is at least one radius behind every inward-facing plane.
+    const avatar::rig::Vec3 centre =
+        avatar::rig::transform_point(framing_.view_from_model, framing_.fitted_centre);
+    for (const avatar::rig::Plane& plane : framing_.frustum_planes) {
+        const double distance =
+            plane.a * centre.x + plane.b * centre.y + plane.c * centre.z + plane.d;
+        if (distance < framing_.fitted_radius - 1e-6) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AvatarRuntime::is_avatar_inside_viewport() const {
+    if (!framing_valid_) {
+        return false;
+    }
+    if (framing_settings_.fit == avatar::rig::FramingFit::head) {
+        return is_fitted_volume_inside_viewport();
+    }
+    return avatar::rig::aabb_inside_frustum(
+        avatar::rig::transform_aabb(framing_.view_from_model, framing_.swept_bounds),
+        framing_.frustum_planes);
+}
+
+String AvatarRuntime::get_last_error_code() const {
+    return last_error_code_;
+}
+
+String AvatarRuntime::get_last_error_message() const {
+    return last_error_message_;
+}
+
+void AvatarRuntime::set_mirror_preview(bool mirrored) {
+    mirror_preview_ = mirrored;
+    if (preview_ != nullptr) {
+        preview_->set_flip_h(mirror_preview_);
+    }
+}
+
+bool AvatarRuntime::is_mirror_preview() const {
+    return mirror_preview_;
+}
+
+void AvatarRuntime::set_mirror_output(bool mirrored) {
+    mirror_output_ = mirrored;
+}
+
+bool AvatarRuntime::is_mirror_output() const {
+    return mirror_output_;
+}
+
+Ref<Image> AvatarRuntime::mirror_frame(const Ref<Image>& frame) const {
+    if (frame.is_null() || frame->is_empty()) {
+        return frame;
+    }
+    Ref<Image> flipped = frame->duplicate();
+    if (flipped->get_format() != Image::FORMAT_RGBA8) {
+        flipped->convert(Image::FORMAT_RGBA8);
+    }
+    PackedByteArray data = flipped->get_data();
+    avatar::rig::mirror_rgba8(data.ptrw(), flipped->get_width(), flipped->get_height());
+    flipped->set_data(flipped->get_width(), flipped->get_height(), false, Image::FORMAT_RGBA8,
+                      data);
+    return flipped;
 }
 
 void AvatarRuntime::configure_pacing() {
@@ -530,6 +855,26 @@ void AvatarRuntime::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_avatar_import_summary"),
                          &AvatarRuntime::get_avatar_import_summary);
 
+    ClassDB::bind_method(D_METHOD("configure_framing", "framing"),
+                         &AvatarRuntime::configure_framing);
+    ClassDB::bind_method(D_METHOD("get_framing"), &AvatarRuntime::get_framing);
+    ClassDB::bind_method(D_METHOD("refresh_framing"), &AvatarRuntime::refresh_framing);
+    ClassDB::bind_method(D_METHOD("get_bounds_overlay"), &AvatarRuntime::get_bounds_overlay);
+    ClassDB::bind_method(D_METHOD("is_avatar_inside_viewport"),
+                         &AvatarRuntime::is_avatar_inside_viewport);
+    ClassDB::bind_method(D_METHOD("is_fitted_volume_inside_viewport"),
+                         &AvatarRuntime::is_fitted_volume_inside_viewport);
+    ClassDB::bind_method(D_METHOD("get_last_error_code"), &AvatarRuntime::get_last_error_code);
+    ClassDB::bind_method(D_METHOD("get_last_error_message"),
+                         &AvatarRuntime::get_last_error_message);
+    ClassDB::bind_method(D_METHOD("set_mirror_preview", "mirrored"),
+                         &AvatarRuntime::set_mirror_preview);
+    ClassDB::bind_method(D_METHOD("is_mirror_preview"), &AvatarRuntime::is_mirror_preview);
+    ClassDB::bind_method(D_METHOD("set_mirror_output", "mirrored"),
+                         &AvatarRuntime::set_mirror_output);
+    ClassDB::bind_method(D_METHOD("is_mirror_output"), &AvatarRuntime::is_mirror_output);
+    ClassDB::bind_method(D_METHOD("mirror_frame", "frame"), &AvatarRuntime::mirror_frame);
+
     ClassDB::bind_method(D_METHOD("get_pacing_mode"), &AvatarRuntime::get_pacing_mode);
     ClassDB::bind_method(D_METHOD("get_display_refresh_hz"),
                          &AvatarRuntime::get_display_refresh_hz);
@@ -565,4 +910,8 @@ void AvatarRuntime::_bind_methods() {
                  "is_consumer_connected");
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "debug_hud_visible"), "set_debug_hud_visible",
                  "is_debug_hud_visible");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "mirror_preview"), "set_mirror_preview",
+                 "is_mirror_preview");
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "mirror_output"), "set_mirror_output",
+                 "is_mirror_output");
 }

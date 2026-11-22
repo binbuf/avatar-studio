@@ -154,6 +154,9 @@ void AvatarModel::reset_reported_state() {
     node_tree_ = Array();
     model_aabb_ = AABB();
     has_model_aabb_ = false;
+    head_aabb_ = AABB();
+    has_head_aabb_ = false;
+    face_surface_.clear();
     triangle_count_ = 0;
     animation_count_ = 0;
     skin_count_ = 0;
@@ -933,6 +936,8 @@ void AvatarModel::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_head_rotation", "rotation"),
                          &AvatarModel::set_head_rotation);
     ClassDB::bind_method(D_METHOD("get_head_region"), &AvatarModel::get_head_region);
+    ClassDB::bind_method(D_METHOD("get_head_aabb"), &AvatarModel::get_head_aabb);
+    ClassDB::bind_method(D_METHOD("get_face_surface"), &AvatarModel::get_face_surface);
     ClassDB::bind_method(D_METHOD("create_decal_pass", "material"),
                          &AvatarModel::create_decal_pass);
     ClassDB::bind_method(D_METHOD("clear_decal_pass"), &AvatarModel::clear_decal_pass);

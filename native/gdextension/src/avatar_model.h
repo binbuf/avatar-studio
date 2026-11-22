@@ -101,6 +101,12 @@ public:
                                const godot::Variant& pivot);
     void set_head_rotation(const godot::Quaternion& rotation);
     godot::Dictionary get_head_region() const;
+    // Rest model-space bounds of the active head region. Empty when no region
+    // has been configured; the framing adapter then falls back to the model AABB.
+    godot::AABB get_head_aabb() const;
+    // The calibrated face surface (origin, normal, up, scale) last accepted by
+    // configure_head_region; fit="head" uses its origin and inter-ocular scale.
+    godot::Dictionary get_face_surface() const;
     // Child instances share the model's live vertex buffers; CUSTOM0 is immutable rest position.
     godot::Node3D* create_decal_pass(const godot::Ref<godot::ShaderMaterial>& material);
     void clear_decal_pass();
@@ -125,6 +131,9 @@ private:
     std::vector<HeadSurface> head_surfaces_;
     std::vector<godot::Node3D*> decal_objects_;
     godot::Dictionary head_region_;
+    godot::Dictionary face_surface_;
+    godot::AABB head_aabb_;
+    bool has_head_aabb_ = false;
     godot::Vector3 head_pivot_, cut_origin_, cut_normal_;
     float cut_falloff_ = 0;
     int32_t head_node_ = -1;

@@ -36,6 +36,7 @@ tell the difference between "we chose this" and "this happened".
 | [0029](0029-shared-cpu-head-deformation.md) | Shared CPU vertex buffers for head deformation | Accepted |
 | [0030](0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | Accepted |
 | [0031](0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | Accepted |
+| [0032](0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

@@ -159,7 +159,6 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Real tracker builds on macOS/Linux | `native/tracking/mediapipe/` | T52, T55 |
 | macOS AVFoundation capture | `native/capture/macos/` | T52 |
 | Linux V4L2/PipeWire capture | `native/capture/linux/` | T55 |
-| Avatar framing (core estimator and head-region deformation exist) | `native/rig/` | T22 |
 | Avatar package load/save/validate/migrate, anchors, presets | `native/avatar/` | T29, T32 |
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
@@ -210,7 +209,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — real Windows tracker backend | `native/tracking/mediapipe/` | T11 | `Implemented` |
 | Subsystem contract — pure FaceRig output, estimator, filtering, loss hold | `native/rig/` | T18 | `Implemented` |
 | Subsystem contract — head-region deformation | `native/gdextension/src/avatar_head.cpp`, `native/rig/include/avatar/rig/head_region.h` | T19 | `Implemented; cut CPU budget overrun (ADR-0029)` |
-| Subsystem contract — framing | `native/rig/` | T22 | `Planned` |
+| Subsystem contract — framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay is T36` |
 | Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
@@ -220,6 +219,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
 | Rendering strategy: runtime GLB import, bind pose, units/axes, model check | `native/gdextension/`, `app/scenes/`, `app/tests/` | T17 | `Implemented` |
 | Rendering strategy: decal pass | `app/shaders/`, `app/scenes/face_decal_flat.gd`, `app/scenes/face_decal_surface.gd` | T20, T21 | `Implemented` |
+| Rendering strategy: presentation transform, fit camera, bounds overlay data, mirroring | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp`, `app/tests/framing.gd` | T22 | `Implemented` |
 | Decal colour and alpha: linear camera, gain/lift, facing², opacity | `app/shaders/` | T20, T21 | `Implemented` |
 | Lighting and output colour/alpha | `app/shaders/`, `native/output/` | T39, T48 | `Planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
@@ -246,7 +246,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Avatar region shape authoring | `native/avatar/`, `app/` | T32, T34 | `Planned` |
 | Avatar region shape shader consumption | `app/shaders/` | T20, T21 | `Implemented` |
 | Head motion and placement: rotation scope (node/cut) | `native/gdextension/src/avatar_head.cpp`, `app/shaders/head_decal.gdshaderinc` | T19 | `Implemented; CPU overrun documented` |
-| Head motion and placement: presentation and framing | `native/rig/`, `app/` | T22 | `Planned` |
+| Head motion and placement: presentation and framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay and presets are T36/T42` |
 | Projection mode `flat` | `app/shaders/face_decal_flat.gdshader`, `app/scenes/face_decal_flat.gd` | T20 | `Implemented` |
 | Projection mode `surface` (planar) | `app/shaders/face_decal_surface.gdshader`, `app/scenes/face_decal_surface.gd` | T21 | `Implemented` |
 | Projection mode `shaded surface` | `app/shaders/` | T39 | `Planned` |
@@ -480,6 +480,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0029](adr/0029-shared-cpu-head-deformation.md) | Shared CPU vertex buffers for head deformation | T19, T43, T64 | Accepted |
 | [ADR-0030](adr/0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | T20, T21, T24 | Accepted |
 | [ADR-0031](adr/0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | T21, T24, T39, T40 | Accepted |
+| [ADR-0032](adr/0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | T22, T24, T36, T42 | Accepted |
 
 ---
 
@@ -507,3 +508,7 @@ discard, sRGB→linear camera colour, facing² and opacity. Shaded mode and matt
 T21 mechanism: [ADR-0031](adr/0031-surface-decal-shared-pass.md), shared live second draw for all
 three regions, immutable rest normals, reverse-Z bias, two-renderer CPU-reference goldens and
 measured 1080p GPU cost. Tracker/package integration remains T24/T29.
+T22 mechanism: [ADR-0032](adr/0032-presentation-framing-and-mirroring.md), framework-free
+`view_from_model`, swept head sphere, model/head fit, 35° `KEEP_HEIGHT` distance formula, bounds
+overlay data, display-only preview flip and final-frame output mirror. The editor overlay and
+persisted presets remain T36/T42.

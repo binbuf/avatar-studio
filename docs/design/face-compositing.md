@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** core math, flat and planar surface decals implemented (T18/T20/T21); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
+**Status:** core math, flat and planar surface decals, and presentation/framing implemented (T18/T20/T21/T22); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -258,6 +258,47 @@ will flip. Flipping after compositing keeps the decal attached.
 
 **Deferred:** a translation gain (0 in 1.0) that would let leaning move the avatar slightly. It needs
 a clamp, a follow-camera or wider framing, and its own product decision. It is not in 1.0.
+
+#### Implemented framing (T22)
+
+`native/rig/include/avatar/rig/framing.h` and `native/rig/src/framing.cpp` implement the fixed
+transform, fit, distance, frustum and mirroring math without Eigen or engine types.
+`AvatarRuntime` applies the result to the `Presentation` node and the avatar `Camera3D`; the
+`FaceDecal` pass is a child of the model, so it inherits the same transform. [ADR-0032](adr/0032-presentation-framing-and-mirroring.md)
+records the realised choices.
+
+- `view_from_model = T(offset) · R_y(180°) · T(−c)`. `offset` is in fractions of the visible
+  half-extent at the fitted plane; positive x moves the avatar to the viewer's right. The 180° yaw
+  is not a mirror: the model's +X (subject's right) maps to world −X (viewer's left).
+- The swept head bound is the model AABB unioned with a sphere at the head pivot whose radius is the
+  farthest corner of the head AABB. The head AABB is the selected node subtree in `node` mode, or
+  the rest AABB of vertices with non-zero cut weight in `cut` mode. A sphere contains every rotation
+  of those corners, so the documented ±45° sweep cannot clip the head. When no head region is
+  available the model AABB is used as a conservative fallback.
+- `fit = "model"`: `c` and `r` are the centre and half-diagonal (bounding sphere) of the swept AABB.
+  `fit = "head"`: `c` is the face-plane origin and `r = 1.5 × inter-ocular distance`. The body may
+  crop in head fit; that is the point of the mode.
+- The camera is perspective, 35° vertical FOV, `KEEP_HEIGHT`, at `(0, 0, D)` looking at the origin.
+  `D = (r / sin θ) · (1 + margin) / zoom`, with `θ` the smaller vertical/horizontal half-FOV.
+  `zoom` is clamped to **0.5–2.0** and `margin` to **0–0.5** (default 0.10).
+- **Containment is a guarantee for `zoom ≤ 1` and any margin**, because the fitted sphere touches
+  the narrower frustum edge at `zoom = 1, margin = 0` and the swept AABB is inside that sphere.
+  **`zoom > 1` deliberately crops** (the editor's zoom-in). A model whose geometry lies outside its
+  reported AABB can still clip; the bounds overlay is the honest answer there, not a magic fit.
+- `AvatarRuntime.get_bounds_overlay()` exposes the rest AABB, swept AABB, fitted sphere, six
+  world-space frustum planes, eight frustum corners, head sweep (pivot, radius, ±45°) and the
+  containment flags. It returns data only and never adds a node to the output `SubViewport`; T36
+  draws the editor overlay outside the output path.
+- **Preview mirroring is display-only:** `mirror_preview` (default true) sets the preview
+  `TextureRect.flip_h`; the `SubViewport` texture is unchanged. **Output mirroring is a final-frame
+  flip:** `mirror_output` (default false) is applied by `AvatarRuntime.mirror_frame(Image)` after
+  compositing, so the decal, props and any asymmetric marker flip with the model. The camera image
+  is never mirrored for sampling.
+
+Evidence: `tests/unit/test_framing.cpp` (distance, clamps, offset direction, 180° yaw, head sweep,
+AABB-inside-frustum at ±45° yaw/pitch/roll, head fit, extremes, mirroring); `app/tests/framing.gd`
+with an independent GDScript projection oracle; eight 320×320 Forward+ goldens in
+`tests/golden/framing/`; and `tests/gates/T22.ps1`.
 
 ---
 

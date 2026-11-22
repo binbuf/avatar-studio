@@ -862,3 +862,29 @@ conservative noise check, not a statistical confidence interval. Verified local 
 measurement: 0.036 ms base, 0.048 ms combined, **0.012 ms delta**, 0.021 ms spread. Negative signed
 deltas are retained as unresolved timing noise and never described as physical speedups. These
 figures do not certify the documented hardware tiers. [ADR-0031](adr/0031-surface-decal-shared-pass.md).
+
+### T22 presentation and framing gate
+
+`tests/unit/test_framing.cpp` owns the framework-free math: the documented distance formula,
+zoom/margin clamps and non-finite rejection, the `view_from_model` offset and 180° yaw direction,
+head-sweep containment, AABB-inside-frustum at ±45° yaw/pitch/roll, head fit, extreme zoom/margin
+containment, the deliberate `zoom > 1` crop, frustum plane/corner agreement and the final-frame
+mirror. It is registered as `avatar_framing_unit` under the `fast;task_T22` labels.
+
+`tests/gates/T22.ps1` then runs `app/tests/framing.gd` headlessly and in a hidden real **Forward+**
+window. The headless phase checks the adapter contract, clamping and atomic AVT-113 rejection,
+extreme containment, head fit, the preview display-only flip, output mirroring and the bounds
+overlay (including that reading it adds no node to the output `SubViewport`). The render phase uses
+an independent GDScript re-implementation of the swept bound, fit, distance and projection: it
+projects a model-space magenta marker and the model AABB, then requires the live marker centroid to
+be within 2.5 px and the silhouette to lie inside the projected AABB (height within 25% when the
+AABB is fully in frame). Eight 320×320 goldens live in `tests/golden/framing/`: model fit, tight and
+loose margin, zoom 0.5 and 2.0, offset, head fit and the mirrored final frame. The goldens are
+regression baselines; the independent oracle is what proves the framing math. Regenerate only
+intentionally with `--script res://tests/framing.gd -- --render --update-goldens`, inspect the
+images, then commit; the gate never rewrites them.
+
+The gate asserts containment for model fit at zoom 0.5/1.0 and margins 0–0.5, records
+`model-zoom-in` as the documented crop, and checks that positive x offset moves the silhouette
+right. Head fit deliberately crops the body. `zoom > 1` is not a fit failure; see
+[ADR-0032](adr/0032-presentation-framing-and-mirroring.md).
