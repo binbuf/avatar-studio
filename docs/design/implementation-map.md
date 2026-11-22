@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T21 (flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T23 (output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -210,7 +210,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — pure FaceRig output, estimator, filtering, loss hold | `native/rig/` | T18 | `Implemented` |
 | Subsystem contract — head-region deformation | `native/gdextension/src/avatar_head.cpp`, `native/rig/include/avatar/rig/head_region.h` | T19 | `Implemented; cut CPU budget overrun (ADR-0029)` |
 | Subsystem contract — framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay is T36` |
-| Subsystem contract — output | `native/output/` | T23, T46 | `Planned` |
+| Subsystem contract — output | `native/output/`, `native/gdextension/src/window_output.cpp` | T23, T46 | `Implemented (T23 gate, Null/File/Window); async readback/queues T46` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
 | GDExtension binding rules: runtime node, C++ counters and hidden HUD, no per-frame GDScript | `native/gdextension/` | T16 | `Implemented` |
@@ -221,7 +221,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Rendering strategy: decal pass | `app/shaders/`, `app/scenes/face_decal_flat.gd`, `app/scenes/face_decal_surface.gd` | T20, T21 | `Implemented` |
 | Rendering strategy: presentation transform, fit camera, bounds overlay data, mirroring | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp`, `app/tests/framing.gd` | T22 | `Implemented` |
 | Decal colour and alpha: linear camera, gain/lift, facing², opacity | `app/shaders/` | T20, T21 | `Implemented` |
-| Lighting and output colour/alpha | `app/shaders/`, `native/output/` | T39, T48 | `Planned` |
+| Lighting and output colour/alpha | `app/shaders/`, `native/output/` | T23, T39, T48 | `Colour/alpha boundary implemented (T23); lighting T39 and test cards T48 planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
 | Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
 | Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T41, T46, T58 | `Planned` |
@@ -253,7 +253,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Sampling math and the decal shader | `app/shaders/` | T20, T21 | `Implemented` |
 | Cylindrical face-surface calibration and sampling | `app/`, `app/shaders/` | T35, T43 | `Planned` |
 | Face matte: chroma and software segmentation | `native/`, `app/shaders/` | T40 | `Planned` |
-| Output contract: the avatar or nothing | `native/output/` | T23 | `Planned` |
+| Output contract: the avatar or nothing | `native/output/` | T23 | `Implemented` |
 | Lens distortion | — | — | `Deferred` |
 | Colour and light matching | `app/shaders/` | T38, T39 | `Planned` |
 | Model compatibility and authoring guidance | `native/avatar/`, docs | T32, T43, T62 | `Planned` |
@@ -274,7 +274,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Pose filtering, prediction, timestamp guard and 150 ms loss hold | `native/rig/` | T18 | `Implemented` |
 | Tracking/render integration, source-image pairing and recovery/output transitions | `native/gdextension/`, `app/` | T24 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
-| Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Planned` |
+| Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Implemented (gate/blank T23); recovery surfaces T41` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x or the pinned backend cannot be built reproducibly) |
 | Instrumentation: `TrackerStats` and latency histogram | `native/tracking/`, `native/core/` | T09 | `Implemented` |
 | Instrumentation: real backend private inference/preprocessing timing, drop counters and confidence distribution | `native/tracking/mediapipe/` | T11 | `Implemented` |
@@ -312,11 +312,11 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 |---|---|---|---|
 | Topology: one render, preview copy | `app/scenes/`, `native/gdextension/` | T16 | `Implemented` |
 | Topology: async readback and per-transport rings | `native/output/` | T46 | `Planned` |
-| `OutputFrame` and async readback | `native/output/` | T46 | `Planned` |
+| `OutputFrame` and async readback | `native/output/` | T23, T46 | `OutputFrame implemented (T23); async readback T46` |
 | Transport: Spout2 (Windows) | `native/output/` | T47 | `Planned` |
 | Transport: Syphon (macOS) | `native/output/` | T52 | `Planned` |
 | Transport: PipeWire node (Linux) | `native/output/` | T55 | `Planned` |
-| Transport: window capture and OBS fallback | `app/`, docs | T23, T49 | `Planned` |
+| Transport: window capture and OBS fallback | `app/`, `native/gdextension/`, docs | T23, T49 | `Implemented (window transport T23); OBS onboarding T49` |
 | Windows Media Foundation virtual camera | `platform/windows/vcam/` | T57 | `Planned` |
 | macOS CoreMediaIO camera extension | `platform/macos/vcam/` | T54 | `Planned` |
 | Linux virtual camera (`v4l2loopback` fallback) | `platform/linux/vcam/` | T56 | `Planned` |
@@ -396,7 +396,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Headless shell smoke and runtime pacing test | `app/tests/smoke.gd`, `app/tests/runtime.gd`, `scripts/smoke.*` | T02, T06, T16 | `Implemented` |
 | Determinism: synthetic sources, replay, golden comparator | `native/capture/`, `tests/tools/golden_compare/` | T04 | `Implemented` |
 | Golden-image tests | `tests/golden/` | T26, T43 | `Planned` |
-| Output invariant test (no passthrough, blank on loss) | `tests/`, `native/output/` | T23 | `Planned` |
+| Output invariant test (no passthrough, blank on loss) | `tests/`, `native/output/` | T23 | `Implemented` |
 | Matte tests | `tests/`, `native/` | T40 | `Planned` |
 | Real-model corpus | `tests/`, `examples/` | T43 | `Planned` |
 | Performance harness | `tests/performance/` | T05 | `Implemented` |
@@ -458,7 +458,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0007](adr/0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | T43a, T60 | Proposed |
 | [ADR-0008](adr/0008-eigen-for-rig-math.md) | Eigen for native rig math, confined to `native/rig/` | T18 | Accepted |
 | [ADR-0009](adr/0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | T19 | Accepted |
-| [ADR-0010](adr/0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | T23 | Proposed |
+| [ADR-0010](adr/0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | T23 | Accepted |
 | [ADR-0011](adr/0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | T01, T06 | Accepted |
 | [ADR-0012](adr/0012-godot-shell-bootstrap.md) | Godot shell bootstrap, godot-cpp 10 pinning, and CMake build | T02 | Accepted |
 | [ADR-0013](adr/0013-core-data-plane-primitives.md) | Core data-plane primitives and the stable diagnostics registry | T03 | Accepted |
@@ -481,6 +481,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0030](adr/0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | T20, T21, T24 | Accepted |
 | [ADR-0031](adr/0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | T21, T24, T39, T40 | Accepted |
 | [ADR-0032](adr/0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | T22, T24, T36, T42 | Accepted |
+| [ADR-0033](adr/0033-output-gate-and-window-transport.md) | Output gate and window transport | T23, T46 | Accepted |
 
 ---
 

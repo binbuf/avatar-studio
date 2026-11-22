@@ -14,7 +14,7 @@ tell the difference between "we chose this" and "this happened".
 | [0007](0007-licensing-and-assets.md) | MIT application, original assets only, per-asset provenance | Proposed |
 | [0008](0008-eigen-for-rig-math.md) | Eigen for native rig math | Accepted |
 | [0009](0009-head-region-rotation.md) | Head-region rotation instead of whole-model rotation | Accepted |
-| [0010](0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | Proposed |
+| [0010](0010-output-is-avatar-or-nothing.md) | The output is the avatar or nothing | Accepted |
 | [0011](0011-pinned-local-dependencies.md) | Pinned local dependencies and one verification entry point | Accepted |
 | [0012](0012-godot-shell-bootstrap.md) | Godot shell bootstrap, godot-cpp 10 pinning, and CMake build | Accepted |
 | [0013](0013-core-data-plane-primitives.md) | Core data-plane primitives and the stable diagnostics registry | Accepted |
@@ -37,6 +37,7 @@ tell the difference between "we chose this" and "this happened".
 | [0030](0030-flat-decal-quad-pass.md) | Flat decal as a head-parented quad pass with clamped sampling | Accepted |
 | [0031](0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | Accepted |
 | [0032](0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | Accepted |
+| [0033](0033-output-gate-and-window-transport.md) | Output gate and window transport | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

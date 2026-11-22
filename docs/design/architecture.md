@@ -142,6 +142,7 @@ a camera, or a GPU.
 | Godot runtime: one avatar viewport, preview copy, 60 Hz pacing, C++ HUD | `native/gdextension/`, `native/core/`, `app/scenes/` | Implemented (T16) |
 | Runtime GLB import: rigid bind-pose scene, units/axes, model check, decal arrays | `native/gdextension/`, `app/tests/` | Implemented (T17) |
 | FaceRig estimator, filters, anchors and loss hold | `native/rig/` | Implemented (T18); engine integration remains T24 |
+| Output pipeline, `OutputFrame`, `IVideoOutput`, Null/File/Window transports | `native/output/`, `native/gdextension/src/window_output.cpp` | Implemented (T23); async readback/queues are T46 |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
 `ring()`, `produce()`, `info()` and an optional `latest_ground_truth()`. T10 added device
@@ -289,6 +290,16 @@ public:
 };
 ```
 
+T23 implements the seam and the gate in `native/output/`. `OutputFrame` carries the source
+timestamp, render time, sequence, size, RGBA8 pixels, alpha mode, colour space and an
+avatar/blank marker. `OutputManager` owns one transport for now; `NullOutput` and `FileOutput`
+(PNG sequence) are native, and `WindowOutput` presents through a GDExtension `TextureRect`.
+`OutputGate` holds a dropped frame for less than 150 ms and then blanks; it emits
+`TRK-002`/`TRK-008` and `OUT-007` once per transition with a cause. The output boundary normalises
+alpha and linear/sRGB, so Compatibility's linear capture and Forward+'s sRGB capture reach every
+transport in one format. T46 adds async readback, fan-out and per-transport queues behind this
+interface ([ADR-0033](adr/0033-output-gate-and-window-transport.md)).
+
 Detail: [`output-and-virtual-camera.md`](output-and-virtual-camera.md).
 
 ## Frame lifecycle
@@ -315,8 +326,9 @@ One rendered frame, end to end:
    (`RenderingDevice.texture_get_data_async`), with a completion callback keyed by instance ID so a
    freed viewport is safe.
 6. **Output gate** submits the composited frame only when `features_valid` is true; otherwise it
-   submits a blank frame. There is no path that samples the camera into the output outside the decal
-   mask.
+   holds for less than 150 ms and submits a blank frame. There is no path that samples the camera
+   into the output outside the decal mask. T23 implements the gate and the window/Null/File
+   transports; see [`output-and-virtual-camera.md`](output-and-virtual-camera.md#implemented-output-gate-t23).
 7. **Output** workers pop from a drop-oldest ring and push to transports. A slow consumer loses
    frames; it never delays the next render.
 

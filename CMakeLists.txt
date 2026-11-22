@@ -187,6 +187,40 @@ add_custom_target(avatar_rig_licenses ALL
         "${AVATAR_EIGEN_DIR}/COPYING.MPL2" "${CMAKE_CURRENT_SOURCE_DIR}/NOTICE"
         "${CMAKE_CURRENT_SOURCE_DIR}/app/bin/rig-licenses"
 )
+
+# ---------------------------------------------------------------------------
+# Output gate and transports (T23)
+#
+# Framework-free like the core: OutputFrame, the gate state machine, alpha and
+# colour conversion, NullOutput and FileOutput. The Godot window transport is a
+# GDExtension adapter. T46 adds async readback and per-transport queues behind
+# the same IVideoOutput seam.
+# ---------------------------------------------------------------------------
+add_library(avatar_output STATIC
+    native/output/src/output_frame.cpp
+    native/output/src/output_gate.cpp
+    native/output/src/frame_convert.cpp
+    native/output/src/null_output.cpp
+    native/output/src/png_writer.cpp
+    native/output/src/file_output.cpp
+    native/output/src/output_manager.cpp
+)
+add_library(avatar::output ALIAS avatar_output)
+target_include_directories(avatar_output
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/output/include"
+)
+target_compile_features(avatar_output PUBLIC cxx_std_20)
+target_link_libraries(avatar_output PUBLIC avatar::core)
+avatar_enable_warnings(avatar_output)
+
+if(AVATAR_TESTS)
+    add_executable(avatar_output_tests tests/unit/test_main.cpp tests/unit/test_output.cpp)
+    target_include_directories(avatar_output_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_output_tests PRIVATE avatar::output)
+    avatar_enable_warnings(avatar_output_tests)
+    add_test(NAME avatar_output_unit COMMAND avatar_output_tests)
+    set_tests_properties(avatar_output_unit PROPERTIES LABELS "fast;task_T23" TIMEOUT 120)
+endif()
 if(AVATAR_TESTS)
     enable_testing()
     add_executable(avatar_rig_tests tests/unit/test_main.cpp tests/unit/test_face_rig.cpp)

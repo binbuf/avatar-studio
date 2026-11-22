@@ -1,8 +1,9 @@
 # ADR-0010: The output is the avatar or nothing
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-20
-- **Related:** [`../face-compositing.md`](../face-compositing.md), [`../security-privacy.md`](../security-privacy.md), [`../output-and-virtual-camera.md`](../output-and-virtual-camera.md)
+- **Validated by:** T23 (`native/output/`, `app/tests/output_gate.gd`, `tests/gates/T23.ps1`)
+- **Related:** [`../face-compositing.md`](../face-compositing.md), [`../security-privacy.md`](../security-privacy.md), [`../output-and-virtual-camera.md`](../output-and-virtual-camera.md), [ADR-0033](0033-output-gate-and-window-transport.md)
 
 ## Context
 
@@ -66,6 +67,14 @@ unavailable, the region mask is used and `TRK-009` is logged once.
 
 - The matte affects only the decal, not the output background; the avatar's background remains
   synthetic.
+
+## Validation
+
+T23 implements the gate in `native/output/OutputManager` and runs it on `NullOutput`,
+`FileOutput` and the window transport. The no-passthrough diff changes 2,565 pixels, all inside the
+region masks (0 outside, one-pixel footprint), and the dropped-mouth, tracker-timeout and
+forced-invalid cases are blank at the 150 ms deadline while the output stays initialized. See
+[`../output-and-virtual-camera.md#implemented-output-gate-t23`](../output-and-virtual-camera.md#implemented-output-gate-t23).
 
 ## Follow-ups
 

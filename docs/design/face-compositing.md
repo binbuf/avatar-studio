@@ -1,7 +1,7 @@
 # Face Compositing
 
-**Status:** core math, flat and planar surface decals, and presentation/framing implemented (T18/T20/T21/T22); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
-**Decision record:** [ADR-0004](adr/0004-face-decal-projection.md)
+**Status:** core math, flat and planar surface decals, presentation/framing and the output gate implemented (T18/T20/T21/T22/T23); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
+**Decision record:** [ADR-0004](adr/0004-face-decal-projection.md), [ADR-0010](adr/0010-output-is-avatar-or-nothing.md), [ADR-0033](adr/0033-output-gate-and-window-transport.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
 part of the system that determines whether the product works. Everything else is plumbing.
@@ -557,7 +557,8 @@ There is no passthrough, no last-frame freeze, and no fallback to the camera. A 
 bridges a dropped frame or a short missing-feature interval (including a single blink),
 and never for longer than 150 ms. T18 holds through exactly 150 ms from the last
 complete accepted sample and clears `features_valid` immediately after that deadline.
-Invalid results cannot extend it. T23/T24 still own submitting the actual blank frame.
+Invalid results cannot extend it. T23 submits the actual blank frame and T24 wires the paired
+camera/pose path.
 
 This is deliberate. A stream that suddenly shows a frozen face, or the real camera, is worse than a
 stream that momentarily shows nothing, and the performer can see the state in the preview. The
@@ -568,6 +569,29 @@ The gate is enforced in the output manager, not in a shader: a `blank` state sub
 with the correct alpha or background, so every transport behaves the same. The cause code (`TRK-002`
 for a lost face, `TRK-008` for missing features) is emitted on the transition, once, and `OUT-007`
 records the gate itself.
+
+#### Implemented output gate (T23)
+
+`native/output/` implements the contract as a native state machine. `OutputManager` submits the
+avatar only when `result_valid`, `features_valid` and a frame are present; otherwise it holds the
+current rendered frame for **less than 150 ms** from the last complete accepted sample and then
+submits a blank frame. At the deadline the frame is blank. Invalid results cannot refresh the hold,
+and the gate never changes pose or pixels, so it cannot decay to neutral or freeze a stored frame.
+`TRK-002`/`TRK-008` and `OUT-007` are emitted once per transition with a `cause`; a repeated frame
+with the same cause does not repeat them. The transport stays initialized while blank.
+
+Blank is transparent for non-opaque outputs and the configured background for opaque outputs. The
+output boundary is also where the captured image becomes transport-ready: it normalises straight
+alpha, converts the Compatibility renderer's linear capture or Forward+'s sRGB capture, composites
+opaque outputs over the background in linear light, and premultiplies last. This closes the T20/T21
+follow-up: final sRGB encoding belongs to the output path, not the decal shader.
+
+The gate is tested on the window, Null and File transports. The no-passthrough diff feeds a
+high-contrast camera pattern and a black camera texture, and every changed pixel must be inside the
+union of region masks with a one-pixel footprint. Evidence: `tests/unit/test_output.cpp`,
+`app/tests/output_gate.gd` and `tests/gates/T23.ps1`; see
+[ADR-0033](adr/0033-output-gate-and-window-transport.md) and
+[`output-and-virtual-camera.md#implemented-output-gate-t23`](output-and-virtual-camera.md#implemented-output-gate-t23).
 
 ---
 

@@ -1,7 +1,7 @@
 # Output and Virtual Camera
 
-**Status:** proposal · **Last updated:** 2026-11-20
-**Decision record:** [ADR-0005](adr/0005-output-transports.md)
+**Status:** proposal · output gate, Null/File/Window transports, alpha/colour boundary and no-passthrough invariant implemented (T23); async readback, per-transport queues and third-party transports planned · **Last updated:** 2026-11-22
+**Decision record:** [ADR-0005](adr/0005-output-transports.md), [ADR-0033](adr/0033-output-gate-and-window-transport.md)
 
 Output looks like a fan-out problem. It is actually two different problems that share a frame
 source: **transport to a cooperating app** (OBS, Resolume, TouchDesigner) and **presentation as a
@@ -65,6 +65,40 @@ struct OutputFrame {
   process.
 - Cost at 1080p RGBA8: 8.3 MB per frame, ~500 MB/s at 60 fps. This is the number that justifies the
   drop-oldest policy and the idle suppression.
+
+## Implemented output gate (T23)
+
+`native/output/` is the framework-free output boundary. `OutputFrame` carries
+`source_timestamp_ns`, `render_ns`, `sequence`, `width`/`height`, RGBA8 pixels, `AlphaMode`,
+`ColorSpace` and a `FrameContent` marker (`avatar` or `blank`). `IVideoOutput` is the transport
+seam; `NullOutput`, `FileOutput` (a PNG sequence) and the GDExtension `WindowOutput` implement it.
+T46 adds async readback, fan-out and per-transport drop-oldest queues behind the same interface;
+T23 deliberately owns one transport per manager so the invariant is easy to test.
+
+`OutputGate` is the state machine. It submits the avatar only when `result_valid`, `features_valid`
+and a frame are all present. Otherwise it holds the current rendered frame for **less than 150 ms**
+from the last complete accepted sample, then submits a blank frame. At the deadline the output is
+blank. An invalid result never refreshes the hold. The gate changes no pose and no pixels, so there
+is no decay to neutral and no stored last-frame freeze. The transport is never shut down while
+blank; it stays initialized and enumerated.
+
+Transitions emit `TRK-002` (face lost), `TRK-008` (eyes/mouth missing) and `OUT-007` (gate blank)
+**once**, with a `cause` field (`face_lost`, `missing_features`, `no_frame`). A cause change is a
+new transition; repeated frames with the same cause do not repeat the code. Resuming the avatar
+does not emit a blank diagnostic.
+
+Blank means transparent for `straight`/`premultiplied` outputs and the configured background for
+`opaque` outputs. The boundary normalises straight alpha, converts linear↔sRGB, composites opaque
+outputs over the background in linear light, and premultiplies last. This is where the Compatibility
+renderer's linear capture and Forward+'s sRGB capture become one transport-facing format. A linear
+0.5 at alpha 0.5 over black therefore encodes to sRGB ≈0.537.
+
+Evidence: `tests/unit/test_output.cpp` (gate, hold deadline, causes, PNG round-trip, alpha/colour,
+transport-agnostic decisions), `app/tests/output_gate.gd` (headless Null/File and real-window
+window/no-passthrough), and `tests/gates/T23.ps1`. The no-passthrough diff changes 2,565 pixels and
+0 lie outside the union of region masks with a one-pixel footprint; dropped-mouth, tracker-timeout
+and forced-invalid cases blank at 150 ms on window, Null and File. See
+[ADR-0033](adr/0033-output-gate-and-window-transport.md).
 
 ## Transports for cooperating apps
 
@@ -176,7 +210,8 @@ keep alive; consumers see the device go away rather than a placeholder.
 
 While the app is running, a blank output-gate frame is submitted as a normal frame: transparent for
 OBS/Spout and the configured background colour for the virtual camera. It is never a held frame and
-never the camera; the device stays enumerated.
+never the camera; the device stays enumerated. T23 implements this for the window/Null/File
+transports ([above](#implemented-output-gate-t23)); T53/T57 carry it across the process boundary.
 
 ### Transport security
 
@@ -224,7 +259,7 @@ black-on-white edges) so users can diagnose alpha problems in seconds instead of
 | App exit | Unregister/withdraw device; flush queues |
 | OS suspend | Transports pause; device emits no-signal; queues and timestamps reset on wake |
 | Session lock | Capture and output stop; device emits no-signal; resume on unlock (`SEC-002`) |
-| Output gate blank | No face or missing eyes/mouth | Submit a blank frame; keep the device live; log once (`OUT-007`) |
+| Output gate blank | No face or missing eyes/mouth beyond the 150 ms hold | Submit a blank frame; keep the device live; log once (`TRK-002`/`TRK-008`, `OUT-007`) |
 | App upgrade | macOS may require extension re-approval; detect and prompt, do not silently fail |
 | Crash | Windows/macOS: device may persist; next start detects and offers repair. Linux: node disappears with the process |
 | Consumer connects | Transport reports `wants_frames = true`; readback begins |

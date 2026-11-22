@@ -304,6 +304,24 @@ The rule is tested, not trusted: no camera pixel may reach the output except thr
 - Run the check on window output, Spout/Syphon/PipeWire, and the virtual camera. The gate lives in
   the output manager, so a transport that reintroduces a frame is a blocking bug.
 
+### T23 output gate
+
+`tests/unit/test_output.cpp` owns the native gate state machine: hold, the 150 ms deadline, no
+refresh on invalid results, causes and once-only `TRK-002`/`TRK-008`/`OUT-007`, the PNG round-trip,
+alpha/colour conversion, and the same decisions on Null and File transports. `app/tests/output_gate.gd`
+runs the same sequence headlessly through the GDExtension adapter and then in a real Compatibility
+window. The rendered phase feeds a high-contrast camera pattern and a black camera texture through
+the window transport and requires every changed pixel to be inside the union of region masks, with a
+one-pixel footprint tolerance; it also runs the pair through File and Null. Dropped-mouth,
+tracker-timeout and forced-invalid cases must be fully blank at 150 ms, contain neither avatar nor
+camera, and leave the transport initialized.
+
+Measured on the T23 host: 2,565 changed pixels, **0 outside the masks** (eye_l 602, eye_r 603,
+mouth 1,360), blank at the 150 ms deadline, blank submit ~0.2 ms. `tests/gates/T23.ps1` runs the unit
+suite, both Godot phases, the design-link check and the pinned formatting check. The local evidence
+is `.tools/T23-output.json`, `.tools/T23-output-render.json` and `.tools/T23-*.log`; none of it is
+committed.
+
 ## Matte tests
 
 - Synthetic green and blue screens: the key succeeds and the decal edge has no coloured fringe.
