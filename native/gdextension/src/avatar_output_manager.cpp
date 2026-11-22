@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <span>
 #include <string>
 #include <system_error>
@@ -112,10 +113,17 @@ bool AvatarOutputManager::initialize(const godot::Dictionary& config) {
     shutdown();
 
     avatar::output::OutputConfig output_config;
-    output_config.width = static_cast<std::uint32_t>(
-        static_cast<int64_t>(config.get("width", static_cast<int64_t>(0))));
-    output_config.height = static_cast<std::uint32_t>(
-        static_cast<int64_t>(config.get("height", static_cast<int64_t>(0))));
+    const int64_t width_value = static_cast<int64_t>(config.get("width", static_cast<int64_t>(0)));
+    const int64_t height_value =
+        static_cast<int64_t>(config.get("height", static_cast<int64_t>(0)));
+    if (width_value <= 0 || height_value <= 0 ||
+        width_value > static_cast<int64_t>(std::numeric_limits<std::uint32_t>::max()) ||
+        height_value > static_cast<int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+        set_error("output width and height must be positive");
+        return false;
+    }
+    output_config.width = static_cast<std::uint32_t>(width_value);
+    output_config.height = static_cast<std::uint32_t>(height_value);
     if (!output_config.valid()) {
         set_error("output width and height must be positive");
         return false;
