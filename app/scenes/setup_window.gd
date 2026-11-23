@@ -88,7 +88,6 @@ var _held_centroids: Array = []
 var _held_rest: Array = []
 var _held_anchors: Array = []
 var _display_anchors: Array = []
-var _tracking_live := false
 
 
 func configure(hud_node: CanvasLayer, controller_node, runtime_node: Node,
@@ -229,11 +228,13 @@ func _refresh_overlays() -> void:
 	var rest: Array = state.get("region_rest", [])
 	var anchors := _region_anchors(state)
 	var has_solve := homography.size() == 9 and homography != _identity_homography
+	var mapping_mode := "none"
 	if has_solve:
 		_held_homography = homography
 		_held_centroids = centroids.duplicate(true)
 		_held_rest = rest.duplicate(true)
 		_held_anchors = anchors.duplicate(true)
+		mapping_mode = "live" if bool(state.get("features_valid", false)) else "held"
 	elif _held_homography.size() == 9:
 		# Keep the cutouts on the last tracked face instead of the identity
 		# projection the rig reports while it has no solve.
@@ -241,7 +242,21 @@ func _refresh_overlays() -> void:
 		centroids = _held_centroids.duplicate(true)
 		rest = _held_rest.duplicate(true)
 		anchors = _held_anchors.duplicate(true)
-	_tracking_live = has_solve and bool(state.get("features_valid", false))
+		mapping_mode = "held"
+	else:
+		# Development stills and the first frames can have a tracked face but no
+		# rig solve yet. A face-box stand-in keeps the setup UI usable; the pane
+		# labels it and draws the cutouts dashed so it is never mistaken for a
+		# calibrated mapping.
+		var fallback := _face_box_homography(controller.get_face_box())
+		if fallback.size() == 9:
+			homography = fallback
+			# No rig anchor without a solve; place the authored centres on the
+			# face box. The tracker centroids are still drawn as anchor marks.
+			anchors = []
+			for index in range(REGION_IDS.size()):
+				anchors.append(Vector2.ZERO)
+			mapping_mode = "fallback"
 	_display_anchors = anchors.duplicate(true)
 	var effective_regions: Array = []
 	for index in range(regions.size()):
@@ -254,8 +269,7 @@ func _refresh_overlays() -> void:
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
 		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
-				homography, centroids, effective_regions, selected_region,
-				_held_homography.size() == 9, _tracking_live)
+				homography, centroids, effective_regions, selected_region, mapping_mode)
 	var display_state := state.duplicate(true)
 	display_state["canonical_to_image"] = homography
 	display_state["regions"] = centroids
@@ -281,6 +295,19 @@ func _region_anchors(state: Dictionary) -> Array:
 		else:
 			out.append(Vector2.ZERO)
 	return out
+
+
+## Stand-in canonical -> image homography from the tracker face box. Canonical
+## (0,0) maps to the box centre, +u to image right and +v to image up. Used only
+## when the rig has no solve yet, so the setup UI stays usable on a still or the
+## first frames; the camera pane labels and dashes the cutouts in that state.
+static func _face_box_homography(box: Rect2) -> PackedFloat32Array:
+	if box.size.x <= 0.001 or box.size.y <= 0.001:
+		return PackedFloat32Array()
+	var cx := box.position.x + box.size.x * 0.5
+	var cy := box.position.y + box.size.y * 0.5
+	return PackedFloat32Array([box.size.x * 0.5, 0.0, cx, 0.0, -box.size.y * 0.5, cy,
+			0.0, 0.0, 1.0])
 
 
 func _get_avatar_camera() -> Camera3D:

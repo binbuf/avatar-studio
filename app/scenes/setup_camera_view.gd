@@ -51,7 +51,7 @@ var _normalised_box := Rect2()
 var _slot_key := ""
 var _polygons: Dictionary = {}
 var _have_mapping := false
-var _tracking_live := true
+var _mapping_mode := "live"
 
 var _dragging := false
 var _drag_start := Vector2.ZERO
@@ -136,12 +136,12 @@ func update_slot(slot: Dictionary) -> void:
 ## coordinates, `homography` is the row-major 3x3 used by the decal shader,
 ## `anchors` are the three absolute canonical centroids in eye_l/eye_r/mouth
 ## order, and `regions` are the effective regions (authored centre + FaceRig
-## anchor) to draw and manipulate. `have_mapping` is false until the rig has
-## produced one good solve; `live` is false while the mapping is held through a
-## tracker loss.
+## anchor) to draw and manipulate. `mapping_mode` is `live` while the rig is
+## tracking, `held` while the last good mapping is held through a loss,
+## `fallback` while the face box stands in for a missing solve, and `none` when
+## there is nothing to project through.
 func set_overlay(landmarks: PackedVector2Array, box: Rect2, homography: PackedFloat32Array,
-		anchors: Array, regions: Array, selected_id: String, have_mapping := true,
-		live := true) -> void:
+		anchors: Array, regions: Array, selected_id: String, mapping_mode := "live") -> void:
 	_landmarks = landmarks
 	landmark_count = landmarks.size()
 	_normalised_box = box
@@ -151,8 +151,8 @@ func set_overlay(landmarks: PackedVector2Array, box: Rect2, homography: PackedFl
 	anchor_count = anchors.size()
 	_regions = regions
 	_selected_id = selected_id
-	_have_mapping = have_mapping and homography.size() == 9
-	_tracking_live = live
+	_mapping_mode = mapping_mode
+	_have_mapping = mapping_mode != "none" and homography.size() == 9
 	quad_points = _project_quad()
 	_push_overlay()
 
@@ -489,7 +489,7 @@ func _push_overlay() -> void:
 	region_outlines = _project_regions() if _have_mapping else []
 	_overlay.call("set_overlay", image_rect, _landmarks, _normalised_box, quad_points,
 			anchor_points, has_frame, preview_enabled, region_outlines,
-			_drag_rect(), draw_mode, _selected_id, _have_mapping, _tracking_live)
+			_drag_rect(), draw_mode, _selected_id, _mapping_mode)
 
 
 ## Inverts a row-major 3x3 homography. Returns an empty array when singular.

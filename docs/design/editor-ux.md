@@ -398,8 +398,12 @@ transparent output window remains a separate surface with its own gate.
   it. The cutouts are projected through the same per-frame homography and FaceRig anchor the decal
   uses, so they follow the face as the subject moves and turns. When the rig has no live solve the
   window holds the last good homography and anchors, draws the cutouts dashed in amber and labels the
-  pane **Mapping held - no live face** (or **No live face mapping yet**) instead of parking them at
-  the identity projection the rig reports while it has no output.
+  pane **Mapping held - no live face** instead of parking them at the identity projection the rig
+  reports while it has no output. Before the first solve (a development still, or the first frames)
+  the tracker face box stands in for the mapping, the cutouts are dashed and the pane says
+  **No live mapping - face-box fallback**; with no face box at all it says **No live face mapping
+  yet** and draws no cutouts. The fallback and held states are diagnostics only and are never
+  presented as a calibrated mapping.
 - **Mapping** draws the canonical-face values the decal actually consumes: the authored region rects,
   the live centroid plus rest-delta anchor, the head cut plane and falloff, the pivot at the face
   origin and the homography rows. Moving a slider changes these values; it is not a decorative
