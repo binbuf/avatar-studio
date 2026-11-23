@@ -14,6 +14,7 @@ const QUAD_COLOUR := Color(0.45, 1.0, 0.55, 0.95)
 const ANCHOR_COLOUR := Color(1.0, 0.45, 0.75, 1.0)
 const TEXT_COLOUR := Color(0.92, 0.95, 1.0, 1.0)
 const DRAW_COLOUR := Color(1.0, 1.0, 1.0, 0.95)
+const HELD_COLOUR := Color(1.0, 0.72, 0.35, 0.95)
 const REGION_COLOURS := [
 	Color(0.35, 0.85, 1.0, 1.0),
 	Color(0.55, 0.95, 0.65, 1.0),
@@ -31,6 +32,8 @@ var draw_mode := ""
 var selected_id := ""
 var has_frame := false
 var preview_enabled := true
+var have_mapping := true
+var tracking_live := true
 
 
 func _ready() -> void:
@@ -39,7 +42,8 @@ func _ready() -> void:
 
 func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: PackedVector2Array,
 		anchor_points: Array, frame_visible: bool, preview_on: bool,
-		outlines: Array, drag: Rect2, mode: String, selected: String) -> void:
+		outlines: Array, drag: Rect2, mode: String, selected: String,
+		mapping := true, live := true) -> void:
 	image_rect = rect
 	landmarks = points
 	face_box = box
@@ -51,6 +55,8 @@ func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: Pack
 	drag_rect = drag
 	draw_mode = mode
 	selected_id = selected
+	have_mapping = mapping
+	tracking_live = live
 	queue_redraw()
 
 
@@ -101,6 +107,18 @@ func _draw() -> void:
 	_draw_regions()
 	_draw_anchors()
 	_draw_drag()
+	_draw_mapping_state()
+
+
+func _draw_mapping_state() -> void:
+	if not have_mapping:
+		draw_string(ThemeDB.fallback_font, image_rect.position + Vector2(12, 44),
+				"No live face mapping yet - move into frame", HORIZONTAL_ALIGNMENT_LEFT, -1,
+				12, HELD_COLOUR)
+	elif not tracking_live:
+		draw_string(ThemeDB.fallback_font, image_rect.position + Vector2(12, 44),
+				"Mapping held - no live face", HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+				HELD_COLOUR)
 
 
 func _draw_regions() -> void:
@@ -111,12 +129,18 @@ func _draw_regions() -> void:
 		var index := int(entry.get("colour_index", 0))
 		var colour: Color = REGION_COLOURS[index % REGION_COLOURS.size()]
 		var selected := bool(entry.get("selected", false))
-		if selected:
+		if not tracking_live:
+			colour = HELD_COLOUR
+		elif selected:
 			colour = colour.lightened(0.25)
 		draw_colored_polygon(points, colour * Color(1, 1, 1, 0.12 if selected else 0.06))
 		for point_index in range(points.size()):
-			draw_line(points[point_index], points[(point_index + 1) % points.size()],
-					colour, 2.5 if selected else 1.5)
+			if tracking_live:
+				draw_line(points[point_index], points[(point_index + 1) % points.size()],
+						colour, 2.5 if selected else 1.5)
+			else:
+				draw_dashed_line(points[point_index],
+						points[(point_index + 1) % points.size()], colour, 1.5, 4.0)
 		if selected:
 			var handle := _handle_rect(points)
 			draw_rect(handle, colour, true)

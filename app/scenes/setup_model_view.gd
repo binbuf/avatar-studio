@@ -48,6 +48,7 @@ var draw_mode := ""
 
 var _dragging := false
 var _drag_id := ""
+var _drag_offset := Vector2.ZERO
 var _drawing := false
 var _draw_start := Vector2.ZERO
 var _draw_current := Vector2.ZERO
@@ -69,6 +70,7 @@ func set_data(face_values: Dictionary, region_list: Array, anchor_list: Array,
 	camera = camera_node
 	viewport_size = target_size
 	selected_id = selected
+	_rebuild_polygons()
 	queue_redraw()
 
 
@@ -82,8 +84,13 @@ func get_selected() -> String:
 
 
 ## "" keeps the move/scale interaction. A region id makes a drag draw a box.
+## Re-applying the current mode is a no-op so a selection signal cannot cancel
+## an in-progress drag.
 func set_draw_mode(id: String) -> void:
-	draw_mode = id if REGION_IDS.has(id) else ""
+	var next := id if REGION_IDS.has(id) else ""
+	if next == draw_mode:
+		return
+	draw_mode = next
 	_dragging = false
 	_drawing = false
 	_resizing = false
@@ -96,6 +103,27 @@ func get_draw_mode() -> String:
 
 func get_polygons() -> Dictionary:
 	return polygons.duplicate(true)
+
+
+## Effective canonical centre of a region (authored centre + live anchor).
+func get_region_center(id: String) -> Variant:
+	var index := REGION_IDS.find(id)
+	if index < 0 or index >= regions.size():
+		return null
+	var centre: Vector2 = regions[index].get("center", Vector2.ZERO)
+	if index < anchors.size():
+		centre += Vector2(anchors[index])
+	return centre
+
+
+## Offset from the pointer to the region centre at grab time, so a drag moves
+## the cutout with the pointer instead of snapping its centre under it.
+func _move_offset_for(id: String, point: Vector2) -> Vector2:
+	var centre: Variant = get_region_center(id)
+	var canonical: Variant = canonical_from_screen(point)
+	if centre == null or canonical == null:
+		return Vector2.ZERO
+	return Vector2(centre) - Vector2(canonical)
 
 
 ## Projects a canonical face point to pane-space coordinates. Returns null when
@@ -195,6 +223,7 @@ func _gui_input(event: InputEvent) -> void:
 				selected_id = id
 				_dragging = true
 				_drag_id = id
+				_drag_offset = _move_offset_for(id, event.position)
 				region_selected.emit(id)
 				queue_redraw()
 				accept_event()
@@ -226,7 +255,7 @@ func _gui_input(event: InputEvent) -> void:
 		elif _dragging:
 			var canonical: Variant = canonical_from_screen(event.position)
 			if canonical != null:
-				region_dragged.emit(_drag_id, canonical)
+				region_dragged.emit(_drag_id, Vector2(canonical) + _drag_offset)
 			accept_event()
 
 
@@ -250,6 +279,45 @@ func _apply_resize(point: Vector2) -> void:
 
 
 func _draw() -> void:
+	_rebuild_polygons()
+	if display_rect.size.x <= 1.0 or display_rect.size.y <= 1.0:
+		return
+	if polygons.is_empty():
+		return
+
+	draw_rect(display_rect, Color(1.0, 1.0, 1.0, 0.10), false, 1.0)
+
+	for index in range(regions.size()):
+		var region: Dictionary = regions[index]
+		var id := String(region.get("id", ""))
+		var polygon: PackedVector2Array = polygons.get(id, PackedVector2Array())
+		if polygon.size() < 3:
+			continue
+		var selected := id == selected_id
+		var colour: Color = REGION_COLOURS[index % REGION_COLOURS.size()]
+		if selected:
+			colour = colour.lightened(0.25)
+		draw_colored_polygon(polygon, colour * Color(1, 1, 1, 0.12 if selected else 0.06))
+		for point_index in range(polygon.size()):
+			draw_line(polygon[point_index], polygon[(point_index + 1) % polygon.size()],
+					colour, 2.5 if selected else 1.5)
+		var centre: Vector2 = region.get("center", Vector2.ZERO)
+		if index < anchors.size():
+			centre += Vector2(anchors[index])
+		var centre_screen: Variant = screen_from_canonical(centre)
+		if centre_screen != null:
+			draw_circle(centre_screen, 4.0 if selected else 3.0, colour)
+		draw_string(ThemeDB.fallback_font, polygon[0] + Vector2(4, -4),
+				_short_id(id), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, colour)
+		if selected:
+			_draw_handle(colour)
+
+	_draw_preview()
+
+
+## Builds the hit-test polygons outside `_draw`, so a click works before the
+## pane has rendered and after a state update that has not been redrawn yet.
+func _rebuild_polygons() -> void:
 	display_rect = _display_rect()
 	polygons = {}
 	if face.is_empty() or regions.is_empty():
@@ -260,9 +328,6 @@ func _draw() -> void:
 		return
 	if display_rect.size.x <= 1.0 or display_rect.size.y <= 1.0:
 		return
-
-	draw_rect(display_rect, Color(1.0, 1.0, 1.0, 0.10), false, 1.0)
-
 	for index in range(regions.size()):
 		var region: Dictionary = regions[index]
 		var id := String(region.get("id", ""))
@@ -273,26 +338,8 @@ func _draw() -> void:
 		var rotation := deg_to_rad(float(region.get("rotation_deg", 0.0)))
 		var shape := String(region.get("shape", "ellipse"))
 		var polygon := _region_polygon(centre, size, rotation, shape)
-		if polygon.size() < 3:
-			continue
-		polygons[id] = polygon
-		var selected := id == selected_id
-		var colour: Color = REGION_COLOURS[index % REGION_COLOURS.size()]
-		if selected:
-			colour = colour.lightened(0.25)
-		draw_colored_polygon(polygon, colour * Color(1, 1, 1, 0.12 if selected else 0.06))
-		for point_index in range(polygon.size()):
-			draw_line(polygon[point_index], polygon[(point_index + 1) % polygon.size()],
-					colour, 2.5 if selected else 1.5)
-		var centre_screen: Variant = screen_from_canonical(centre)
-		if centre_screen != null:
-			draw_circle(centre_screen, 4.0 if selected else 3.0, colour)
-		draw_string(ThemeDB.fallback_font, polygon[0] + Vector2(4, -4),
-				_short_id(id), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, colour)
-		if selected:
-			_draw_handle(colour)
-
-	_draw_preview()
+		if polygon.size() >= 3:
+			polygons[id] = polygon
 
 
 func _draw_handle(colour: Color) -> void:

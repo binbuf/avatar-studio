@@ -50,12 +50,15 @@ var _homography := PackedFloat32Array()
 var _normalised_box := Rect2()
 var _slot_key := ""
 var _polygons: Dictionary = {}
+var _have_mapping := false
+var _tracking_live := true
 
 var _dragging := false
 var _drag_start := Vector2.ZERO
 var _drag_current := Vector2.ZERO
 var _moving := false
 var _move_id := ""
+var _move_offset := Vector2.ZERO
 var _resizing := false
 
 
@@ -84,9 +87,13 @@ func set_preview_enabled(enabled: bool) -> void:
 
 
 ## "" keeps the move/scale interaction. `eye_l`, `eye_r` or `mouth` makes a
-## drag draw a box.
+## drag draw a box. Re-applying the current mode is a no-op so a selection
+## signal (which syncs the mode buttons) cannot cancel an in-progress drag.
 func set_draw_mode(id: String) -> void:
-	draw_mode = id if REGION_IDS.has(id) else ""
+	var next := id if REGION_IDS.has(id) else ""
+	if next == draw_mode:
+		return
+	draw_mode = next
 	_dragging = false
 	_moving = false
 	_resizing = false
@@ -129,9 +136,12 @@ func update_slot(slot: Dictionary) -> void:
 ## coordinates, `homography` is the row-major 3x3 used by the decal shader,
 ## `anchors` are the three absolute canonical centroids in eye_l/eye_r/mouth
 ## order, and `regions` are the effective regions (authored centre + FaceRig
-## anchor) to draw and manipulate.
+## anchor) to draw and manipulate. `have_mapping` is false until the rig has
+## produced one good solve; `live` is false while the mapping is held through a
+## tracker loss.
 func set_overlay(landmarks: PackedVector2Array, box: Rect2, homography: PackedFloat32Array,
-		anchors: Array, regions: Array, selected_id: String) -> void:
+		anchors: Array, regions: Array, selected_id: String, have_mapping := true,
+		live := true) -> void:
 	_landmarks = landmarks
 	landmark_count = landmarks.size()
 	_normalised_box = box
@@ -141,6 +151,8 @@ func set_overlay(landmarks: PackedVector2Array, box: Rect2, homography: PackedFl
 	anchor_count = anchors.size()
 	_regions = regions
 	_selected_id = selected_id
+	_have_mapping = have_mapping and homography.size() == 9
+	_tracking_live = live
 	quad_points = _project_quad()
 	_push_overlay()
 
@@ -225,12 +237,32 @@ func get_region_polygons() -> Dictionary:
 	return _polygons.duplicate(true)
 
 
+## Canonical centre of an effective region, as the pane currently draws it.
+func get_region_center(id: String) -> Variant:
+	var index := REGION_IDS.find(id)
+	if index < 0 or index >= _regions.size():
+		return null
+	return Vector2(_regions[index].get("center", Vector2.ZERO))
+
+
+## Offset from the pointer to the region centre at grab time, so a drag moves
+## the cutout with the pointer instead of snapping its centre under it.
+func _move_offset_for(id: String, point: Vector2) -> Vector2:
+	var centre: Variant = get_region_center(id)
+	var canonical: Variant = canonical_from_screen(point)
+	if centre == null or canonical == null:
+		return Vector2.ZERO
+	return Vector2(centre) - Vector2(canonical)
+
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if not image_rect.has_point(event.position):
 				return
 			if draw_mode != "":
+				if not _have_mapping:
+					return
 				_dragging = true
 				_drag_start = event.position
 				_drag_current = event.position
@@ -245,6 +277,7 @@ func _gui_input(event: InputEvent) -> void:
 				_selected_id = id
 				_moving = true
 				_move_id = id
+				_move_offset = _move_offset_for(id, event.position)
 				region_selected.emit(id)
 				_push_overlay()
 				accept_event()
@@ -270,7 +303,7 @@ func _gui_input(event: InputEvent) -> void:
 		elif _moving:
 			var canonical: Variant = canonical_from_screen(event.position)
 			if canonical != null:
-				region_dragged.emit(_move_id, canonical)
+				region_dragged.emit(_move_id, Vector2(canonical) + _move_offset)
 			accept_event()
 		elif _resizing:
 			_apply_resize(event.position)
@@ -446,16 +479,17 @@ func _push_overlay() -> void:
 		return
 	var anchor_points: Array = []
 	var names := ["eye L", "eye R", "mouth"]
-	for index in range(mini(_anchors.size(), names.size())):
-		var anchor: Vector2 = _anchors[index]
-		var projected: Variant = _project(anchor.x, anchor.y)
-		if projected == null:
-			continue
-		anchor_points.append({"position": _to_screen(projected), "label": names[index]})
-	region_outlines = _project_regions()
+	if _have_mapping:
+		for index in range(mini(_anchors.size(), names.size())):
+			var anchor: Vector2 = _anchors[index]
+			var projected: Variant = _project(anchor.x, anchor.y)
+			if projected == null:
+				continue
+			anchor_points.append({"position": _to_screen(projected), "label": names[index]})
+	region_outlines = _project_regions() if _have_mapping else []
 	_overlay.call("set_overlay", image_rect, _landmarks, _normalised_box, quad_points,
 			anchor_points, has_frame, preview_enabled, region_outlines,
-			_drag_rect(), draw_mode, _selected_id)
+			_drag_rect(), draw_mode, _selected_id, _have_mapping, _tracking_live)
 
 
 ## Inverts a row-major 3x3 homography. Returns an empty array when singular.

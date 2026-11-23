@@ -64,6 +64,7 @@ var _scale := 1.0
 var _origin := Vector2.ZERO
 var _moving := false
 var _move_id := ""
+var _move_offset := Vector2.ZERO
 var _drawing := false
 var _draw_start := Vector2.ZERO
 var _draw_current := Vector2.ZERO
@@ -95,6 +96,8 @@ func set_data(values: Dictionary, state: Dictionary) -> void:
 	face_scale = float(values.get("face", {}).get("scale", 1.0))
 	pivot = Vector2.ZERO
 	homography = state.get("canonical_to_image", PackedFloat32Array())
+	_prepare()
+	_rebuild_polygons()
 	queue_redraw()
 
 
@@ -110,8 +113,13 @@ func get_selected() -> String:
 
 
 ## "" keeps the move/scale interaction. A region id makes a drag draw a box.
+## Re-applying the current mode is a no-op so a selection signal cannot cancel
+## an in-progress drag.
 func set_draw_mode(id: String) -> void:
-	draw_mode = id if REGION_IDS.has(id) else ""
+	var next := id if REGION_IDS.has(id) else ""
+	if next == draw_mode:
+		return
+	draw_mode = next
 	_moving = false
 	_drawing = false
 	_resizing = false
@@ -124,6 +132,24 @@ func get_draw_mode() -> String:
 
 func get_region_polygons() -> Dictionary:
 	return polygons.duplicate(true)
+
+
+## Canonical centre of an effective region, as the pane currently draws it.
+func get_region_center(id: String) -> Variant:
+	var index := REGION_IDS.find(id)
+	if index < 0 or index >= effective.size():
+		return null
+	return effective[index]
+
+
+## Offset from the pointer to the region centre at grab time, so a drag moves
+## the cutout with the pointer instead of snapping its centre under it.
+func _move_offset_for(id: String, point: Vector2) -> Vector2:
+	var centre: Variant = get_region_center(id)
+	var canonical: Variant = canonical_from_screen(point)
+	if centre == null or canonical == null:
+		return Vector2.ZERO
+	return Vector2(centre) - Vector2(canonical)
 
 
 ## Converts a pane-space point to canonical face coordinates.
@@ -184,7 +210,7 @@ func _draw() -> void:
 	_prepare()
 	if draw_rect_area.size.x <= 1.0:
 		return
-	polygons = {}
+	_rebuild_polygons()
 	draw_rect(draw_rect_area, BACKGROUND, true)
 
 	var steps := 8
@@ -280,6 +306,22 @@ func _draw_regions() -> void:
 		_text(_map(centre + Vector2(-size.x * 0.5, size.y * 0.5 + 0.12)), label, colour, 10)
 
 
+func _rebuild_polygons() -> void:
+	polygons = {}
+	if draw_rect_area.size.x <= 1.0 or draw_rect_area.size.y <= 1.0:
+		return
+	for index in range(authored.size()):
+		if index >= effective.size():
+			continue
+		var region: Dictionary = authored[index]
+		var id := String(region.get("id", ""))
+		var size: Vector2 = region.get("size", Vector2(0.1, 0.1))
+		var rotation := float(region.get("rotation", deg_to_rad(float(
+				region.get("rotation_deg", 0.0)))))
+		var shape := String(region.get("shape", "ellipse"))
+		polygons[id] = _region_points(effective[index], size, rotation, shape)
+
+
 func _region_points(centre: Vector2, size: Vector2, rotation: float,
 		shape: String) -> PackedVector2Array:
 	var points := PackedVector2Array()
@@ -362,6 +404,7 @@ func _gui_input(event: InputEvent) -> void:
 				selected_id = id
 				_moving = true
 				_move_id = id
+				_move_offset = _move_offset_for(id, event.position)
 				region_selected.emit(id)
 				queue_redraw()
 				accept_event()
@@ -390,7 +433,7 @@ func _gui_input(event: InputEvent) -> void:
 		elif _moving:
 			var canonical: Variant = canonical_from_screen(event.position)
 			if canonical != null:
-				region_dragged.emit(_move_id, canonical)
+				region_dragged.emit(_move_id, Vector2(canonical) + _move_offset)
 			accept_event()
 		elif _resizing:
 			_apply_resize(event.position)

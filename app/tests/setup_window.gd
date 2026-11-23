@@ -342,6 +342,78 @@ func _check_direct_manipulation() -> void:
 		mapping_resize_ok = bool(mapping_resize.get("ok", false))
 		check(mapping_resize_ok, "the mapping handle path applies a new size")
 
+	# Regression: clicking a cutout emits `region_selected`, and the Setup
+	# window used to clear the draw modes on that signal, which reset the pane's
+	# drag state and made the cutout impossible to position. Drive the real
+	# press/motion/release path on all three panes.
+	var mapping_input_ok := false
+	if mapping_view != null:
+		var mouth_now: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "mouth").center)
+		var start: Vector2 = mapping_view.call("screen_from_canonical", mouth_now)
+		_press(mapping_view, start)
+		_motion(mapping_view, start + Vector2(14, -10))
+		_release(mapping_view, start + Vector2(14, -10))
+		var after_input: Dictionary = Calibration.region(
+				setup.call("get_calibration"), "mouth")
+		mapping_input_ok = Vector2(after_input.center).distance_to(mouth_now) > 0.001
+		check(mapping_input_ok, "selecting then dragging on the mapping view moves the cutout")
+
+	var model_input_ok := false
+	if model_view != null:
+		var eye_now: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "eye_l").center)
+		var eye_point: Variant = model_view.call("screen_from_canonical", eye_now)
+		if eye_point != null:
+			_press(model_view, Vector2(eye_point))
+			_motion(model_view, Vector2(eye_point) + Vector2(12, -8))
+			_release(model_view, Vector2(eye_point) + Vector2(12, -8))
+			var after_model: Dictionary = Calibration.region(
+					setup.call("get_calibration"), "eye_l")
+			model_input_ok = Vector2(after_model.center).distance_to(eye_now) > 0.001
+			check(model_input_ok, "selecting then dragging on the model moves the cutout")
+
+	var camera_input_ok := false
+	var camera_track_ok := false
+	if camera_view != null:
+		var values: Dictionary = setup.call("get_calibration")
+		var regions: Array = values.get("regions", [])
+		var h1 := PackedFloat32Array([0.12, 0.0, 0.5, 0.0, 0.12, 0.5, 0.0, 0.0, 1.0])
+		camera_view.call("set_overlay", PackedVector2Array(), Rect2(), h1, [], regions, "")
+		var first_poly: Dictionary = camera_view.call("get_region_polygons")
+		var first_centroid := _polygon_centroid(first_poly.get("eye_l",
+				PackedVector2Array()))
+		var eye_before: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "eye_l").center)
+		if first_centroid != Vector2(-1, -1):
+			_press(camera_view, first_centroid)
+			_motion(camera_view, first_centroid + Vector2(12, -8))
+			_release(camera_view, first_centroid + Vector2(12, -8))
+			var after_camera: Dictionary = Calibration.region(
+					setup.call("get_calibration"), "eye_l")
+			camera_input_ok = Vector2(after_camera.center).distance_to(eye_before) > 0.001
+			check(camera_input_ok, "selecting then dragging on the camera moves the cutout")
+
+		# A moving face changes the homography and the anchors; the camera
+		# cutout must follow both, not stay at its authored place.
+		var h2 := PackedFloat32Array([0.13, 0.0, 0.58, 0.0, 0.13, 0.56, 0.0, 0.0, 1.0])
+		camera_view.call("set_overlay", PackedVector2Array(), Rect2(), h2, [], regions, "")
+		var moved_poly: Dictionary = camera_view.call("get_region_polygons")
+		var moved_centroid := _polygon_centroid(moved_poly.get("eye_l",
+				PackedVector2Array()))
+		var anchored: Array = regions.duplicate(true)
+		if not anchored.is_empty():
+			anchored[0].center = Vector2(anchored[0].center) + Vector2(0.06, -0.03)
+		camera_view.call("set_overlay", PackedVector2Array(), Rect2(), h2, [], anchored, "")
+		var anchored_poly: Dictionary = camera_view.call("get_region_polygons")
+		var anchored_centroid := _polygon_centroid(anchored_poly.get("eye_l",
+				PackedVector2Array()))
+		camera_track_ok = first_centroid != Vector2(-1, -1) \
+				and moved_centroid.distance_to(first_centroid) > 1.0 \
+				and anchored_centroid.distance_to(moved_centroid) > 1.0
+		check(camera_track_ok,
+				"the camera cutout follows the live homography and region anchor")
+
 	result["direct"] = {
 		"camera_image": _rect_text(image),
 		"drawn": bool(drawn.get("ok", false)),
@@ -350,13 +422,48 @@ func _check_direct_manipulation() -> void:
 		"model_drag": model_ok,
 		"model_draw": model_draw_ok,
 		"model_resize": model_resize_ok,
+		"model_input_drag": model_input_ok,
 		"camera_drag": camera_drag_ok,
 		"camera_resize": camera_resize_ok,
+		"camera_input_drag": camera_input_ok,
+		"camera_track": camera_track_ok,
 		"mapping_draw": mapping_draw_ok,
 		"mapping_drag": mapping_drag_ok,
 		"mapping_resize": mapping_resize_ok,
+		"mapping_input_drag": mapping_input_ok,
 	}
 	await process_frame
+
+
+func _press(view: Control, point: Vector2) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = true
+	event.position = point
+	view._gui_input(event)
+
+
+func _motion(view: Control, point: Vector2) -> void:
+	var event := InputEventMouseMotion.new()
+	event.position = point
+	view._gui_input(event)
+
+
+func _release(view: Control, point: Vector2) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = false
+	event.position = point
+	view._gui_input(event)
+
+
+func _polygon_centroid(points: PackedVector2Array) -> Vector2:
+	if points.is_empty():
+		return Vector2(-1, -1)
+	var sum := Vector2.ZERO
+	for point in points:
+		sum += point
+	return sum / float(points.size())
 
 
 func _check_final_output() -> void:

@@ -78,6 +78,17 @@ var last_error := ""
 
 var _overlay_timer := 0.0
 var _status_timer := 0.0
+var _identity_homography := PackedFloat32Array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])
+# Last good live mapping. When the rig has no valid solve the pipeline reports
+# an identity homography, which would park the cutouts at a bogus fixed place.
+# Hold the last good homography and anchors instead, and flag the panes so the
+# operator can see the mapping is held rather than tracking.
+var _held_homography := PackedFloat32Array()
+var _held_centroids: Array = []
+var _held_rest: Array = []
+var _held_anchors: Array = []
+var _display_anchors: Array = []
+var _tracking_live := false
 
 
 func configure(hud_node: CanvasLayer, controller_node, runtime_node: Node,
@@ -138,7 +149,8 @@ func _process(delta: float) -> void:
 	_apply_compact_layout()
 	_overlay_timer += delta
 	_status_timer += delta
-	if _overlay_timer >= 1.0 / 20.0:
+	# Match the camera rate so the cutouts follow the face without visible lag.
+	if _overlay_timer >= 1.0 / 30.0:
 		_overlay_timer = 0.0
 		_refresh_overlays()
 	if _status_timer >= 0.25:
@@ -211,7 +223,26 @@ func _refresh_overlays() -> void:
 		state = controller.get_state()
 	var values: Dictionary = controller.get_calibration()
 	var regions: Array = values.get("regions", [])
+	var homography: PackedFloat32Array = state.get("canonical_to_image",
+			PackedFloat32Array())
+	var centroids: Array = state.get("regions", [])
+	var rest: Array = state.get("region_rest", [])
 	var anchors := _region_anchors(state)
+	var has_solve := homography.size() == 9 and homography != _identity_homography
+	if has_solve:
+		_held_homography = homography
+		_held_centroids = centroids.duplicate(true)
+		_held_rest = rest.duplicate(true)
+		_held_anchors = anchors.duplicate(true)
+	elif _held_homography.size() == 9:
+		# Keep the cutouts on the last tracked face instead of the identity
+		# projection the rig reports while it has no solve.
+		homography = _held_homography
+		centroids = _held_centroids.duplicate(true)
+		rest = _held_rest.duplicate(true)
+		anchors = _held_anchors.duplicate(true)
+	_tracking_live = has_solve and bool(state.get("features_valid", false))
+	_display_anchors = anchors.duplicate(true)
 	var effective_regions: Array = []
 	for index in range(regions.size()):
 		var entry: Dictionary = regions[index].duplicate(true)
@@ -223,15 +254,19 @@ func _refresh_overlays() -> void:
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
 		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
-				state.get("canonical_to_image", PackedFloat32Array()),
-				state.get("regions", []), effective_regions, selected_region)
+				homography, centroids, effective_regions, selected_region,
+				_held_homography.size() == 9, _tracking_live)
+	var display_state := state.duplicate(true)
+	display_state["canonical_to_image"] = homography
+	display_state["regions"] = centroids
+	display_state["region_rest"] = rest
 	if mapping_view != null:
-		mapping_view.set_data(values, state)
+		mapping_view.set_data(values, display_state)
 		mapping_view.set_selected(selected_region)
 	if model_view != null:
 		model_view.set_data(values.get("face", {}), regions, anchors, controller.model,
 				_get_avatar_camera(), _get_viewport_size(), selected_region)
-	_update_mapping_text(state)
+	_update_mapping_text(display_state)
 
 
 ## Per-region FaceRig anchors: the live centroid minus its rest value. The decal
@@ -852,7 +887,8 @@ func _set_all_draw_modes(id: String) -> void:
 
 func _on_region_selected(id: String) -> void:
 	selected_region = id
-	_set_all_draw_modes("")
+	# Selection happens with no draw mode active, so do not clear the modes
+	# here: that would reset the pane's in-progress drag state.
 	_sync_selected_buttons()
 	_refresh_overlays()
 
@@ -902,7 +938,13 @@ func _apply_region_values(id: String, center: Vector2, size: Vector2, message: S
 
 func _region_anchor(id: String) -> Vector2:
 	var index := REGION_IDS.find(id)
-	if index < 0 or controller == null:
+	if index < 0:
+		return Vector2.ZERO
+	# Use the same anchors the panes are drawing, so a drag while the mapping is
+	# held does not jump by the difference between live and held anchors.
+	if index < _display_anchors.size():
+		return Vector2(_display_anchors[index])
+	if controller == null:
 		return Vector2.ZERO
 	var state: Dictionary = controller.last_state
 	var regions: Array = state.get("regions", [])

@@ -393,8 +393,13 @@ transparent output window remains a separate surface with its own gate.
   three eye/mouth region anchors. The camera pixels never enter the avatar SubViewport or the OBS
   output. The operator can activate **L eye / R eye / Mouth** and drag a box around the corresponding
   feature; the box is inverted through the live homography into canonical face coordinates and
-  becomes that region's centre and size. With no mode active, drag a cutout outline to move it or
-  drag its corner handle to scale it.
+  becomes that region's centre and size. With no mode active, drag a cutout outline to move it (the
+  grab offset is preserved, so it does not snap under the pointer) or drag its corner handle to scale
+  it. The cutouts are projected through the same per-frame homography and FaceRig anchor the decal
+  uses, so they follow the face as the subject moves and turns. When the rig has no live solve the
+  window holds the last good homography and anchors, draws the cutouts dashed in amber and labels the
+  pane **Mapping held - no live face** (or **No live face mapping yet**) instead of parking them at
+  the identity projection the rig reports while it has no output.
 - **Mapping** draws the canonical-face values the decal actually consumes: the authored region rects,
   the live centroid plus rest-delta anchor, the head cut plane and falloff, the pivot at the face
   origin and the homography rows. Moving a slider changes these values; it is not a decorative
@@ -402,11 +407,15 @@ transparent output window remains a separate surface with its own gate.
   canonical face coordinates.
 - **Model** samples the avatar SubViewport and draws the three diagnostic cutout outlines over it.
   Clicking an outline selects it; dragging unprojects the pointer onto the same face plane the decal
-  shader uses and moves the region live. With a region mode active, dragging a box on the model sets
-  that region's centre and size, just like drawing on the camera; when no mode is active, dragging
-  the square handle at the selected outline's bottom-right corner scales it about its centre. The
-  white/black background toggle is in this pane. The OBS output is a separate transparent window and
-  never includes these outlines.
+  shader uses and moves the region live, preserving the grab offset. With a region mode active,
+  dragging a box on the model sets that region's centre and size, just like drawing on the camera;
+  when no mode is active, dragging the square handle at the selected outline's bottom-right corner
+  scales it about its centre. The white/black background toggle is in this pane. The OBS output is a
+  separate transparent window and never includes these outlines.
+
+All three panes share one interaction contract and one selection: clicking a cutout in any pane
+selects it everywhere, and drawing a box in any pane updates the same authored region. Re-applying
+the current draw mode is a no-op, so the selection signal cannot cancel an in-progress drag.
 
 The three panes sit in nested split containers: the dividers are draggable, so the operator can
 resize the camera, mapping and model panes without leaving the window. The default surface is

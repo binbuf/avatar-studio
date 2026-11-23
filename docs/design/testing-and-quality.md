@@ -1065,8 +1065,10 @@ in two headless modes plus one rendered mode:
 
 - synthetic source + scripted tracker: three-pane layout, overlay data (landmarks, face box,
   homography quad, anchors), mapping values, box draw on the camera, mapping and model, drag and
-  handle scale on all three panes, eye/mouth edit, Apply/persist/reload, background toggle,
-  feature-loss hold, capture/tracker selectors, Snapshot freeze/unfreeze and the OBS blank.
+  handle scale on all three panes, press/motion/release drags through each pane's real input path
+  (selecting a cutout must not cancel the move), a moving homography and anchor must move the camera
+  cutout, eye/mouth edit, Apply/persist/reload, background toggle, feature-loss hold,
+  capture/tracker selectors, Snapshot freeze/unfreeze and the OBS blank.
 - still source (`--live-source still --still tests/fixtures/images/still_setup.png`) + scripted
   tracker: the same contract with no camera or person, plus the `still (file)` label and path.
 - rendered (`--render`): panes inside the window at 100% and 200% UI scale, opaque background, and
