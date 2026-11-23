@@ -26,6 +26,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #endif
 
 namespace {
@@ -65,6 +68,15 @@ std::string module_directory() {
     }
     std::filesystem::path path(std::wstring(buffer, size));
     return path.parent_path().string();
+#elif defined(__APPLE__)
+    char buffer[4096] = {};
+    std::uint32_t size = static_cast<std::uint32_t>(sizeof(buffer));
+    if (_NSGetExecutablePath(buffer, &size) != 0) {
+        return {};
+    }
+    std::error_code error;
+    const auto path = std::filesystem::weakly_canonical(buffer, error);
+    return (error ? std::filesystem::path(buffer) : path).parent_path().string();
 #else
     std::error_code error;
     const auto path = std::filesystem::read_symlink("/proc/self/exe", error);

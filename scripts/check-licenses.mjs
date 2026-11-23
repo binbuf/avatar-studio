@@ -59,7 +59,7 @@ const STDLIB_HEADERS = new Set([
 // Platform SDK headers. These are OS contracts, not bundled third-party
 // components. Add a prefix here when a new platform API is used.
 const SYSTEM_PREFIXES = [
-    'asm/', 'linux/', 'mach/', 'sys/', 'unistd.h', 'pthread.h', 'dlfcn.h',
+    'asm/', 'linux/', 'mach/', 'mach-o/', 'sys/', 'unistd.h', 'pthread.h', 'dlfcn.h',
     'intrin.h', 'x86intrin.h', 'immintrin.h', 'arm_neon.h', 'windows.h',
     'winbase.h', 'windef.h', 'winerror.h', 'winsock2.h', 'ws2tcpip.h',
     'objbase.h', 'unknwn.h', 'combaseapi.h', 'comdef.h', 'strmif.h', 'dshow.h',
