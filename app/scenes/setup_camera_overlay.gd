@@ -28,6 +28,7 @@ var anchors: Array = []
 var region_outlines: Array = []
 var drag_rect := Rect2()
 var draw_mode := ""
+var selected_id := ""
 var has_frame := false
 var preview_enabled := true
 
@@ -38,7 +39,7 @@ func _ready() -> void:
 
 func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: PackedVector2Array,
 		anchor_points: Array, frame_visible: bool, preview_on: bool,
-		outlines: Array, drag: Rect2, mode: String) -> void:
+		outlines: Array, drag: Rect2, mode: String, selected: String) -> void:
 	image_rect = rect
 	landmarks = points
 	face_box = box
@@ -49,6 +50,7 @@ func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: Pack
 	region_outlines = outlines
 	drag_rect = drag
 	draw_mode = mode
+	selected_id = selected
 	queue_redraw()
 
 
@@ -115,6 +117,10 @@ func _draw_regions() -> void:
 		for point_index in range(points.size()):
 			draw_line(points[point_index], points[(point_index + 1) % points.size()],
 					colour, 2.5 if selected else 1.5)
+		if selected:
+			var handle := _handle_rect(points)
+			draw_rect(handle, colour, true)
+			draw_rect(handle, Color(0.0, 0.0, 0.0, 0.55), false, 1.0)
 		var label := _short_id(String(entry.get("id", "?")))
 		draw_string(ThemeDB.fallback_font, points[0] + Vector2(4, -4), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, colour)
@@ -129,6 +135,15 @@ func _draw_anchors() -> void:
 		draw_line(centre + Vector2(0, -5), centre + Vector2(0, 5), ANCHOR_COLOUR, 2.0)
 		draw_string(ThemeDB.fallback_font, centre + Vector2(7, -5), String(entry.label),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ANCHOR_COLOUR)
+
+
+func _handle_rect(points: PackedVector2Array) -> Rect2:
+	if points.size() < 3:
+		return Rect2()
+	var bounds := Rect2(points[0], Vector2.ZERO)
+	for point in points:
+		bounds = bounds.expand(point)
+	return Rect2(bounds.end - Vector2(10, 10), Vector2(10, 10))
 
 
 func _draw_drag() -> void:

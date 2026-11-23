@@ -243,6 +243,12 @@ func _check_direct_manipulation() -> void:
 	var model_ok := false
 	var model_draw_ok := false
 	var model_resize_ok := false
+	var camera_drag_ok := false
+	var camera_resize_ok := false
+	var mapping_draw_ok := false
+	var mapping_drag_ok := false
+	var mapping_resize_ok := false
+	var mapping_view = setup.call("get_mapping_view")
 	if model_view != null:
 		var mouth: Dictionary = Calibration.region(setup.call("get_calibration"), "mouth")
 		var centre: Vector2 = mouth.center
@@ -288,6 +294,54 @@ func _check_direct_manipulation() -> void:
 						"the model resize updates the eye L width")
 				model_draw_ok = bool(model_drawn.get("ok", false))
 				model_resize_ok = bool(scaled.get("ok", false))
+
+	# Camera pane: move and scale an existing cutout. The synthetic/scripted
+	# homography is identity, so aim at the face box centre rather than the
+	# authored canonical point (which can project outside the image).
+	var camera_view = setup.get("camera_view")
+	if camera_view != null:
+		var face_centre := image.position + Vector2(
+				(box.position.x + box.size.x * 0.5) * image.size.x,
+				(box.position.y + box.size.y * 0.5) * image.size.y)
+		var before_cam: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "eye_l").center)
+		var camera_drag: Dictionary = setup.call("drag_region_on_camera", "eye_l",
+				face_centre + Vector2(8, -6))
+		camera_drag_ok = bool(camera_drag.get("ok", false)) \
+				and Vector2(Calibration.region(setup.call("get_calibration"),
+						"eye_l").center).distance_to(before_cam) > 0.001
+		check(camera_drag_ok, "dragging on the camera moves a region")
+		var camera_resize: Dictionary = setup.call("resize_region_on_camera", "eye_l",
+				Vector2(0.34, 0.22))
+		camera_resize_ok = bool(camera_resize.get("ok", false))
+		check(camera_resize_ok, "the camera handle path applies a new size")
+
+	# Mapping pane: draw, move and scale on the canonical grid.
+	check(mapping_view != null, "the mapping pane has a mapping view")
+	if mapping_view != null:
+		var mouth_centre: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "mouth").center)
+		var mapping_screen: Vector2 = mapping_view.call("screen_from_canonical",
+				mouth_centre)
+		var mapping_box := Rect2(mapping_screen - Vector2(16, 12), Vector2(32, 24))
+		var mapping_drawn: Dictionary = setup.call("draw_region_on_mapping", "mouth",
+				mapping_box)
+		mapping_draw_ok = bool(mapping_drawn.get("ok", false))
+		check(mapping_draw_ok, "drawing a box on the mapping view applies a region")
+		var before_map: Vector2 = Vector2(Calibration.region(
+				setup.call("get_calibration"), "eye_r").center)
+		var eye_r_screen: Vector2 = mapping_view.call("screen_from_canonical", before_map)
+		var mapping_drag: Dictionary = setup.call("drag_region_on_mapping", "eye_r",
+				eye_r_screen + Vector2(10, -8))
+		mapping_drag_ok = bool(mapping_drag.get("ok", false)) \
+				and Vector2(Calibration.region(setup.call("get_calibration"),
+						"eye_r").center).distance_to(before_map) > 0.001
+		check(mapping_drag_ok, "dragging on the mapping view moves a region")
+		var mapping_resize: Dictionary = setup.call("resize_region_on_mapping", "eye_r",
+				Vector2(0.36, 0.24))
+		mapping_resize_ok = bool(mapping_resize.get("ok", false))
+		check(mapping_resize_ok, "the mapping handle path applies a new size")
+
 	result["direct"] = {
 		"camera_image": _rect_text(image),
 		"drawn": bool(drawn.get("ok", false)),
@@ -296,6 +350,11 @@ func _check_direct_manipulation() -> void:
 		"model_drag": model_ok,
 		"model_draw": model_draw_ok,
 		"model_resize": model_resize_ok,
+		"camera_drag": camera_drag_ok,
+		"camera_resize": camera_resize_ok,
+		"mapping_draw": mapping_draw_ok,
+		"mapping_drag": mapping_drag_ok,
+		"mapping_resize": mapping_resize_ok,
 	}
 	await process_frame
 

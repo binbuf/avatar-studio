@@ -393,11 +393,13 @@ transparent output window remains a separate surface with its own gate.
   three eye/mouth region anchors. The camera pixels never enter the avatar SubViewport or the OBS
   output. The operator can activate **L eye / R eye / Mouth** and drag a box around the corresponding
   feature; the box is inverted through the live homography into canonical face coordinates and
-  becomes that region's centre and size.
+  becomes that region's centre and size. With no mode active, drag a cutout outline to move it or
+  drag its corner handle to scale it.
 - **Mapping** draws the canonical-face values the decal actually consumes: the authored region rects,
   the live centroid plus rest-delta anchor, the head cut plane and falloff, the pivot at the face
   origin and the homography rows. Moving a slider changes these values; it is not a decorative
-  diagram.
+  diagram. The same draw/move/scale interaction works on this grid: the pointer converts directly to
+  canonical face coordinates.
 - **Model** samples the avatar SubViewport and draws the three diagnostic cutout outlines over it.
   Clicking an outline selects it; dragging unprojects the pointer onto the same face plane the decal
   shader uses and moves the region live. With a region mode active, dragging a box on the model sets

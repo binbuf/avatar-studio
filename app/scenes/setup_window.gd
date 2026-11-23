@@ -109,10 +109,7 @@ func open() -> void:
 				and hud != null and hud.has_method("use_default_still"):
 			hud.call("use_default_still")
 	_reset_params_from_base()
-	if camera_view != null:
-		camera_view.set_draw_mode("")
-	if model_view != null:
-		model_view.set_draw_mode("")
+	_set_all_draw_modes("")
 	if viewport != null and final_avatar != null:
 		final_avatar.texture = viewport.get_texture()
 	_overlay_timer = 0.0
@@ -124,10 +121,7 @@ func close() -> void:
 	opened = false
 	visible = false
 	set_process(false)
-	if camera_view != null:
-		camera_view.set_draw_mode("")
-	if model_view != null:
-		model_view.set_draw_mode("")
+	_set_all_draw_modes("")
 	if hud != null and hud.has_method("use_camera"):
 		hud.call("use_camera")
 	if controller != null:
@@ -218,11 +212,19 @@ func _refresh_overlays() -> void:
 	var values: Dictionary = controller.get_calibration()
 	var regions: Array = values.get("regions", [])
 	var anchors := _region_anchors(state)
+	var effective_regions: Array = []
+	for index in range(regions.size()):
+		var entry: Dictionary = regions[index].duplicate(true)
+		var centre: Vector2 = regions[index].get("center", Vector2.ZERO)
+		if index < anchors.size():
+			centre += Vector2(anchors[index])
+		entry.center = centre
+		effective_regions.append(entry)
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
 		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
 				state.get("canonical_to_image", PackedFloat32Array()),
-				state.get("regions", []), regions, selected_region)
+				state.get("regions", []), effective_regions, selected_region)
 	if mapping_view != null:
 		mapping_view.set_data(values, state)
 		mapping_view.set_selected(selected_region)
@@ -460,11 +462,14 @@ func _build_panes(parent: Control) -> void:
 	camera_view = CameraView.new()
 	camera_view.name = "CameraView"
 	camera_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	camera_view.region_drawn.connect(_on_camera_region_drawn)
+	camera_view.region_drawn.connect(_on_region_drawn)
+	camera_view.region_selected.connect(_on_region_selected)
+	camera_view.region_dragged.connect(_on_region_dragged)
+	camera_view.region_resized.connect(_on_region_resized)
 	var camera_content: Control = camera_pane.get_meta("content")
 	camera_content.add_child(camera_view)
 	var camera_note := _label(
-			"Drag a box around an eye or mouth, or draw the same box on the model.",
+			"Draw, move or scale on the camera, mapping or model.",
 			11, MUTED)
 	camera_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var camera_footer: VBoxContainer = camera_pane.get_meta("footer")
@@ -482,6 +487,10 @@ func _build_panes(parent: Control) -> void:
 	mapping_view = MappingView.new()
 	mapping_view.name = "MappingView"
 	mapping_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mapping_view.region_drawn.connect(_on_region_drawn)
+	mapping_view.region_selected.connect(_on_region_selected)
+	mapping_view.region_dragged.connect(_on_region_dragged)
+	mapping_view.region_resized.connect(_on_region_resized)
 	var mapping_content: Control = mapping_pane.get_meta("content")
 	mapping_content.add_child(mapping_view)
 	mapping_text = _label("", 10, MUTED)
@@ -527,13 +536,13 @@ func _build_panes(parent: Control) -> void:
 	model_view = ModelView.new()
 	model_view.name = "ModelView"
 	model_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	model_view.region_selected.connect(_on_model_region_selected)
-	model_view.region_dragged.connect(_on_model_region_dragged)
-	model_view.region_drawn.connect(_on_model_region_drawn)
-	model_view.region_resized.connect(_on_model_region_resized)
+	model_view.region_selected.connect(_on_region_selected)
+	model_view.region_dragged.connect(_on_region_dragged)
+	model_view.region_drawn.connect(_on_region_drawn)
+	model_view.region_resized.connect(_on_region_resized)
 	final_frame.add_child(model_view)
 	final_note = _label(
-			"Draw a box or drag the corner handle to scale. OBS output is separate.",
+			"Draw a box, drag a cutout, or drag the handle to scale. OBS output is separate.",
 			11, MUTED)
 	final_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var final_footer: VBoxContainer = final_pane.get_meta("footer")
@@ -824,49 +833,44 @@ func _on_slider_changed(value: float, key: String) -> void:
 func _on_draw_toggled(pressed: bool, id: String) -> void:
 	if pressed:
 		selected_region = id
-		if camera_view != null:
-			camera_view.set_draw_mode(id)
-		if model_view != null:
-			model_view.set_draw_mode(id)
-		_set_action("Draw " + _region_name(id) + ": drag on the camera or the model.")
+		_set_all_draw_modes(id)
+		_set_action("Draw " + _region_name(id)
+				+ ": drag on the camera, mapping or model.")
 	else:
-		if camera_view != null:
-			camera_view.set_draw_mode("")
-		if model_view != null:
-			model_view.set_draw_mode("")
+		_set_all_draw_modes("")
 	_refresh_overlays()
 
 
-func _on_camera_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
-	selected_region = id
-	_apply_region_values(id, _authored_center(id, center), size,
-			"Drew " + _region_name(id))
-
-
-func _on_model_region_selected(id: String) -> void:
-	selected_region = id
+func _set_all_draw_modes(id: String) -> void:
 	if camera_view != null:
-		camera_view.set_draw_mode("")
+		camera_view.set_draw_mode(id)
+	if mapping_view != null:
+		mapping_view.set_draw_mode(id)
 	if model_view != null:
-		model_view.set_draw_mode("")
+		model_view.set_draw_mode(id)
+
+
+func _on_region_selected(id: String) -> void:
+	selected_region = id
+	_set_all_draw_modes("")
 	_sync_selected_buttons()
 	_refresh_overlays()
 
 
-func _on_model_region_dragged(id: String, center: Vector2) -> void:
+func _on_region_dragged(id: String, center: Vector2) -> void:
 	# `center` is the effective canonical point (authored + FaceRig anchor);
 	# the persisted region is the authored point.
 	_apply_region_values(id, _authored_center(id, center), Vector2.ZERO,
 			"Moved " + _region_name(id), false)
 
 
-func _on_model_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
+func _on_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
 	selected_region = id
 	_apply_region_values(id, _authored_center(id, center), size,
-			"Drew " + _region_name(id) + " on the model")
+			"Drew " + _region_name(id))
 
 
-func _on_model_region_resized(id: String, size: Vector2) -> void:
+func _on_region_resized(id: String, size: Vector2) -> void:
 	if controller == null:
 		return
 	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
@@ -1243,16 +1247,13 @@ func set_camera_preview(enabled: bool) -> void:
 # Direct-manipulation hooks
 # ---------------------------------------------------------------------------
 
-## Selects a region and turns on drawing for it on both the camera and the
-## model. Pass "" to stop drawing.
+## Selects a region and turns on drawing for it on the camera, mapping and
+## model panes. Pass "" to stop drawing.
 func set_draw_mode(id: String) -> void:
 	if not REGION_IDS.has(id):
 		id = ""
 	selected_region = id if id != "" else selected_region
-	if camera_view != null:
-		camera_view.set_draw_mode(id)
-	if model_view != null:
-		model_view.set_draw_mode(id)
+	_set_all_draw_modes(id)
 	_sync_selected_buttons()
 	_refresh_overlays()
 
@@ -1327,6 +1328,87 @@ func draw_region_on_model(id: String, pane_rect: Rect2) -> Dictionary:
 
 ## Test hook: scale a region about its centre, as the model handle does.
 func resize_region_on_model(id: String, size: Vector2) -> Dictionary:
+	if controller == null:
+		return {"ok": false, "error": "no controller"}
+	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	if region.is_empty():
+		return {"ok": false, "error": "no region " + id}
+	return _apply_region_values(id, Vector2(region.center), size,
+			"Scaled " + _region_name(id))
+
+
+func get_mapping_view():
+	return mapping_view
+
+
+func get_camera_region_polygons() -> Dictionary:
+	return camera_view.get_region_polygons() if camera_view != null else {}
+
+
+func get_mapping_region_polygons() -> Dictionary:
+	return mapping_view.get_region_polygons() if mapping_view != null else {}
+
+
+## Test hook: move a region to the canonical point under a camera-pane point.
+func drag_region_on_camera(id: String, pane_point: Vector2) -> Dictionary:
+	if camera_view == null:
+		return {"ok": false, "error": "no camera view"}
+	var canonical: Variant = camera_view.call("canonical_from_screen", pane_point)
+	if canonical == null:
+		return {"ok": false, "error": "point is not on the camera image"}
+	var authored := _authored_center(id, Vector2(canonical))
+	var applied := _apply_region_values(id, authored, Vector2.ZERO,
+			"Moved " + _region_name(id), false)
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+	return applied
+
+
+## Test hook: scale a region from the camera-pane handle path.
+func resize_region_on_camera(id: String, size: Vector2) -> Dictionary:
+	if controller == null:
+		return {"ok": false, "error": "no controller"}
+	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	if region.is_empty():
+		return {"ok": false, "error": "no region " + id}
+	return _apply_region_values(id, Vector2(region.center), size,
+			"Scaled " + _region_name(id))
+
+
+## Test hook: move a region to the canonical point under a mapping-pane point.
+func drag_region_on_mapping(id: String, pane_point: Vector2) -> Dictionary:
+	if mapping_view == null:
+		return {"ok": false, "error": "no mapping view"}
+	var canonical: Variant = mapping_view.call("canonical_from_screen", pane_point)
+	if canonical == null:
+		return {"ok": false, "error": "point is not in the mapping view"}
+	var authored := _authored_center(id, Vector2(canonical))
+	var applied := _apply_region_values(id, authored, Vector2.ZERO,
+			"Moved " + _region_name(id), false)
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+	return applied
+
+
+## Test hook: draw a region from a pane-space box on the mapping view.
+func draw_region_on_mapping(id: String, pane_rect: Rect2) -> Dictionary:
+	if mapping_view == null:
+		return {"ok": false, "error": "no mapping view"}
+	var result: Dictionary = mapping_view.call("canonical_rect_from_screen_rect",
+			pane_rect)
+	if result.is_empty():
+		return {"ok": false, "error": "box is not in the mapping view"}
+	var authored := _authored_center(id, Vector2(result.center))
+	var applied := _apply_region_values(id, authored, Vector2(result.size),
+			"Drew " + _region_name(id))
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+		applied["size"] = Vector2(result.size)
+	return applied
+
+
+## Test hook: scale a region from the mapping-pane handle path.
+func resize_region_on_mapping(id: String, size: Vector2) -> Dictionary:
 	if controller == null:
 		return {"ok": false, "error": "no controller"}
 	var region: Dictionary = Calibration.region(controller.get_calibration(), id)

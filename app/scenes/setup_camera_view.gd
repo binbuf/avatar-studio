@@ -8,16 +8,25 @@ extends Control
 ## a diagnostic view; the pixels never enter the avatar SubViewport or the OBS
 ## output.
 ##
-## Direct manipulation: while a region mode is active the operator drags a box
-## around an eye or mouth. The box is inverted through the tracking homography
-## into canonical face coordinates and emitted as `region_drawn`, so the shape
-## the operator draws is the shape the decal uses.
+## Direct manipulation (same contract as the mapping and model panes):
+## - with a region mode active, drag a box to set that region's centre and size;
+## - with no mode, drag a cutout outline to move it, or drag the square handle at
+##   its bottom-right corner to scale it.
+##
+## The box/pointer is inverted through the live homography into canonical face
+## coordinates. The setup window subtracts the FaceRig anchor and persists the
+## authored region.
 
 const SHADER_PATH := "res://shaders/camera_preview.gdshader"
 const Overlay = preload("res://scenes/setup_camera_overlay.gd")
 const REGION_IDS := ["eye_l", "eye_r", "mouth"]
+const HIT_RADIUS := 26.0
+const HANDLE_SIZE := 10.0
 
 signal region_drawn(id: String, center: Vector2, size: Vector2)
+signal region_selected(id: String)
+signal region_dragged(id: String, center: Vector2)
+signal region_resized(id: String, size: Vector2)
 
 var preview_enabled := true
 var has_frame := false
@@ -40,14 +49,19 @@ var _selected_id := ""
 var _homography := PackedFloat32Array()
 var _normalised_box := Rect2()
 var _slot_key := ""
+var _polygons: Dictionary = {}
+
 var _dragging := false
 var _drag_start := Vector2.ZERO
 var _drag_current := Vector2.ZERO
+var _moving := false
+var _move_id := ""
+var _resizing := false
 
 
 func _ready() -> void:
 	clip_contents = true
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	_frame = ColorRect.new()
 	_frame.name = "CameraImage"
 	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -69,15 +83,13 @@ func set_preview_enabled(enabled: bool) -> void:
 	_push_overlay()
 
 
-## "" stops drawing. `eye_l`, `eye_r` or `mouth` makes the pane capture mouse
-## drags and emit `region_drawn` when the operator releases a box.
+## "" keeps the move/scale interaction. `eye_l`, `eye_r` or `mouth` makes a
+## drag draw a box.
 func set_draw_mode(id: String) -> void:
 	draw_mode = id if REGION_IDS.has(id) else ""
-	mouse_filter = Control.MOUSE_FILTER_STOP if draw_mode != "" \
-			else Control.MOUSE_FILTER_IGNORE
 	_dragging = false
-	_drag_start = Vector2.ZERO
-	_drag_current = Vector2.ZERO
+	_moving = false
+	_resizing = false
 	_push_overlay()
 
 
@@ -116,7 +128,8 @@ func update_slot(slot: Dictionary) -> void:
 ## Overlay data from one pipeline tick. `landmarks` are normalised image
 ## coordinates, `homography` is the row-major 3x3 used by the decal shader,
 ## `anchors` are the three absolute canonical centroids in eye_l/eye_r/mouth
-## order, and `regions` are the authored calibration regions.
+## order, and `regions` are the effective regions (authored centre + FaceRig
+## anchor) to draw and manipulate.
 func set_overlay(landmarks: PackedVector2Array, box: Rect2, homography: PackedFloat32Array,
 		anchors: Array, regions: Array, selected_id: String) -> void:
 	_landmarks = landmarks
@@ -184,15 +197,56 @@ func canonical_rect_from_screen_rect(screen_rect: Rect2) -> Dictionary:
 	return canonical_rect_from_image_rect(Rect2(x0, y0, x1 - x0, y1 - y0))
 
 
+## Unprojects a pane-space point through the inverse homography. Returns the
+## effective canonical point, or null when the point is off the camera image.
+func canonical_from_screen(point: Vector2) -> Variant:
+	if _homography.size() != 9:
+		return null
+	if image_rect.size.x <= 1.0 or image_rect.size.y <= 1.0:
+		return null
+	if not image_rect.has_point(point):
+		return null
+	var inverse := _invert_homography(_homography)
+	if inverse.size() != 9:
+		return null
+	var normalised := (point - image_rect.position) / image_rect.size
+	return _apply_homography(inverse, normalised.x, normalised.y)
+
+
+## Projects an effective canonical point back onto the camera pane.
+func screen_from_canonical(center: Vector2) -> Variant:
+	var projected: Variant = _apply_homography(_homography, center.x, center.y)
+	if projected == null:
+		return null
+	return _to_screen(projected)
+
+
+func get_region_polygons() -> Dictionary:
+	return _polygons.duplicate(true)
+
+
 func _gui_input(event: InputEvent) -> void:
-	if draw_mode == "":
-		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			if image_rect.has_point(event.position):
+			if not image_rect.has_point(event.position):
+				return
+			if draw_mode != "":
 				_dragging = true
 				_drag_start = event.position
 				_drag_current = event.position
+				accept_event()
+				return
+			if _selected_id != "" and _handle_rect().has_point(event.position):
+				_resizing = true
+				accept_event()
+				return
+			var id := _hit_region(event.position)
+			if id != "":
+				_selected_id = id
+				_moving = true
+				_move_id = id
+				region_selected.emit(id)
+				_push_overlay()
 				accept_event()
 		elif _dragging:
 			_dragging = false
@@ -201,10 +255,26 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 			if rect.size.x >= 4.0 and rect.size.y >= 4.0:
 				_emit_region(rect)
-	elif event is InputEventMouseMotion and _dragging:
-		_drag_current = event.position
-		_push_overlay()
-		accept_event()
+		elif _moving:
+			_moving = false
+			_move_id = ""
+			accept_event()
+		elif _resizing:
+			_resizing = false
+			accept_event()
+	elif event is InputEventMouseMotion:
+		if _dragging:
+			_drag_current = event.position
+			_push_overlay()
+			accept_event()
+		elif _moving:
+			var canonical: Variant = canonical_from_screen(event.position)
+			if canonical != null:
+				region_dragged.emit(_move_id, canonical)
+			accept_event()
+		elif _resizing:
+			_apply_resize(event.position)
+			accept_event()
 
 
 func _emit_region(screen_rect: Rect2) -> void:
@@ -212,6 +282,22 @@ func _emit_region(screen_rect: Rect2) -> void:
 	if result.is_empty():
 		return
 	region_drawn.emit(draw_mode, Vector2(result.center), Vector2(result.size))
+
+
+func _apply_resize(point: Vector2) -> void:
+	if _selected_id == "":
+		return
+	var index := REGION_IDS.find(_selected_id)
+	if index < 0 or index >= _regions.size():
+		return
+	var canonical: Variant = canonical_from_screen(point)
+	if canonical == null:
+		return
+	var centre: Vector2 = _regions[index].get("center", Vector2.ZERO)
+	var size := Vector2(absf(Vector2(canonical).x - centre.x) * 2.0,
+			absf(Vector2(canonical).y - centre.y) * 2.0)
+	size = Vector2(maxf(size.x, 0.02), maxf(size.y, 0.02))
+	region_resized.emit(_selected_id, size)
 
 
 func _drag_rect() -> Rect2:
@@ -271,6 +357,7 @@ func _project_quad() -> PackedVector2Array:
 
 func _project_regions() -> Array:
 	var out: Array = []
+	_polygons = {}
 	if _homography.size() != 9 or _regions.is_empty():
 		return out
 	for index in range(_regions.size()):
@@ -283,6 +370,7 @@ func _project_regions() -> Array:
 		var points := _project_region(centre, size, rotation, shape)
 		if points.size() < 3:
 			continue
+		_polygons[id] = points
 		out.append({
 			"id": id,
 			"points": points,
@@ -316,6 +404,43 @@ func _project_region(centre: Vector2, size: Vector2, rotation: float,
 	return out
 
 
+func _handle_rect() -> Rect2:
+	if _selected_id == "" or not _polygons.has(_selected_id):
+		return Rect2()
+	var polygon: PackedVector2Array = _polygons[_selected_id]
+	if polygon.size() < 3:
+		return Rect2()
+	var bounds := Rect2(polygon[0], Vector2.ZERO)
+	for point in polygon:
+		bounds = bounds.expand(point)
+	return Rect2(bounds.end - Vector2(HANDLE_SIZE, HANDLE_SIZE),
+			Vector2(HANDLE_SIZE, HANDLE_SIZE))
+
+
+func _hit_region(point: Vector2) -> String:
+	var nearest := ""
+	var nearest_distance := INF
+	for id in _polygons.keys():
+		var polygon: PackedVector2Array = _polygons[id]
+		if polygon.size() >= 3 and Geometry2D.is_point_in_polygon(point, polygon):
+			return id
+		if polygon.size() >= 3:
+			var distance := point.distance_to(_polygon_centre(polygon))
+			if distance < nearest_distance:
+				nearest_distance = distance
+				nearest = id
+	if nearest_distance <= HIT_RADIUS:
+		return nearest
+	return ""
+
+
+func _polygon_centre(polygon: PackedVector2Array) -> Vector2:
+	var sum := Vector2.ZERO
+	for point in polygon:
+		sum += point
+	return sum / float(maxi(polygon.size(), 1))
+
+
 func _push_overlay() -> void:
 	if _overlay == null:
 		return
@@ -330,7 +455,7 @@ func _push_overlay() -> void:
 	region_outlines = _project_regions()
 	_overlay.call("set_overlay", image_rect, _landmarks, _normalised_box, quad_points,
 			anchor_points, has_frame, preview_enabled, region_outlines,
-			_drag_rect(), draw_mode)
+			_drag_rect(), draw_mode, _selected_id)
 
 
 ## Inverts a row-major 3x3 homography. Returns an empty array when singular.
