@@ -14,6 +14,7 @@ extends Control
 const Calibration = preload("res://scenes/live_calibration.gd")
 const CameraView = preload("res://scenes/setup_camera_view.gd")
 const MappingView = preload("res://scenes/setup_mapping_view.gd")
+const ModelView = preload("res://scenes/setup_model_view.gd")
 
 const BACKGROUND := Color(0.020, 0.030, 0.045, 1.0)
 const PANEL := Color(0.045, 0.060, 0.085, 1.0)
@@ -37,12 +38,16 @@ var viewport: SubViewport = null
 
 var camera_view = null
 var mapping_view = null
+var model_view = null
 var final_frame: Control = null
 var final_background: ColorRect = null
 var final_avatar: TextureRect = null
 var final_note: Label = null
 var status_panel: PanelContainer = null
 var controls_panel: PanelContainer = null
+var fine_tune_scroll: ScrollContainer = null
+var split_outer: HSplitContainer = null
+var split_inner: HSplitContainer = null
 var pane_footers: Array = []
 var pane_titles: Array = []
 var status_extra_labels: Array = []
@@ -50,6 +55,7 @@ var control_section_labels: Array = []
 var compact := false
 var labels: Dictionary = {}
 var mapping_text: Label = null
+var model_header_label: Label = null
 var action_status: Label = null
 var background_option: OptionButton = null
 var capture_option: OptionButton = null
@@ -57,6 +63,8 @@ var tracker_option: OptionButton = null
 var preview_check: CheckButton = null
 var file_dialog: FileDialog = null
 var sliders: Dictionary = {}
+var draw_buttons: Dictionary = {}
+var selected_region := "eye_l"
 
 var base: Dictionary = {}
 var working: Dictionary = {}
@@ -101,6 +109,10 @@ func open() -> void:
 				and hud != null and hud.has_method("use_default_still"):
 			hud.call("use_default_still")
 	_reset_params_from_base()
+	if camera_view != null:
+		camera_view.set_draw_mode("")
+	if model_view != null:
+		model_view.set_draw_mode("")
 	if viewport != null and final_avatar != null:
 		final_avatar.texture = viewport.get_texture()
 	_overlay_timer = 0.0
@@ -112,6 +124,10 @@ func close() -> void:
 	opened = false
 	visible = false
 	set_process(false)
+	if camera_view != null:
+		camera_view.set_draw_mode("")
+	if model_view != null:
+		model_view.set_draw_mode("")
 	if hud != null and hud.has_method("use_camera"):
 		hud.call("use_camera")
 	if controller != null:
@@ -136,17 +152,19 @@ func _process(delta: float) -> void:
 		_refresh_status()
 
 
-## At 150-200% UI scale the effective window is 640x360 or smaller. Keep the
+## At 150-200% UI scale the effective window can be 640x360 or smaller. Keep the
 ## three panes usable by hiding the secondary pane notes and shrinking the
 ## control strip; the controls still scroll inside their panel.
 func _apply_compact_layout() -> void:
 	var window := get_window()
 	if window == null:
 		return
-	var want := window.content_scale_factor >= 1.5
+	var logical_width := float(window.size.x) / maxf(window.content_scale_factor, 0.01)
+	var want := logical_width < 800.0
 	if want == compact:
 		return
 	compact = want
+	_apply_pane_ratios()
 	for footer in pane_footers:
 		if footer is Control:
 			footer.visible = not compact
@@ -166,8 +184,22 @@ func _apply_compact_layout() -> void:
 		background_option.add_theme_font_size_override("font_size", 11 if compact else 14)
 	if action_status != null:
 		action_status.visible = not compact
+	if fine_tune_scroll != null:
+		fine_tune_scroll.visible = not compact
 	if controls_panel != null:
-		controls_panel.custom_minimum_size = Vector2(0, 64 if compact else 84)
+		controls_panel.custom_minimum_size = Vector2(0, 64 if compact else 240)
+
+
+## SplitContainer's default split position follows the children's expand flags
+## and stretch ratios. Setting the ratios (rather than split_offset) keeps the
+## panes proportional at every window size while leaving the dividers draggable.
+func _apply_pane_ratios() -> void:
+	if split_outer != null and split_outer.get_child_count() == 2:
+		split_outer.get_child(0).size_flags_stretch_ratio = 0.24 if compact else 0.30
+		split_outer.get_child(1).size_flags_stretch_ratio = 0.76 if compact else 0.70
+	if split_inner != null and split_inner.get_child_count() == 2:
+		split_inner.get_child(0).size_flags_stretch_ratio = 0.38 if compact else 0.42
+		split_inner.get_child(1).size_flags_stretch_ratio = 0.62 if compact else 0.58
 
 
 func _refresh(force: bool) -> void:
@@ -183,14 +215,47 @@ func _refresh_overlays() -> void:
 	var state: Dictionary = controller.last_state
 	if state.is_empty():
 		state = controller.get_state()
+	var values: Dictionary = controller.get_calibration()
+	var regions: Array = values.get("regions", [])
+	var anchors := _region_anchors(state)
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
 		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
 				state.get("canonical_to_image", PackedFloat32Array()),
-				state.get("regions", []))
+				state.get("regions", []), regions, selected_region)
 	if mapping_view != null:
-		mapping_view.set_data(controller.get_calibration(), state)
+		mapping_view.set_data(values, state)
+		mapping_view.set_selected(selected_region)
+	if model_view != null:
+		model_view.set_data(values.get("face", {}), regions, anchors, controller.model,
+				_get_avatar_camera(), _get_viewport_size(), selected_region)
 	_update_mapping_text(state)
+
+
+## Per-region FaceRig anchors: the live centroid minus its rest value. The decal
+## shader adds these to the authored region rect, so the model outline must too.
+func _region_anchors(state: Dictionary) -> Array:
+	var out: Array = []
+	var regions: Array = state.get("regions", [])
+	var rest: Array = state.get("region_rest", [])
+	for index in range(REGION_IDS.size()):
+		if index < regions.size() and index < rest.size():
+			out.append(Vector2(regions[index]) - Vector2(rest[index]))
+		else:
+			out.append(Vector2.ZERO)
+	return out
+
+
+func _get_avatar_camera() -> Camera3D:
+	if viewport == null:
+		return null
+	return viewport.get_node_or_null("AvatarCamera") as Camera3D
+
+
+func _get_viewport_size() -> Vector2i:
+	if viewport != null:
+		return viewport.size
+	return Vector2i(1920, 1080)
 
 
 func _refresh_status() -> void:
@@ -269,6 +334,7 @@ func _refresh_status() -> void:
 	if final_note != null:
 		final_note.text = final_note_text
 		final_note.add_theme_color_override("font_color", MUTED)
+	_sync_selected_buttons()
 
 
 func _set_label(key: String, text: String) -> void:
@@ -368,28 +434,51 @@ func _build_status(parent: Control) -> void:
 
 
 func _build_panes(parent: Control) -> void:
-	var panes := HBoxContainer.new()
-	panes.name = "SetupPanes"
-	panes.add_theme_constant_override("separation", 6)
-	panes.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	parent.add_child(panes)
+	split_outer = HSplitContainer.new()
+	split_outer.name = "SetupPanes"
+	split_outer.add_theme_constant_override("separation", 6)
+	split_outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	split_outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parent.add_child(split_outer)
 
-	# Camera pane.
-	var camera_pane := _pane("Camera", 1.10)
-	panes.add_child(camera_pane)
+	# Camera pane: the live feed and the draw-a-shape interaction.
+	var camera_pane := _pane("Camera", 0.30)
+	split_outer.add_child(camera_pane)
+	var camera_header: HBoxContainer = camera_pane.get_meta("header")
+	var draw_group := ButtonGroup.new()
+	draw_group.allow_unpress = true
+	for id in REGION_IDS:
+		var button := Button.new()
+		button.name = "Draw" + String(id)
+		button.text = _region_button_name(id)
+		button.toggle_mode = true
+		button.button_group = draw_group
+		button.add_theme_font_size_override("font_size", 11)
+		button.toggled.connect(_on_draw_toggled.bind(id))
+		camera_header.add_child(button)
+		draw_buttons[id] = button
 	camera_view = CameraView.new()
 	camera_view.name = "CameraView"
 	camera_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	camera_view.region_drawn.connect(_on_camera_region_drawn)
 	var camera_content: Control = camera_pane.get_meta("content")
 	camera_content.add_child(camera_view)
-	var camera_note := _label("raw feed + landmarks, face box, H quad, anchors", 11, MUTED)
+	var camera_note := _label(
+			"Drag a box around an eye or mouth, or draw the same box on the model.",
+			11, MUTED)
 	camera_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var camera_footer: VBoxContainer = camera_pane.get_meta("footer")
 	camera_footer.add_child(camera_note)
 
-	# Mapping pane.
-	var mapping_pane := _pane("Mapping (canonical face)", 1.0)
-	panes.add_child(mapping_pane)
+	# Mapping pane: the canonical-face values the decal actually uses.
+	split_inner = HSplitContainer.new()
+	split_inner.add_theme_constant_override("separation", 6)
+	split_inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	split_inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	split_inner.size_flags_stretch_ratio = 0.70
+	split_outer.add_child(split_inner)
+	var mapping_pane := _pane("Mapping (canonical face)", 0.42)
+	split_inner.add_child(mapping_pane)
 	mapping_view = MappingView.new()
 	mapping_view.name = "MappingView"
 	mapping_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -402,10 +491,13 @@ func _build_panes(parent: Control) -> void:
 	var mapping_footer: VBoxContainer = mapping_pane.get_meta("footer")
 	mapping_footer.add_child(mapping_text)
 
-	# Final output pane.
-	var final_pane := _pane("Final output", 1.0)
-	panes.add_child(final_pane)
+	# Final output pane: the avatar with draggable cutout outlines.
+	var final_pane := _pane("Model - drag cutouts", 0.58)
+	split_inner.add_child(final_pane)
 	var final_header: HBoxContainer = final_pane.get_meta("header")
+	model_header_label = _label("", 11, MUTED)
+	model_header_label.name = "SelectedRegion"
+	final_header.add_child(model_header_label)
 	background_option = OptionButton.new()
 	background_option.name = "Background"
 	background_option.add_item("White", 0)
@@ -432,7 +524,17 @@ func _build_panes(parent: Control) -> void:
 	final_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	final_avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	final_frame.add_child(final_avatar)
-	final_note = _label("No overlays. OBS output is separate.", 11, MUTED)
+	model_view = ModelView.new()
+	model_view.name = "ModelView"
+	model_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	model_view.region_selected.connect(_on_model_region_selected)
+	model_view.region_dragged.connect(_on_model_region_dragged)
+	model_view.region_drawn.connect(_on_model_region_drawn)
+	model_view.region_resized.connect(_on_model_region_resized)
+	final_frame.add_child(model_view)
+	final_note = _label(
+			"Draw a box or drag the corner handle to scale. OBS output is separate.",
+			11, MUTED)
 	final_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var final_footer: VBoxContainer = final_pane.get_meta("footer")
 	final_footer.add_child(final_note)
@@ -473,23 +575,55 @@ func _build_controls(parent: Control) -> void:
 	var panel := PanelContainer.new()
 	panel.name = "SetupControls"
 	panel.add_theme_stylebox_override("panel", _panel_style(0.90))
-	panel.custom_minimum_size = Vector2(0, 84)
+	panel.custom_minimum_size = Vector2(0, 240)
 	parent.add_child(panel)
 	controls_panel = panel
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	panel.add_child(box)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
+	# The primary actions stay visible even when the fine-tune area scrolls.
+	var actions := HFlowContainer.new()
+	actions.add_theme_constant_override("h_separation", 8)
+	actions.add_theme_constant_override("v_separation", 2)
+	box.add_child(actions)
+	var apply_button := _button("Apply to model", _on_apply_pressed)
+	apply_button.name = "ApplyToModel"
+	actions.add_child(apply_button)
+	var reset_button := _button("Reset", _on_reset_pressed)
+	reset_button.name = "ResetCalibration"
+	actions.add_child(reset_button)
+	var snapshot_button := _button("Snapshot", _on_snapshot_pressed)
+	snapshot_button.name = "Snapshot"
+	actions.add_child(snapshot_button)
+	var load_button := _button("Load still...", _on_load_still_pressed)
+	load_button.name = "LoadStill"
+	actions.add_child(load_button)
+	var camera_button := _button("Use camera", _on_use_camera_pressed)
+	camera_button.name = "UseCamera"
+	actions.add_child(camera_button)
+	var close_button := _button("Back to Live", _on_close_pressed)
+	close_button.name = "CloseSetup"
+	actions.add_child(close_button)
+	action_status = _label("", 11, OK_COLOUR)
+	action_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_status.custom_minimum_size = Vector2(220, 0)
+	action_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	actions.add_child(action_status)
+
+	# Fine tune: every slider lives in a scroll area so the panel never clips.
+	fine_tune_scroll = ScrollContainer.new()
+	fine_tune_scroll.name = "FineTune"
+	fine_tune_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	fine_tune_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	fine_tune_scroll.custom_minimum_size = Vector2(0, 120)
+	box.add_child(fine_tune_scroll)
 	var controls := VBoxContainer.new()
 	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	controls.add_theme_constant_override("separation", 3)
-	scroll.add_child(controls)
+	fine_tune_scroll.add_child(controls)
 
-	var region_label := _label("Eye L / Eye R / Mouth", 11, MUTED)
+	var region_label := _label("Fine tune: eye L / eye R / mouth", 11, MUTED)
 	controls.add_child(region_label)
 	control_section_labels.append(region_label)
 	var region_grid := _grid()
@@ -541,34 +675,6 @@ func _build_controls(parent: Control) -> void:
 	preview_check.button_pressed = true
 	preview_check.toggled.connect(_on_preview_toggled)
 	inputs.add_child(preview_check)
-
-	var actions := HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 8)
-	box.add_child(actions)
-	var apply_button := _button("Apply to model", _on_apply_pressed)
-	apply_button.name = "ApplyToModel"
-	actions.add_child(apply_button)
-	var reset_button := _button("Reset", _on_reset_pressed)
-	reset_button.name = "ResetCalibration"
-	actions.add_child(reset_button)
-	var snapshot_button := _button("Snapshot", _on_snapshot_pressed)
-	snapshot_button.name = "Snapshot"
-	actions.add_child(snapshot_button)
-	var load_button := _button("Load still...", _on_load_still_pressed)
-	load_button.name = "LoadStill"
-	actions.add_child(load_button)
-	var camera_button := _button("Use camera", _on_use_camera_pressed)
-	camera_button.name = "UseCamera"
-	actions.add_child(camera_button)
-
-	action_status = _label("", 11, OK_COLOUR)
-	action_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	action_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	actions.add_child(action_status)
-
-	var close_button := _button("Back to Live", _on_close_pressed)
-	close_button.name = "CloseSetup"
-	actions.add_child(close_button)
 
 
 func _grid() -> GridContainer:
@@ -655,6 +761,7 @@ func _reset_params_from_base() -> void:
 		params["size_%s_y" % id] = size.y
 	_sync_sliders()
 	working = base.duplicate(true)
+	_sync_selected_buttons()
 
 
 func _sync_sliders() -> void:
@@ -712,6 +819,137 @@ func _on_slider_changed(value: float, key: String) -> void:
 	action_status.text = "Live mapping updated (not saved)"
 	action_status.add_theme_color_override("font_color", MUTED)
 	_refresh_overlays()
+
+
+func _on_draw_toggled(pressed: bool, id: String) -> void:
+	if pressed:
+		selected_region = id
+		if camera_view != null:
+			camera_view.set_draw_mode(id)
+		if model_view != null:
+			model_view.set_draw_mode(id)
+		_set_action("Draw " + _region_name(id) + ": drag on the camera or the model.")
+	else:
+		if camera_view != null:
+			camera_view.set_draw_mode("")
+		if model_view != null:
+			model_view.set_draw_mode("")
+	_refresh_overlays()
+
+
+func _on_camera_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
+	selected_region = id
+	_apply_region_values(id, _authored_center(id, center), size,
+			"Drew " + _region_name(id))
+
+
+func _on_model_region_selected(id: String) -> void:
+	selected_region = id
+	if camera_view != null:
+		camera_view.set_draw_mode("")
+	if model_view != null:
+		model_view.set_draw_mode("")
+	_sync_selected_buttons()
+	_refresh_overlays()
+
+
+func _on_model_region_dragged(id: String, center: Vector2) -> void:
+	# `center` is the effective canonical point (authored + FaceRig anchor);
+	# the persisted region is the authored point.
+	_apply_region_values(id, _authored_center(id, center), Vector2.ZERO,
+			"Moved " + _region_name(id), false)
+
+
+func _on_model_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
+	selected_region = id
+	_apply_region_values(id, _authored_center(id, center), size,
+			"Drew " + _region_name(id) + " on the model")
+
+
+func _on_model_region_resized(id: String, size: Vector2) -> void:
+	if controller == null:
+		return
+	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	if region.is_empty():
+		return
+	_apply_region_values(id, Vector2(region.center), size,
+			"Scaled " + _region_name(id))
+
+
+func _apply_region_values(id: String, center: Vector2, size: Vector2, message: String,
+		resize := true) -> Dictionary:
+	if controller == null or base.is_empty():
+		return {"ok": false, "error": "no calibration"}
+	params["center_%s_x" % id] = center.x
+	params["center_%s_y" % id] = center.y
+	if resize:
+		params["size_%s_x" % id] = maxf(size.x, 0.02)
+		params["size_%s_y" % id] = maxf(size.y, 0.02)
+	_sync_sliders()
+	working = _rebuild_values()
+	var result: Dictionary = controller.apply_calibration(working, false)
+	if not bool(result.get("ok", false)):
+		_set_action("Rejected: " + String(result.get("error", "")), true)
+		return result
+	_set_action(message + " (not saved)")
+	_refresh_overlays()
+	return {"ok": true, "error": "", "center": center, "size": size}
+
+
+func _region_anchor(id: String) -> Vector2:
+	var index := REGION_IDS.find(id)
+	if index < 0 or controller == null:
+		return Vector2.ZERO
+	var state: Dictionary = controller.last_state
+	var regions: Array = state.get("regions", [])
+	var rest: Array = state.get("region_rest", [])
+	if index < regions.size() and index < rest.size():
+		return Vector2(regions[index]) - Vector2(rest[index])
+	return Vector2.ZERO
+
+
+## The model/camera show the effective centre (authored + FaceRig anchor); the
+## persisted calibration stores the authored centre.
+func _authored_center(id: String, effective: Vector2) -> Vector2:
+	return effective - _region_anchor(id)
+
+
+func _set_action(text: String, warn := false) -> void:
+	if action_status == null:
+		return
+	action_status.text = text
+	action_status.add_theme_color_override("font_color", WARN_COLOUR if warn else MUTED)
+
+
+func _region_name(id: String) -> String:
+	match id:
+		"eye_l":
+			return "eye L"
+		"eye_r":
+			return "eye R"
+		"mouth":
+			return "mouth"
+	return id
+
+
+func _region_button_name(id: String) -> String:
+	match id:
+		"eye_l":
+			return "L eye"
+		"eye_r":
+			return "R eye"
+		"mouth":
+			return "Mouth"
+	return id
+
+
+func _sync_selected_buttons() -> void:
+	for id in draw_buttons.keys():
+		var button: Button = draw_buttons[id]
+		button.set_pressed_no_signal(id == selected_region and camera_view != null \
+				and camera_view.get_draw_mode() == id)
+	if model_header_label != null:
+		model_header_label.text = _region_name(selected_region)
 
 
 func _on_apply_pressed() -> void:
@@ -891,6 +1129,7 @@ func get_panes() -> Dictionary:
 	return {
 		"camera": camera_view,
 		"mapping": mapping_view,
+		"model": model_view,
 		"final": final_frame,
 		"status": find_child("SetupStatus", true, false),
 		"controls": find_child("SetupControls", true, false),
@@ -998,3 +1237,120 @@ func set_camera_preview(enabled: bool) -> void:
 	if preview_check != null:
 		preview_check.button_pressed = enabled
 	_on_preview_toggled(enabled)
+
+
+# ---------------------------------------------------------------------------
+# Direct-manipulation hooks
+# ---------------------------------------------------------------------------
+
+## Selects a region and turns on drawing for it on both the camera and the
+## model. Pass "" to stop drawing.
+func set_draw_mode(id: String) -> void:
+	if not REGION_IDS.has(id):
+		id = ""
+	selected_region = id if id != "" else selected_region
+	if camera_view != null:
+		camera_view.set_draw_mode(id)
+	if model_view != null:
+		model_view.set_draw_mode(id)
+	_sync_selected_buttons()
+	_refresh_overlays()
+
+
+## Test hook: draw a region from a normalised image-space rect (0..1).
+func draw_region_from_image_rect(id: String, image_rect_norm: Rect2) -> Dictionary:
+	if camera_view == null:
+		return {"ok": false, "error": "no camera view"}
+	var result: Dictionary = camera_view.call("canonical_rect_from_image_rect",
+			image_rect_norm)
+	if result.is_empty():
+		return {"ok": false, "error": "no tracking homography"}
+	var authored := _authored_center(id, Vector2(result.center))
+	var applied := _apply_region_values(id, authored, Vector2(result.size),
+			"Drew " + _region_name(id))
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+		applied["size"] = Vector2(result.size)
+	return applied
+
+
+## Test hook: draw a region from a pane-space rect (the coordinates the camera
+## view's mouse handler receives).
+func draw_region_from_screen_rect(id: String, screen_rect: Rect2) -> Dictionary:
+	if camera_view == null:
+		return {"ok": false, "error": "no camera view"}
+	var result: Dictionary = camera_view.call("canonical_rect_from_screen_rect",
+			screen_rect)
+	if result.is_empty():
+		return {"ok": false, "error": "no tracking homography"}
+	var authored := _authored_center(id, Vector2(result.center))
+	var applied := _apply_region_values(id, authored, Vector2(result.size),
+			"Drew " + _region_name(id))
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+		applied["size"] = Vector2(result.size)
+	return applied
+
+
+## Test hook: move a region to the canonical point under a pane-space point on
+## the model. This is the same path the mouse drag uses.
+func drag_region_on_model(id: String, pane_point: Vector2) -> Dictionary:
+	if model_view == null:
+		return {"ok": false, "error": "no model view"}
+	var canonical: Variant = model_view.call("canonical_from_screen", pane_point)
+	if canonical == null:
+		return {"ok": false, "error": "point is not on the face plane"}
+	var authored := _authored_center(id, Vector2(canonical))
+	var applied := _apply_region_values(id, authored, Vector2.ZERO,
+			"Moved " + _region_name(id), false)
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+	return applied
+
+
+## Test hook: draw a region from a pane-space box on the model. This is the same
+## path the model pane's draw mode uses.
+func draw_region_on_model(id: String, pane_rect: Rect2) -> Dictionary:
+	if model_view == null:
+		return {"ok": false, "error": "no model view"}
+	var result: Dictionary = model_view.call("canonical_rect_from_screen_rect", pane_rect)
+	if result.is_empty():
+		return {"ok": false, "error": "box is not on the face plane"}
+	var authored := _authored_center(id, Vector2(result.center))
+	var applied := _apply_region_values(id, authored, Vector2(result.size),
+			"Drew " + _region_name(id) + " on the model")
+	if bool(applied.get("ok", false)):
+		applied["center"] = authored
+		applied["size"] = Vector2(result.size)
+	return applied
+
+
+## Test hook: scale a region about its centre, as the model handle does.
+func resize_region_on_model(id: String, size: Vector2) -> Dictionary:
+	if controller == null:
+		return {"ok": false, "error": "no controller"}
+	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	if region.is_empty():
+		return {"ok": false, "error": "no region " + id}
+	return _apply_region_values(id, Vector2(region.center), size,
+			"Scaled " + _region_name(id))
+
+
+func get_model_view():
+	return model_view
+
+
+func get_camera_image_rect() -> Rect2:
+	return camera_view.image_rect if camera_view != null else Rect2()
+
+
+func get_region_screen_polygons() -> Dictionary:
+	return model_view.get_polygons() if model_view != null else {}
+
+
+func get_fine_tune_rect() -> Rect2:
+	return fine_tune_scroll.get_global_rect() if fine_tune_scroll != null else Rect2()
+
+
+func get_selected_region() -> String:
+	return selected_region

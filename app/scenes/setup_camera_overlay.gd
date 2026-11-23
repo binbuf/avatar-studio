@@ -1,20 +1,33 @@
 extends Control
 
 ## Overlay layer for the T25c camera pane. It is a sibling drawn after the
-## camera ColorRect, so landmarks, the face box, the homography quad and the
-## region anchors stay visible over the raw feed.
+## camera ColorRect, so landmarks, the face box, the homography quad, the
+## authored region shapes and the region anchors stay visible over the raw feed.
+##
+## The authored region shapes are projected through the live homography, which
+## makes this pane WYSIWYG for the draw interaction: the box the operator drags
+## becomes the ellipse/rounded rect shown here and in the decal.
 
 const LANDMARK_COLOUR := Color(0.35, 0.95, 1.0, 0.75)
 const BOX_COLOUR := Color(1.0, 0.82, 0.30, 0.95)
 const QUAD_COLOUR := Color(0.45, 1.0, 0.55, 0.95)
 const ANCHOR_COLOUR := Color(1.0, 0.45, 0.75, 1.0)
 const TEXT_COLOUR := Color(0.92, 0.95, 1.0, 1.0)
+const DRAW_COLOUR := Color(1.0, 1.0, 1.0, 0.95)
+const REGION_COLOURS := [
+	Color(0.35, 0.85, 1.0, 1.0),
+	Color(0.55, 0.95, 0.65, 1.0),
+	Color(1.0, 0.60, 0.75, 1.0),
+]
 
 var image_rect := Rect2()
 var landmarks := PackedVector2Array()
 var face_box := Rect2()
 var quad_points := PackedVector2Array()
 var anchors: Array = []
+var region_outlines: Array = []
+var drag_rect := Rect2()
+var draw_mode := ""
 var has_frame := false
 var preview_enabled := true
 
@@ -24,7 +37,8 @@ func _ready() -> void:
 
 
 func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: PackedVector2Array,
-		anchor_points: Array, frame_visible: bool, preview_on: bool) -> void:
+		anchor_points: Array, frame_visible: bool, preview_on: bool,
+		outlines: Array, drag: Rect2, mode: String) -> void:
 	image_rect = rect
 	landmarks = points
 	face_box = box
@@ -32,6 +46,9 @@ func set_overlay(rect: Rect2, points: PackedVector2Array, box: Rect2, quad: Pack
 	anchors = anchor_points
 	has_frame = frame_visible
 	preview_enabled = preview_on
+	region_outlines = outlines
+	drag_rect = drag
+	draw_mode = mode
 	queue_redraw()
 
 
@@ -79,6 +96,31 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, clamped[0] + Vector2(4, -4),
 				"H quad", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, QUAD_COLOUR)
 
+	_draw_regions()
+	_draw_anchors()
+	_draw_drag()
+
+
+func _draw_regions() -> void:
+	for entry in region_outlines:
+		var points: PackedVector2Array = entry.get("points", PackedVector2Array())
+		if points.size() < 3:
+			continue
+		var index := int(entry.get("colour_index", 0))
+		var colour: Color = REGION_COLOURS[index % REGION_COLOURS.size()]
+		var selected := bool(entry.get("selected", false))
+		if selected:
+			colour = colour.lightened(0.25)
+		draw_colored_polygon(points, colour * Color(1, 1, 1, 0.12 if selected else 0.06))
+		for point_index in range(points.size()):
+			draw_line(points[point_index], points[(point_index + 1) % points.size()],
+					colour, 2.5 if selected else 1.5)
+		var label := _short_id(String(entry.get("id", "?")))
+		draw_string(ThemeDB.fallback_font, points[0] + Vector2(4, -4), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, colour)
+
+
+func _draw_anchors() -> void:
 	for entry in anchors:
 		var centre: Vector2 = entry.position
 		if not image_rect.has_point(centre):
@@ -87,3 +129,24 @@ func _draw() -> void:
 		draw_line(centre + Vector2(0, -5), centre + Vector2(0, 5), ANCHOR_COLOUR, 2.0)
 		draw_string(ThemeDB.fallback_font, centre + Vector2(7, -5), String(entry.label),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, ANCHOR_COLOUR)
+
+
+func _draw_drag() -> void:
+	if drag_rect.size.x < 1.0 or drag_rect.size.y < 1.0:
+		return
+	draw_rect(drag_rect, DRAW_COLOUR, false, 2.0)
+	draw_rect(drag_rect, DRAW_COLOUR * Color(1, 1, 1, 0.10), true)
+	var label := "draw " + _short_id(draw_mode)
+	draw_string(ThemeDB.fallback_font, drag_rect.position + Vector2(4, -4), label,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DRAW_COLOUR)
+
+
+func _short_id(id: String) -> String:
+	match id:
+		"eye_l":
+			return "L"
+		"eye_r":
+			return "R"
+		"mouth":
+			return "M"
+	return id

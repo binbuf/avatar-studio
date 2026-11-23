@@ -32,6 +32,7 @@ var result := {
 	"layout": {},
 	"source": {},
 	"freeze": {},
+	"direct": {},
 }
 var rendering := false
 var scene: Node = null
@@ -60,6 +61,14 @@ func check(condition: bool, message: String) -> void:
 
 
 func _run() -> void:
+	await process_frame
+	# The headless window defaults to a tiny surface. Use the same 720p layout
+	# the operator sees so pane sizes and direct manipulation are meaningful.
+	if not rendering:
+		root.size = Vector2i(1280, 720)
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--content-scale="):
+			root.content_scale_factor = float(argument.substr("--content-scale=".length()))
 	await process_frame
 	var packed := load("res://scenes/main.tscn")
 	check(packed != null, "main scene loads")
@@ -99,6 +108,7 @@ func _run() -> void:
 	_check_panes()
 	_check_overlay()
 	_check_mapping()
+	await _check_direct_manipulation()
 	await _check_final_output()
 	await _check_edit_and_apply()
 	_check_hold()
@@ -195,6 +205,99 @@ func _check_mapping() -> void:
 		"face_scale": float(mapping.get("face_scale", 0.0)),
 		"effective": _vector_texts(effective),
 	}
+
+
+func _check_direct_manipulation() -> void:
+	var image: Rect2 = setup.call("get_camera_image_rect")
+	check(image.size.x > 1.0 and image.size.y > 1.0,
+			"the camera view exposes a laid-out image rect")
+	if image.size.x <= 1.0 or image.size.y <= 1.0:
+		return
+	var overlay: Dictionary = setup.call("get_camera_overlay")
+	var box: Rect2 = overlay.get("face_box", Rect2())
+	check(box.size.x > 0.0 and box.size.y > 0.0,
+			"the camera draw interaction has a face box to aim at")
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return
+	# Draw the right eye around the right side of the tracked face box.
+	var draw_rect := Rect2(
+			image.position + Vector2(
+					(box.position.x + box.size.x * 0.52) * image.size.x,
+					(box.position.y + box.size.y * 0.20) * image.size.y),
+			Vector2(box.size.x * 0.22, box.size.y * 0.14) * image.size)
+	var before: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+	var drawn: Dictionary = setup.call("draw_region_from_screen_rect", "eye_r", draw_rect)
+	check(bool(drawn.get("ok", false)), "drawing a box on the camera applies a region")
+	var after: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+	if not before.is_empty() and not after.is_empty():
+		check(Vector2(after.center).distance_to(Vector2(before.center)) > 0.001,
+				"the drawn box moves the eye R centre")
+		check(absf(float(after.size.x) - float(before.size.x)) > 0.001
+				or absf(float(after.size.y) - float(before.size.y)) > 0.001,
+				"the drawn box resizes the eye R shape")
+
+	# The model view projects canonical face points onto the avatar pane and
+	# unprojects pointer positions back onto the same face plane.
+	var model_view = setup.call("get_model_view")
+	check(model_view != null, "the final pane has a model view")
+	var model_ok := false
+	var model_draw_ok := false
+	var model_resize_ok := false
+	if model_view != null:
+		var mouth: Dictionary = Calibration.region(setup.call("get_calibration"), "mouth")
+		var centre: Vector2 = mouth.center
+		var screen: Variant = model_view.call("screen_from_canonical", centre)
+		check(screen != null, "the model view projects the mouth onto the avatar")
+		if screen != null:
+			var round_trip: Variant = model_view.call("canonical_from_screen", screen)
+			check(round_trip != null
+					and Vector2(round_trip).distance_to(centre) < 0.05,
+					"the model view round-trips canonical face coordinates")
+			var target: Vector2 = Vector2(screen) + Vector2(12, -8)
+			var dragged: Dictionary = setup.call("drag_region_on_model", "mouth", target)
+			check(bool(dragged.get("ok", false)),
+					"dragging on the model applies the region move")
+			var moved: Dictionary = Calibration.region(setup.call("get_calibration"), "mouth")
+			model_ok = Vector2(moved.center).distance_to(centre) > 0.001
+			check(model_ok, "the model drag moves the mouth centre")
+
+			# Draw a box on the model: it sets the region centre and size.
+			var eye: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_l")
+			var eye_screen: Variant = model_view.call("screen_from_canonical",
+					Vector2(eye.center))
+			if eye_screen != null:
+				var model_box := Rect2(Vector2(eye_screen) - Vector2(20, 14),
+						Vector2(40, 28))
+				var before_size := Vector2(eye.size)
+				var model_drawn: Dictionary = setup.call("draw_region_on_model", "eye_l",
+						model_box)
+				check(bool(model_drawn.get("ok", false)),
+						"drawing a box on the model applies a region")
+				var after_eye: Dictionary = Calibration.region(
+						setup.call("get_calibration"), "eye_l")
+				check(Vector2(after_eye.size).distance_to(before_size) > 0.001,
+						"the model box resizes the eye L shape")
+				# The handle path scales about the centre.
+				var scaled: Dictionary = setup.call("resize_region_on_model", "eye_l",
+						Vector2(0.30, 0.20))
+				check(bool(scaled.get("ok", false)),
+						"the model handle path applies a new size")
+				var scaled_region: Dictionary = Calibration.region(
+						setup.call("get_calibration"), "eye_l")
+				check(absf(float(scaled_region.size.x) - 0.30) < 0.02,
+						"the model resize updates the eye L width")
+				model_draw_ok = bool(model_drawn.get("ok", false))
+				model_resize_ok = bool(scaled.get("ok", false))
+	result["direct"] = {
+		"camera_image": _rect_text(image),
+		"drawn": bool(drawn.get("ok", false)),
+		"eye_r_center": _vector_text(Vector2(after.get("center", Vector2.ZERO))),
+		"model_view": model_view != null,
+		"model_drag": model_ok,
+		"model_draw": model_draw_ok,
+		"model_resize": model_resize_ok,
+	}
+	await process_frame
 
 
 func _check_final_output() -> void:
@@ -468,8 +571,9 @@ func _check_rendered() -> void:
 	await RenderingServer.frame_post_draw
 	var black_shot := root.get_texture().get_image()
 	_save("T25c-setup-black", black_shot)
-	var sample_point := Vector2i(int(final.get_global_rect().position.x + 6),
-			int(final.get_global_rect().position.y + 30))
+	var sample_point := Vector2i(
+			int((final.get_global_rect().position.x + 6) * root.content_scale_factor),
+			int((final.get_global_rect().position.y + 30) * root.content_scale_factor))
 	if white_shot != null and black_shot != null:
 		var white_pixel := white_shot.get_pixelv(sample_point)
 		var black_pixel := black_shot.get_pixelv(sample_point)

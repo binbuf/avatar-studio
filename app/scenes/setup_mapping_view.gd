@@ -39,6 +39,7 @@ var face_scale := 1.0
 var pivot := Vector2.ZERO
 var draw_rect_area := Rect2()
 var homography := PackedFloat32Array()
+var selected_id := ""
 
 var _scale := 1.0
 var _origin := Vector2.ZERO
@@ -69,6 +70,13 @@ func set_data(values: Dictionary, state: Dictionary) -> void:
 	face_scale = float(values.get("face", {}).get("scale", 1.0))
 	pivot = Vector2.ZERO
 	homography = state.get("canonical_to_image", PackedFloat32Array())
+	queue_redraw()
+
+
+func set_selected(id: String) -> void:
+	if selected_id == id:
+		return
+	selected_id = id
 	queue_redraw()
 
 
@@ -163,10 +171,14 @@ func _draw_regions() -> void:
 		var rotation := float(region.get("rotation", deg_to_rad(float(
 				region.get("rotation_deg", 0.0)))))
 		var shape := String(region.get("shape", "ellipse"))
+		var selected := String(region.get("id", "")) == selected_id
 		# Authored rect: dim; effective rect (authored + live anchor delta): bright.
-		_draw_region(centre, size, rotation, shape, colour * Color(1, 1, 1, 0.35), false)
+		_draw_region(centre, size, rotation, shape, colour * Color(1, 1, 1, 0.35), false,
+				1.0)
 		if index < effective.size():
-			_draw_region(effective[index], size, rotation, shape, colour, true)
+			var width := 3.0 if selected else 2.0
+			_draw_region(effective[index], size, rotation, shape,
+					colour.lightened(0.2) if selected else colour, true, width)
 			draw_line(_map(centre), _map(effective[index]), colour * Color(1, 1, 1, 0.6), 1.0)
 		var label := "%s %.2f,%.2f" % [_short_id(String(region.get("id", "?"))),
 				centre.x, centre.y]
@@ -185,7 +197,7 @@ func _short_id(id: String) -> String:
 
 
 func _draw_region(centre: Vector2, size: Vector2, rotation: float, shape: String,
-		colour: Color, fill: bool) -> void:
+		colour: Color, fill: bool, width := 2.0) -> void:
 	if size.x <= 0.0 or size.y <= 0.0:
 		return
 	var points := PackedVector2Array()
@@ -202,7 +214,7 @@ func _draw_region(centre: Vector2, size: Vector2, rotation: float, shape: String
 	if fill:
 		draw_colored_polygon(points, colour * Color(1, 1, 1, 0.10))
 	for index in range(points.size()):
-		draw_line(points[index], points[(index + 1) % points.size()], colour, 2.0)
+		draw_line(points[index], points[(index + 1) % points.size()], colour, width)
 
 
 func _draw_anchors() -> void:

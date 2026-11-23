@@ -391,18 +391,31 @@ transparent output window remains a separate surface with its own gate.
 - **Camera** renders the raw T24 ring slot with the same NV12/BT.601/709 decode the decal uses, then
   overlays the dense tracker landmarks, the face box, the canonical-to-image homography quad and the
   three eye/mouth region anchors. The camera pixels never enter the avatar SubViewport or the OBS
-  output.
+  output. The operator can activate **L eye / R eye / Mouth** and drag a box around the corresponding
+  feature; the box is inverted through the live homography into canonical face coordinates and
+  becomes that region's centre and size.
 - **Mapping** draws the canonical-face values the decal actually consumes: the authored region rects,
   the live centroid plus rest-delta anchor, the head cut plane and falloff, the pivot at the face
   origin and the homography rows. Moving a slider changes these values; it is not a decorative
   diagram.
-- **Final output** samples the avatar SubViewport with no overlays and a white/black background
-  toggle. The later OBS window is not this pane.
+- **Model** samples the avatar SubViewport and draws the three diagnostic cutout outlines over it.
+  Clicking an outline selects it; dragging unprojects the pointer onto the same face plane the decal
+  shader uses and moves the region live. With a region mode active, dragging a box on the model sets
+  that region's centre and size, just like drawing on the camera; when no mode is active, dragging
+  the square handle at the selected outline's bottom-right corner scales it about its centre. The
+  white/black background toggle is in this pane. The OBS output is a separate transparent window and
+  never includes these outlines.
 
-The bottom strip moves the eye L/R and mouth centres and sizes, face scale/origin, and head cut
-origin/falloff; `Apply to model` writes `user://live_calibration.json`, and `Reset` restores the
-provisional AABB mapping without saving. Capture-mode and tracker-input selectors restart the native
-pipeline with the requested values.
+The three panes sit in nested split containers: the dividers are draggable, so the operator can
+resize the camera, mapping and model panes without leaving the window. The default surface is
+1920x1080 logical (about 1280x720 physical on a 150% display); the window is resizable and the
+panes stay proportional at every size.
+
+The bottom strip has a fixed action row (Apply to model, Reset, Snapshot, Load still, Use camera,
+Back to Live) and a scrollable fine-tune area for the eye L/R and mouth centres/sizes, face
+scale/origin, head cut/falloff and the capture/tracker selectors. `Apply to model` writes
+`user://live_calibration.json`; `Reset` restores the provisional AABB mapping without saving.
+Capture-mode and tracker-input selectors restart the native pipeline with the requested values.
 
 Two development-only sources support unattended setup work. `Snapshot` captures the current frame,
 freezes the native pipeline on it (holding the last ring slot, tracker result and FaceRig pose

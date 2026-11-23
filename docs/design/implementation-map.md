@@ -577,11 +577,13 @@ full platform matrix remain T58.
 ## T25c Setup window
 
 The diagnostic Setup window is `app/scenes/setup_window.gd` with `setup_camera_view.gd`,
-`setup_camera_overlay.gd` and `setup_mapping_view.gd`. It reads the T26 live pipeline through
-`live_pipeline_controller.gd` (the same controller the Live HUD owns) and writes the operator mapping
-to `user://live_calibration.json` through `live_calibration.gd`; the decal setters on
-`face_decal_surface.gd`/`face_decal_flat.gd` are the live apply path. The camera pane samples the
-T24 ring slot; it never copies camera pixels into the avatar viewport or the output.
+`setup_camera_overlay.gd`, `setup_mapping_view.gd` and `setup_model_view.gd`. It reads the T26 live
+pipeline through `live_pipeline_controller.gd` (the same controller the Live HUD owns) and writes
+the operator mapping to `user://live_calibration.json` through `live_calibration.gd`; the decal
+setters on `face_decal_surface.gd`/`face_decal_flat.gd` are the live apply path. The camera pane
+samples the T24 ring slot; it never copies camera pixels into the avatar viewport or the output. The
+camera pane draws regions through the inverse homography; the model pane draws/scales regions by
+unprojecting pointer boxes onto the same face plane the decal shader uses.
 
 The development sources are `native/capture/src/still_image_source.cpp` and the freeze path in
 `native/live/src/live_pipeline.cpp` plus `native/gdextension/src/avatar_live_pipeline.cpp`

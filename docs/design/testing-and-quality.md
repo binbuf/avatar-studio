@@ -1064,8 +1064,9 @@ right. Head fit deliberately crops the body. `zoom > 1` is not a fit failure; se
 in two headless modes plus one rendered mode:
 
 - synthetic source + scripted tracker: three-pane layout, overlay data (landmarks, face box,
-  homography quad, anchors), mapping values, eye/mouth edit, Apply/persist/reload, background
-  toggle, feature-loss hold, capture/tracker selectors, Snapshot freeze/unfreeze and the OBS blank.
+  homography quad, anchors), mapping values, camera-box draw, model-box draw, model drag, model
+  handle scale, eye/mouth edit, Apply/persist/reload, background toggle, feature-loss hold,
+  capture/tracker selectors, Snapshot freeze/unfreeze and the OBS blank.
 - still source (`--live-source still --still tests/fixtures/images/still_setup.png`) + scripted
   tracker: the same contract with no camera or person, plus the `still (file)` label and path.
 - rendered (`--render`): panes inside the window at 100% and 200% UI scale, opaque background, and
