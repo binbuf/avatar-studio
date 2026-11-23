@@ -156,6 +156,12 @@ diagnostic condition.
 | `OUT-006` | Info | No consumer is listening | Suppress readback; show idle state |
 | `OUT-007` | Info | Output gate blanked the frame | Log the transition once; resume automatically |
 
+T25 uses `OUT-007` with `cause = "panic"` for the deliberate panic blank and with
+`cause = "missing_features"`, `"face_lost"` or `"no_frame"` for the automatic gate. Panic has no
+separate code: it is an intentional state, not a failure, and the Live preview carries the sentence
+and the restore action. T25 surfaces the four degraded states as `CAP-001`, `TRK-001`, `TRK-008` and
+`TRK-004` with the human sentence and action from `editor-ux.md`; T41 owns the full state table.
+
 ## VCAM — Virtual camera
 
 | Code | Severity | Meaning | Recovery |

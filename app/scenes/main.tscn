@@ -1,4 +1,6 @@
-[gd_scene format=3]
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/live_hud.gd" id="1_live"]
 
 [node name="Main" type="Node"]
 
@@ -36,3 +38,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="AvatarRuntime" type="AvatarRuntime" parent="."]
+
+[node name="LiveHud" type="CanvasLayer" parent="."]
+layer = 50
+script = ExtResource("1_live")

@@ -324,6 +324,26 @@ suite, both Godot phases, the design-link check and the pinned formatting check.
 is `.tools/T23-output.json`, `.tools/T23-output-render.json` and `.tools/T23-*.log`; none of it is
 committed.
 
+## T25 Live surface
+
+`avatar_live_unit` (`fast;task_T25`) owns the framework-free Live state machine: elapsed time, actual
+fps and frame time, status precedence (panic, camera, tracker, face, output), the four degraded-state
+sentences and actions, panic toggle/restore, the edit guard, and the HUD text contract. The panic
+tests in `avatar_output_unit` assert that `OutputGate::set_panic` clears the hold, that
+`OutputManager::set_panic` submits a blank **at the call**, that the blank contains neither avatar
+nor camera pixels, that `OUT-007` is emitted once with `cause = "panic"`, and that a valid frame
+cannot resume the avatar until panic is cleared.
+
+`app/tests/live_hud.gd` runs the real `main.tscn` headlessly: the HUD labels and global-hotkey
+sentence, Ctrl/Cmd+Shift+H, the window output blank and restore, all four degraded states with
+`CAP-001`/`TRK-001`/`TRK-008`/`TRK-004`, the edit refusal and *Stop and switch*, and the 100/150/200%
+scale cycle. The rendered phase runs the same surface in a real Forward+ window at 1280x720, checks
+that the top and bottom bars stay inside the visible rect at 100% and 200%, and saves local evidence
+PNGs. `tests/gates/T25.ps1` runs both unit suites, both Godot phases, the design markers, ADR-0035,
+the design-link check and the pinned formatting check. The local evidence is
+`.tools/T25-live.json`, `.tools/T25-live-render.json` and `.tools/T25-live-*.png`; none of it is
+committed.
+
 ## T24 timestamp pairing
 
 `avatar_camera_ring_unit` (`fast;task_T24`) owns the native contract:

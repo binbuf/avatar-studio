@@ -25,6 +25,7 @@ enum class BlankCause : std::uint8_t {
     face_lost,
     invalid_result,
     no_frame,
+    panic,
 };
 
 /// One frame's gate input. `features_valid` is the tracker/rig contract: both
@@ -61,8 +62,15 @@ public:
 
     [[nodiscard]] GateDecision evaluate(const GateSignal& signal);
 
+    /// Panic is a deliberate blank. It clears the hold immediately and is
+    /// checked before every other cause, so a valid result cannot resume the
+    /// avatar until panic is cleared. The returned decision is the transition
+    /// (blank, cause panic, no TRK code) that the manager submits at once.
+    [[nodiscard]] GateDecision set_panic(bool active, TimestampNs render_time_ns);
+
     void reset() noexcept;
 
+    [[nodiscard]] bool is_panic() const noexcept { return panic_; }
     [[nodiscard]] GateState state() const noexcept { return state_; }
     [[nodiscard]] BlankCause cause() const noexcept { return cause_; }
     [[nodiscard]] TimestampNs last_accepted_render_ns() const noexcept {
@@ -79,6 +87,7 @@ private:
     TimestampNs last_render_ns_ = 0;
     std::uint32_t blank_transitions_ = 0;
     std::uint32_t resume_transitions_ = 0;
+    bool panic_ = false;
 };
 
 [[nodiscard]] const char* gate_state_name(GateState state) noexcept;

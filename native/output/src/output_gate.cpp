@@ -21,6 +21,23 @@ namespace {
 } // namespace
 
 GateDecision OutputGate::evaluate(const GateSignal& signal) {
+    if (panic_) {
+        GateDecision decision;
+        decision.state = GateState::blank;
+        decision.cause = BlankCause::panic;
+        decision.blanked = true;
+        decision.diagnostic = DiagnosticCode::unknown;
+        const bool state_changed = state_ != GateState::blank;
+        const bool cause_changed = cause_ != BlankCause::panic;
+        decision.transitioned = state_changed || cause_changed;
+        if (decision.transitioned) {
+            ++blank_transitions_;
+        }
+        state_ = GateState::blank;
+        cause_ = BlankCause::panic;
+        return decision;
+    }
+
     if (signal.render_time_ns < last_render_ns_) {
         // A non-monotonic clock must never extend the hold.
         last_accepted_render_ns_ = 0;
@@ -81,6 +98,37 @@ void OutputGate::reset() noexcept {
     last_render_ns_ = 0;
     blank_transitions_ = 0;
     resume_transitions_ = 0;
+    panic_ = false;
+}
+
+GateDecision OutputGate::set_panic(bool active, TimestampNs render_time_ns) {
+    GateDecision decision;
+    if (active == panic_) {
+        decision.state = state_;
+        decision.cause = cause_;
+        return decision;
+    }
+    panic_ = active;
+    if (!active) {
+        decision.state = state_;
+        decision.cause = cause_;
+        return decision;
+    }
+
+    // Panic is immediate: no hold and no pending valid sample may bridge it.
+    last_accepted_render_ns_ = 0;
+    last_render_ns_ = std::max(last_render_ns_, render_time_ns);
+    decision.state = GateState::blank;
+    decision.cause = BlankCause::panic;
+    decision.blanked = true;
+    decision.diagnostic = DiagnosticCode::unknown;
+    decision.transitioned = state_ != GateState::blank || cause_ != BlankCause::panic;
+    if (decision.transitioned) {
+        ++blank_transitions_;
+    }
+    state_ = GateState::blank;
+    cause_ = BlankCause::panic;
+    return decision;
 }
 
 const char* gate_state_name(GateState state) noexcept {
@@ -107,6 +155,8 @@ const char* blank_cause_name(BlankCause cause) noexcept {
             return "invalid_result";
         case BlankCause::no_frame:
             return "no_frame";
+        case BlankCause::panic:
+            return "panic";
     }
     return "unknown";
 }
@@ -120,6 +170,7 @@ DiagnosticCode blank_cause_diagnostic(BlankCause cause) noexcept {
             return DiagnosticCode::trk_002;
         case BlankCause::no_frame:
         case BlankCause::none:
+        case BlankCause::panic:
             return DiagnosticCode::unknown;
     }
     return DiagnosticCode::unknown;

@@ -1,6 +1,6 @@
 # Editor and UX
 
-**Status:** proposal · **Last updated:** 2026-11-20
+**Status:** proposal; minimal Live surface, panic blank, live edit guard and four degraded states implemented (T25); full editor shell, all error surfaces and i18n planned · **Last updated:** 2026-11-22
 
 The editor edits *avatar configuration*, not geometry. It has one job: get a user from "I have a
 `.glb`" to "I am live and it looks right" in minutes, without explaining how the renderer works.
@@ -233,6 +233,37 @@ desktop can differ.
 - **OBS setup card.** If a transport is enabled and no consumer connects within a few seconds, Live
   shows the plugin name, minimum version, link, and *Test connection*, with window capture as the
   fallback ([`output-and-virtual-camera.md`](output-and-virtual-camera.md#transports-for-cooperating-apps)).
+
+### Implemented Live surface (T25)
+
+The vertical slice ships the honest surface, not the full editor shell (T33) or every error state
+(T41). `app/scenes/live_hud.gd` overlays the existing mirrored preview and shows:
+
+- **Status bar:** LIVE/STOPPED, elapsed time, actual fps, frame time, tracking confidence, face state,
+  output state, and the global-hotkey sentence. The numbers come from `AvatarRuntime` and
+  `avatar::live::LiveSession`; the HUD updates at 4 Hz, not per frame.
+- **Status banner:** one sentence plus one action, with the support code. The four T25 states are
+  camera lost (`CAP-001`, "Camera disconnected"), face not visible (`TRK-001`, "Can't see your face"),
+  eyes or mouth hidden (`TRK-008`, "Can't see your eyes and mouth"), and tracking degraded (`TRK-004`,
+  "Face tracking is struggling"). The banner never hides the face; it sits over the preview.
+- **Panic:** the button and Ctrl/Cmd+Shift+H blank the output immediately through
+  `OutputManager::set_panic`, clear the hold, and show "Output is hidden" plus the restore action in
+  the preview. The same binding restores. A static or frozen face is never substituted.
+- **Global binding:** a Windows `RegisterHotKey` listener is attempted on startup. When the OS
+  refuses (or on a platform without a supported listener) the HUD says the in-app binding still
+  works; it never silently fails.
+- **Edit guard:** avatar, face calibration, camera, output resolution and transport changes are
+  refused while live with a *Stop and switch* action. Outfit and appearance remain safe.
+- **Output placeholder:** the window transport is real, but the monitor is labelled as a placeholder
+  until T49 owns transport status. It samples the one avatar viewport at 10 Hz; it does not add a
+  second render.
+- **UI scale:** the surface cycles 100/150/200% and keeps the top and bottom bars inside the window.
+
+The app has no live tracker wiring yet (T26/T32), so a normal launch shows
+`TRK-007` ("Face tracking isn't running") and tracking `-`. The four states above are reachable in
+this slice through the documented debug trigger (`-- --live-debug`, or the test harness) and through
+the real pipeline once T26 lands. This is recorded as a T25 deviation rather than presented as a
+working camera path. See [ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md).
 
 ---
 

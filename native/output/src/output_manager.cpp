@@ -55,6 +55,27 @@ void OutputManager::reset() {
     sequence_ = 0;
 }
 
+GateDecision OutputManager::set_panic(bool active, TimestampNs render_time_ns) {
+    const GateDecision decision = gate_.set_panic(active, render_time_ns);
+    if (!output_ || !output_->is_initialized()) {
+        return decision;
+    }
+    if (active) {
+        const std::uint32_t sequence = ++sequence_;
+        GateSignal signal;
+        signal.render_time_ns = render_time_ns;
+        signal.source_timestamp_ns = render_time_ns;
+        OutputFrame blank =
+            make_blank_frame(config_, render_time_ns, render_time_ns, sequence, blank_storage_);
+        const bool accepted = output_->submit(blank);
+        record_submit(blank, accepted);
+        if (decision.transitioned) {
+            emit_blank_diagnostics(decision, signal, sequence);
+        }
+    }
+    return decision;
+}
+
 GateDecision OutputManager::submit(const OutputFrame& avatar_frame, const GateSignal& signal) {
     if (!output_ || !output_->is_initialized()) {
         GateSignal effective = signal;

@@ -33,6 +33,12 @@ public:
     /// terms. The transport is never shut down while blank.
     [[nodiscard]] GateDecision submit(const OutputFrame& avatar_frame, const GateSignal& signal);
 
+    /// Panic blanks the output immediately. When `active` is true the manager
+    /// submits a blank frame now (not on the next render), clears the hold and
+    /// keeps every later submit blank until panic is cleared. The returned
+    /// decision is the transition, or the current state when nothing changed.
+    [[nodiscard]] GateDecision set_panic(bool active, TimestampNs render_time_ns);
+
     void reset();
 
     [[nodiscard]] const OutputGate& gate() const noexcept { return gate_; }

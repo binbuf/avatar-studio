@@ -90,6 +90,9 @@ void AvatarOutputManager::_bind_methods() {
                                 &AvatarOutputManager::initialize);
     godot::ClassDB::bind_method(godot::D_METHOD("submit_frame", "frame", "signal"),
                                 &AvatarOutputManager::submit_frame);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_panic", "active", "render_time_ns"),
+                                &AvatarOutputManager::set_panic, DEFVAL(0));
+    godot::ClassDB::bind_method(godot::D_METHOD("is_panic"), &AvatarOutputManager::is_panic);
     godot::ClassDB::bind_method(godot::D_METHOD("get_gate_state"),
                                 &AvatarOutputManager::get_gate_state);
     godot::ClassDB::bind_method(godot::D_METHOD("get_stats"), &AvatarOutputManager::get_stats);
@@ -249,6 +252,31 @@ godot::Dictionary AvatarOutputManager::submit_frame(const godot::Ref<godot::Imag
     return out;
 }
 
+godot::Dictionary AvatarOutputManager::set_panic(bool active, int64_t render_time_ns) {
+    godot::Dictionary out;
+    if (!manager_) {
+        set_error("output manager is not initialized");
+        out["state"] = godot::String("blank");
+        out["cause"] = godot::String("panic");
+        out["panic"] = false;
+        return out;
+    }
+    const avatar::output::GateDecision decision = manager_->set_panic(
+        active, static_cast<avatar::core::TimestampNs>(std::max<int64_t>(0, render_time_ns)));
+    out["state"] = godot::String(avatar::output::gate_state_name(decision.state));
+    out["cause"] = godot::String(avatar::output::blank_cause_name(decision.cause));
+    out["blanked"] = decision.blanked;
+    out["transitioned"] = decision.transitioned;
+    out["panic"] = manager_->gate().is_panic();
+    out["sequence"] = static_cast<int64_t>(manager_->stats().last_sequence);
+    out["stats"] = stats_dict(manager_->stats());
+    return out;
+}
+
+bool AvatarOutputManager::is_panic() const {
+    return manager_ != nullptr && manager_->gate().is_panic();
+}
+
 godot::Dictionary AvatarOutputManager::get_gate_state() const {
     godot::Dictionary out;
     if (!manager_) {
@@ -259,6 +287,7 @@ godot::Dictionary AvatarOutputManager::get_gate_state() const {
     const avatar::output::OutputGate& gate = manager_->gate();
     out["state"] = godot::String(avatar::output::gate_state_name(gate.state()));
     out["cause"] = godot::String(avatar::output::blank_cause_name(gate.cause()));
+    out["panic"] = gate.is_panic();
     out["last_accepted_render_ns"] = static_cast<int64_t>(gate.last_accepted_render_ns());
     out["blank_transitions"] = static_cast<int64_t>(gate.blank_transitions());
     out["resume_transitions"] = static_cast<int64_t>(gate.resume_transitions());

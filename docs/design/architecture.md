@@ -305,6 +305,15 @@ interface ([ADR-0033](adr/0033-output-gate-and-window-transport.md)).
 
 Detail: [`output-and-virtual-camera.md`](output-and-virtual-camera.md).
 
+T25 adds a framework-free Live state machine (`native/live/`) and a thin `AvatarLiveSession`
+adapter. It owns elapsed time, actual fps, frame time, tracking confidence, face/output state, the
+edit guard and the four degraded-state sentences; it owns no pixels. Panic is enforced in the output
+gate, not in the UI: `OutputGate::set_panic` clears the hold, `OutputManager::set_panic` submits a
+blank immediately, and `OUT-007` is emitted once with `cause = "panic"`. The in-app Ctrl/Cmd+Shift+H
+binding always works; a Windows `RegisterHotKey` listener is attempted and the HUD states when the OS
+refused. The Live HUD samples the one avatar viewport at 10 Hz for its window-output monitor; it adds
+no second render and no camera passthrough. Live tracker/capture wiring remains T26/T32.
+
 ## Frame lifecycle
 
 One rendered frame, end to end:

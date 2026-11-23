@@ -32,6 +32,8 @@ public:
     bool initialize(const godot::Dictionary& config);
     godot::Dictionary submit_frame(const godot::Ref<godot::Image>& frame,
                                    const godot::Dictionary& signal);
+    godot::Dictionary set_panic(bool active, int64_t render_time_ns);
+    bool is_panic() const;
     godot::Dictionary get_gate_state() const;
     godot::Dictionary get_stats() const;
     godot::Dictionary get_config() const;

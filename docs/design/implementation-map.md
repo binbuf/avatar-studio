@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T24 (timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T25 (Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -117,6 +117,22 @@ four colour-space/range colour-bar cases to 0.007 sRGB, proves the flat decal fo
 older slot, and measures upload/downscale cost. [ADR-0034](adr/0034-timestamp-paired-camera-ring.md)
 records the decision. Live capture/tracker app wiring remains T26/T32.
 
+T25 implements the minimal Live surface and the deliberate panic blank. `avatar::live::LiveSession`
+is framework-free state and copy: elapsed time, actual fps, frame time, tracking confidence, face and
+output state, status precedence, the four degraded-state sentences/actions (`CAP-001`, `TRK-001`,
+`TRK-008`, `TRK-004`), the edit guard and the HUD text contract. `AvatarLiveSession` is the
+GDExtension adapter and `app/scenes/live_hud.gd` is the surface over the existing mirrored preview:
+status bar, banner, panic/restore, Stop/Go Live, edit refusal with *Stop and switch*, a 10 Hz
+window-output monitor and 100/150/200% UI scale. `OutputGate::set_panic` clears the hold and
+`OutputManager::set_panic` submits a blank at the call; `OUT-007` is emitted once with
+`cause = "panic"`, and a valid frame cannot resume until panic is cleared. The in-app
+Ctrl/Cmd+Shift+H binding always works; a Windows `RegisterHotKey` listener is attempted and the HUD
+states when the OS refused. Live tracker/capture wiring remains T26/T32, so a normal launch shows
+`TRK-007` until then; the four states are reachable through the documented debug trigger for this
+slice. Evidence: `avatar_live_unit`, the panic cases in `avatar_output_unit`,
+`app/tests/live_hud.gd` (headless and Forward+ rendered) and `tests/gates/T25.ps1`;
+[ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md) records the decision.
+
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
 licence and design-link checks, and the performance harness against the local baseline all passed.
@@ -179,7 +195,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
 | Cross-process frame transport and the three OS virtual cameras | `platform/windows/vcam/`, `platform/macos/vcam/`, `platform/linux/vcam/` | T53, T54, T56, T57 |
 | Shaded surface mode and lighting | `app/shaders/`, `app/scenes/` | T39 |
-| Editor, library, live and settings screens | `app/ui/` | T33–T42 |
+| Editor, library and settings screens; minimal Live surface exists | `app/scenes/live_hud.gd`, `app/ui/` | T25, T33–T42 |
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
 | Bundled CC0 examples and provenance manifests | `examples/`, `assets/models/` (one unmanifested dev model exists) | T43a, T60 |
@@ -225,7 +241,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — pure FaceRig output, estimator, filtering, loss hold | `native/rig/` | T18 | `Implemented` |
 | Subsystem contract — head-region deformation | `native/gdextension/src/avatar_head.cpp`, `native/rig/include/avatar/rig/head_region.h` | T19 | `Implemented; cut CPU budget overrun (ADR-0029)` |
 | Subsystem contract — framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay is T36` |
-| Subsystem contract — output | `native/output/`, `native/gdextension/src/window_output.cpp` | T23, T46 | `Implemented (T23 gate, Null/File/Window); async readback/queues T46` |
+| Subsystem contract — output | `native/output/`, `native/gdextension/src/window_output.cpp` | T23, T25, T46 | `Implemented (T23 gate, Null/File/Window, T25 panic blank); async readback/queues T46` |
 | Timestamp-paired camera texture ring, drop gate and FaceRig newest-not-after selection | `native/capture/camera_texture_ring.h`, `native/capture/tracking_frame_gate.h`, `native/rig/src/face_rig.cpp`, `native/gdextension/src/avatar_camera_ring.cpp` | T24 | `Implemented` |
 | Live capture → tracker → rig → decal wiring | `native/`, `app/` | T26, T32 | `Planned` |
 | Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24, T26, T46 | `Planned` |
@@ -241,7 +257,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Lighting and output colour/alpha | `app/shaders/`, `native/output/` | T23, T39, T48 | `Colour/alpha boundary implemented (T23); lighting T39 and test cards T48 planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
 | Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
-| Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T41, T46, T58 | `Planned` |
+| Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T25, T41, T46, T58 | `Panic blank, four degraded states and edit guard implemented (T25); full state table T41` |
 | Repository layout: foundation subtree | `native/`, `app/`, `tests/`, `scripts/` | T01–T07 | `Implemented` |
 | Repository layout: remaining `avatar/`, `output/`, `platform/`, `models/`, `examples/` | see the missing-component table above | T10–T57 | `Planned` |
 | User data (delegated to `user-data.md`) | `native/avatar/` | T30, T31, T42 | `Planned` |
@@ -383,7 +399,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Face calibration gizmo and behaviours | `app/ui/`, `native/rig/` | T34 | `Planned` |
 | Framing editor and quality presets | `app/ui/`, `native/rig/` | T36, T42c | `Planned` |
 | Props and anchors | `app/ui/`, `native/avatar/` | T37 | `Planned` |
-| Live mode, HUD and transport status | `app/ui/`, `native/output/` | T25, T49 | `Planned` |
+| Live mode, HUD and transport status | `app/scenes/live_hud.gd`, `native/live/`, `native/gdextension/src/avatar_live_session.cpp`, `native/output/` | T25, T49 | `Implemented (T25 minimal HUD, panic, edit guard, four states, output placeholder); transport status T49` |
 | Settings panels | `app/ui/` | T42b | `Planned` |
 | States and error surfaces | `app/ui/`, `native/core/` | T41 | `Planned` |
 | Keyboard and accessibility | `app/ui/` | T63 | `Planned` |
@@ -503,6 +519,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0032](adr/0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | T22, T24, T36, T42 | Accepted |
 | [ADR-0033](adr/0033-output-gate-and-window-transport.md) | Output gate and window transport | T23, T46 | Accepted |
 | [ADR-0034](adr/0034-timestamp-paired-camera-ring.md) | Timestamp-paired camera texture ring and shader YUV decode | T24, T26, T39 | Accepted |
+| [ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md) | Live HUD, deliberate panic blank and the live edit guard | T25, T41, T49 | Accepted |
 
 ---
 
@@ -541,3 +558,8 @@ exact timestamp selection, deferred format-change generation, a drop-before-infe
 FaceRig newest-not-after buffering, NV12 R8/RG8 or BGRA/RGBA upload, and shader BT.601/709
 limited/full decode. Paired sliding is 0.66 px versus 6.45 px naive; colour bars are within
 0.007 sRGB. Live capture/tracker wiring and Forward+ upload/downscale budgets remain T26.
+T25 mechanism: [ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md), a framework-free Live state
+machine and copy module, a GDExtension adapter, a 4 Hz HUD over the existing preview, a deliberate
+panic cause in the output gate with an immediate blank, an in-app Ctrl/Cmd+Shift+H binding plus an
+optional Windows `RegisterHotKey` listener, and a live edit guard with *Stop and switch*. Live
+tracker/capture wiring remains T26/T32; the full error table remains T41.

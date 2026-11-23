@@ -1,6 +1,6 @@
 # Output and Virtual Camera
 
-**Status:** proposal · output gate, Null/File/Window transports, alpha/colour boundary and no-passthrough invariant implemented (T23); async readback, per-transport queues and third-party transports planned · **Last updated:** 2026-11-22
+**Status:** proposal · output gate, Null/File/Window transports, alpha/colour boundary, no-passthrough invariant and panic blank implemented (T23/T25); async readback, per-transport queues and third-party transports planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0005](adr/0005-output-transports.md), [ADR-0033](adr/0033-output-gate-and-window-transport.md)
 
 Output looks like a fan-out problem. It is actually two different problems that share a frame
@@ -99,6 +99,15 @@ window/no-passthrough), and `tests/gates/T23.ps1`. The no-passthrough diff chang
 0 lie outside the union of region masks with a one-pixel footprint; dropped-mouth, tracker-timeout
 and forced-invalid cases blank at 150 ms on window, Null and File. See
 [ADR-0033](adr/0033-output-gate-and-window-transport.md).
+
+### Panic blank (T25)
+
+Panic is a second, deliberate blank path. `OutputGate::set_panic` clears the hold and returns
+`BlankCause::panic`; `OutputManager::set_panic` submits a blank frame immediately and emits
+`OUT-007` once with `cause = "panic"`. A valid frame cannot resume the avatar while panic is active,
+and clearing panic does not replay a stored frame. The Live surface binds the button and
+Ctrl/Cmd+Shift+H to this path, shows "Output is hidden" in the preview, and restores on the same
+binding. The output state is a window placeholder until T49 owns transport status.
 
 ## Transports for cooperating apps
 

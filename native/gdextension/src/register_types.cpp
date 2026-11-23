@@ -1,6 +1,7 @@
 #include "register_types.h"
 
 #include "avatar_camera_ring.h"
+#include "avatar_live_session.h"
 #include "avatar_model.h"
 #include "avatar_output_manager.h"
 #include "avatar_runtime.h"
@@ -20,6 +21,7 @@ void initialize_avatar_studio_module(ModuleInitializationLevel p_level) {
     GDREGISTER_CLASS(AvatarRuntime);
     GDREGISTER_CLASS(AvatarModel);
     GDREGISTER_CLASS(AvatarOutputManager);
+    GDREGISTER_CLASS(AvatarLiveSession);
     GDREGISTER_CLASS(AvatarCameraRing);
 }
 

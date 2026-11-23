@@ -215,13 +215,40 @@ target_compile_features(avatar_output PUBLIC cxx_std_20)
 target_link_libraries(avatar_output PUBLIC avatar::core)
 avatar_enable_warnings(avatar_output)
 
+# ---------------------------------------------------------------------------
+# Live mode state and copy (T25)
+#
+# Framework-free like the core: the Live status machine, edit guard, metrics
+# and the four degraded-state sentences. The output gate owns the pixels; this
+# owns the words.
+# ---------------------------------------------------------------------------
+add_library(avatar_live STATIC
+    native/live/src/live_session.cpp
+)
+add_library(avatar::live ALIAS avatar_live)
+target_include_directories(avatar_live
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/live/include"
+)
+target_compile_features(avatar_live PUBLIC cxx_std_20)
+target_link_libraries(avatar_live PUBLIC avatar::core)
+avatar_enable_warnings(avatar_live)
+
+if(AVATAR_TESTS)
+    add_executable(avatar_live_tests tests/unit/test_main.cpp tests/unit/test_live_session.cpp)
+    target_include_directories(avatar_live_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_live_tests PRIVATE avatar::live avatar::output)
+    avatar_enable_warnings(avatar_live_tests)
+    add_test(NAME avatar_live_unit COMMAND avatar_live_tests)
+    set_tests_properties(avatar_live_unit PROPERTIES LABELS "fast;task_T25" TIMEOUT 60)
+endif()
+
 if(AVATAR_TESTS)
     add_executable(avatar_output_tests tests/unit/test_main.cpp tests/unit/test_output.cpp)
     target_include_directories(avatar_output_tests PRIVATE tests/unit)
     target_link_libraries(avatar_output_tests PRIVATE avatar::output)
     avatar_enable_warnings(avatar_output_tests)
     add_test(NAME avatar_output_unit COMMAND avatar_output_tests)
-    set_tests_properties(avatar_output_unit PROPERTIES LABELS "fast;task_T23" TIMEOUT 120)
+    set_tests_properties(avatar_output_unit PROPERTIES LABELS "fast;task_T23;task_T25" TIMEOUT 120)
 endif()
 if(AVATAR_TESTS)
     enable_testing()

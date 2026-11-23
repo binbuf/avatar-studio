@@ -617,6 +617,94 @@ TEST_CASE(output_manager_blank_respects_alpha_and_background) {
     CHECK_EQ(blank.pixels[3], std::uint8_t{255});
 }
 
+TEST_CASE(output_gate_panic_blanks_immediately_and_blocks_resume) {
+    OutputGate gate;
+    GateSignal valid;
+    valid.render_time_ns = 1'000'000'000;
+    CHECK(gate.evaluate(valid).state == GateState::avatar);
+
+    const GateDecision panic = gate.set_panic(true, 1'100'000'000);
+    CHECK(panic.state == GateState::blank);
+    CHECK(panic.cause == BlankCause::panic);
+    CHECK(panic.blanked);
+    CHECK(panic.transitioned);
+    CHECK(panic.diagnostic == DiagnosticCode::unknown);
+    CHECK(gate.is_panic());
+
+    valid.render_time_ns = 1'120'000'000;
+    const GateDecision still_blank = gate.evaluate(valid);
+    CHECK(still_blank.state == GateState::blank);
+    CHECK(still_blank.cause == BlankCause::panic);
+    CHECK(!still_blank.transitioned);
+    CHECK_EQ(gate.last_accepted_render_ns(), TimestampNs{0});
+
+    const GateDecision restored = gate.set_panic(false, 1'200'000'000);
+    CHECK(restored.state == GateState::blank);
+    CHECK(!gate.is_panic());
+    valid.render_time_ns = 1'216'000'000;
+    CHECK(gate.evaluate(valid).state == GateState::avatar);
+}
+
+TEST_CASE(output_manager_panic_submits_a_blank_now_and_resumes) {
+    CapturedDiagnostics captured;
+    OutputManager manager(&capture_sink, &captured);
+    OutputConfig config;
+    config.width = 2;
+    config.height = 2;
+    config.alpha = AlphaMode::straight;
+    CHECK(manager.initialize(std::make_unique<RecordingOutput>(), config));
+    auto* recording = static_cast<RecordingOutput*>(manager.output());
+
+    FrameBuffer avatar = make_frame(2, 2, {10, 20, 30, 255});
+    GateSignal signal;
+    signal.render_time_ns = 1'000'000'000;
+    CHECK(manager.submit(avatar.frame, signal).state == GateState::avatar);
+    CHECK_EQ(recording->last_pixels[0], std::uint8_t{10});
+
+    const GateDecision panic = manager.set_panic(true, 1'050'000'000);
+    CHECK(panic.state == GateState::blank);
+    CHECK(panic.cause == BlankCause::panic);
+    CHECK(recording->last_content == FrameContent::blank);
+    CHECK_EQ(recording->last_pixels[0], std::uint8_t{0});
+    CHECK_EQ(recording->last_pixels[3], std::uint8_t{0});
+    CHECK_EQ(manager.stats().blank_frames, std::uint64_t{1});
+    CHECK_EQ(captured.codes.size(), std::size_t{1});
+    CHECK(captured.codes[0] == DiagnosticCode::out_007);
+    CHECK_EQ(captured.causes[0], std::string("panic"));
+
+    // A valid frame cannot resume the avatar while panic is active.
+    signal.render_time_ns = 1'066'000'000;
+    CHECK(manager.submit(avatar.frame, signal).state == GateState::blank);
+    CHECK(recording->last_content == FrameContent::blank);
+    CHECK_EQ(captured.codes.size(), std::size_t{1});
+
+    (void)manager.set_panic(false, 1'100'000'000);
+    signal.render_time_ns = 1'116'000'000;
+    CHECK(manager.submit(avatar.frame, signal).state == GateState::avatar);
+    CHECK(recording->last_content == FrameContent::avatar);
+    CHECK_EQ(recording->last_pixels[0], std::uint8_t{10});
+    CHECK(manager.is_output_alive());
+}
+
+TEST_CASE(output_manager_panic_does_not_repeat_the_transition_diagnostic) {
+    CapturedDiagnostics captured;
+    OutputManager manager(&capture_sink, &captured);
+    OutputConfig config;
+    config.width = 1;
+    config.height = 1;
+    CHECK(manager.initialize(std::make_unique<NullOutput>(), config));
+
+    (void)manager.set_panic(true, 1'000'000'000);
+    (void)manager.set_panic(true, 1'016'000'000);
+    CHECK_EQ(captured.codes.size(), std::size_t{1});
+    CHECK(captured.codes[0] == DiagnosticCode::out_007);
+    CHECK_EQ(captured.causes[0], std::string("panic"));
+
+    (void)manager.set_panic(false, 1'100'000'000);
+    CHECK_EQ(captured.codes.size(), std::size_t{1});
+    CHECK(manager.is_output_alive());
+}
+
 TEST_CASE(output_manager_converts_colour_space_and_alpha) {
     OutputConfig config;
     config.width = 1;

@@ -28,6 +28,8 @@ add_library(avatar_gdextension SHARED
     src/avatar_head.cpp
     src/avatar_runtime.cpp
     src/avatar_output_manager.cpp
+    src/avatar_live_session.cpp
+    src/global_hotkey.cpp
     src/avatar_camera_ring.cpp
     src/window_output.cpp
     src/platform_timer.cpp
@@ -41,7 +43,7 @@ else()
 endif()
 # avatar_json is the pinned nlohmann/json header set used by the GLB preflight;
 # the import path must never download or use a system copy.
-target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core avatar::capture avatar::rig avatar::output avatar_json)
+target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core avatar::capture avatar::rig avatar::output avatar::live avatar_json)
 target_include_directories(avatar_gdextension PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(avatar_gdextension PRIVATE AVATAR_RUNTIME_VERSION="0.1.0")
 target_compile_features(avatar_gdextension PRIVATE cxx_std_20)
@@ -54,7 +56,7 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(avatar_gdextension PRIVATE winmm)
+    target_link_libraries(avatar_gdextension PRIVATE winmm user32)
     set(AVATAR_GDE_OS "windows")
     set(AVATAR_GDE_EXT "dll")
 elseif(APPLE)

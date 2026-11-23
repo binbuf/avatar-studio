@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** core math, flat and planar surface decals, presentation/framing and the output gate implemented (T18/T20/T21/T22/T23); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
+**Status:** core math, flat and planar surface decals, presentation/framing, the output gate and the T25 panic blank implemented (T18/T20/T21/T22/T23/T25); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md), [ADR-0010](adr/0010-output-is-avatar-or-nothing.md), [ADR-0033](adr/0033-output-gate-and-window-transport.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -620,6 +620,21 @@ union of region masks with a one-pixel footprint. Evidence: `tests/unit/test_out
 `app/tests/output_gate.gd` and `tests/gates/T23.ps1`; see
 [ADR-0033](adr/0033-output-gate-and-window-transport.md) and
 [`output-and-virtual-camera.md#implemented-output-gate-t23`](output-and-virtual-camera.md#implemented-output-gate-t23).
+
+#### Panic blank (T25)
+
+`OutputGate::set_panic(true, render_time_ns)` is a deliberate blank, checked before every other cause.
+It clears `last_accepted_render_ns_` so no prior valid sample can bridge it, returns
+`BlankCause::panic`, and keeps every later `evaluate` blank until panic is cleared. `OutputManager`
+submits the blank **at the panic call**, not on the next render, and emits `OUT-007` once with
+`cause = "panic"`; `blank_cause_diagnostic(panic)` is `unknown`, so there is no TRK code for a
+deliberate action. Clearing panic leaves the gate blank until the next complete valid sample, so a
+static or frozen face is never substituted.
+
+`app/scenes/live_hud.gd` binds the button and Ctrl/Cmd+Shift+H to the same state and shows
+"Output is hidden" plus the restore action in the preview. `tests/unit/test_output.cpp` asserts the
+immediate blank, the no-static-face pixels, the once-only diagnostic and the resume; the headless
+`app/tests/live_hud.gd` asserts the hotkey, the preview copy and the window transport.
 
 ---
 
