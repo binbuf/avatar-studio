@@ -2,6 +2,7 @@
 
 #include "avatar/capture/camera_source.h"
 #include "avatar/capture/icamera_source.h"
+#include "avatar/capture/still_image_source.h"
 #include "avatar/capture/synthetic_face_source.h"
 #include "avatar/core/clock.h"
 #include "avatar/live/live_pipeline.h"
@@ -86,6 +87,7 @@ private:
     std::unique_ptr<avatar::live::LivePipeline> pipeline_{};
     avatar::capture::CameraSource* camera_source_ = nullptr;
     avatar::capture::SyntheticFaceSource* synthetic_source_ = nullptr;
+    avatar::capture::StillImageSource* still_source_ = nullptr;
     avatar::tracking::CabiTracker* cabi_tracker_ = nullptr;
 
     godot::Ref<AvatarCameraRing> ring_{};
@@ -109,6 +111,7 @@ private:
     godot::String source_kind_{"camera"};
     godot::String tracker_kind_{"none"};
     godot::String camera_device_{};
+    godot::String still_path_{};
     godot::String capture_request_{"auto"};
     int64_t tracker_input_ = 0;
     godot::String last_error_{};

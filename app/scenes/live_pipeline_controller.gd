@@ -30,6 +30,7 @@ var using_surface := true
 var decal_visible := true
 var preview_enabled := false
 var options: Dictionary = {}
+var base_options: Dictionary = {}
 var region_rest: Array = []
 
 
@@ -47,6 +48,7 @@ func setup(runtime: Node, options: Dictionary = {}) -> bool:
 		last_error = String(ring.call("get_last_error"))
 		return false
 	pipeline.call("set_camera_ring", ring)
+	base_options = options.duplicate(true)
 	self.options = options.duplicate(true)
 	if runtime != null:
 		model = runtime.call("get_avatar_model")
@@ -200,6 +202,39 @@ func set_options(new_options: Dictionary) -> void:
 func get_options() -> Dictionary:
 	return options.duplicate(true)
 
+
+
+func reinitialize(next_options: Dictionary) -> bool:
+	if pipeline == null:
+		return false
+	pipeline.call("stop")
+	running = false
+	options = next_options.duplicate(true)
+	if not bool(pipeline.call("initialize", options)):
+		last_error = String(pipeline.call("get_last_error"))
+		return false
+	pipeline.call("set_preview_enabled", preview_enabled)
+	if not bool(pipeline.call("start")):
+		last_error = String(pipeline.call("get_last_error"))
+		return false
+	running = true
+	last_state = {}
+	last_error = ""
+	return true
+
+
+func use_still(path: String) -> bool:
+	var next := base_options.duplicate(true)
+	next["source"] = "still"
+	next["still_image"] = path
+	return reinitialize(next)
+
+
+func use_camera() -> bool:
+	var next := base_options.duplicate(true)
+	next["source"] = "camera"
+	next["still_image"] = ""
+	return reinitialize(next)
 
 
 func start() -> bool:

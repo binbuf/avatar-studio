@@ -8,6 +8,9 @@ assets/models/**/*.blend1
 assets/models/**/*.py
 assets/models/**/previews/
 
+# Local development stills and capture fixtures (person.jpg and friends).
+assets/test-harness/
+
 # symphony harness (local tool, not tracked)
 .symphony/
 .stop

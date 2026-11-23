@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "avatar/capture/video_frame.h"
@@ -60,6 +61,13 @@ public:
     }
 
     [[nodiscard]] const std::uint8_t* data() const noexcept { return pixels_.data(); }
+
+    /// Replace the canvas with tightly packed RGB8 bytes (width * height * 3).
+    void set_rgb(const std::uint8_t* data, std::size_t size) noexcept {
+        if (data != nullptr && size == pixels_.size()) {
+            std::memcpy(pixels_.data(), data, size);
+        }
+    }
 
     /// Converts the canvas into the frame's first (and, for NV12, second) plane.
     /// The frame must have been reserved by FrameRing::begin_write and have the

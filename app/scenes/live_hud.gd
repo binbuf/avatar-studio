@@ -443,6 +443,41 @@ func close_setup() -> void:
 	_update_hud(_now_ns())
 
 
+func use_still(path: String) -> bool:
+	if pipeline_controller == null:
+		return false
+	var absolute := path
+	if path.begins_with("res://") or path.begins_with("user://"):
+		absolute = ProjectSettings.globalize_path(path)
+	if not bool(pipeline_controller.use_still(absolute)):
+		push_warning("T25c: still source failed: " + String(pipeline_controller.last_error))
+		return false
+	pipeline_state = {}
+	_show_notice("Still image: " + absolute.get_file(),
+			"Development source; the OBS output is unchanged.", "", false, 3.0)
+	_update_hud(_now_ns())
+	return true
+
+
+func use_default_still() -> bool:
+	var path := ProjectSettings.globalize_path("res://../assets/test-harness/person.jpg")
+	if not FileAccess.file_exists(path):
+		return false
+	return use_still(path)
+
+
+func use_camera() -> bool:
+	if pipeline_controller == null:
+		return false
+	if not bool(pipeline_controller.use_camera()):
+		push_warning("T25c: camera source failed: " + String(pipeline_controller.last_error))
+		return false
+	pipeline_state = {}
+	_show_notice("Camera source resumed.", "", "", false, 2.0)
+	_update_hud(_now_ns())
+	return true
+
+
 func get_setup_window():
 	return setup_window
 
@@ -544,10 +579,17 @@ func _pipeline_options() -> Dictionary:
 			var dll := ProjectSettings.globalize_path("res://bin/libavatartracker.dll")
 			if FileAccess.file_exists(dll):
 				tracker = dll
+	var still := _arg_value(args, "--still")
+	if still == "":
+		var default_still := ProjectSettings.globalize_path(
+				"res://../assets/test-harness/person.jpg")
+		if FileAccess.file_exists(default_still):
+			still = default_still
 	return {
 		"source": source,
 		"tracker": tracker,
 		"camera": _arg_value(args, "--camera"),
+		"still_image": still,
 		"tracker_input": 0,
 		"fps": 60,
 	}

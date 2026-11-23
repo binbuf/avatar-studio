@@ -48,6 +48,7 @@ var background_option: OptionButton = null
 var capture_option: OptionButton = null
 var tracker_option: OptionButton = null
 var preview_check: CheckButton = null
+var file_dialog: FileDialog = null
 var sliders: Dictionary = {}
 
 var base: Dictionary = {}
@@ -71,6 +72,7 @@ func configure(hud_node: CanvasLayer, controller_node, runtime_node: Node,
 	runtime = runtime_node
 	viewport = viewport_node
 	_build_ui()
+	_build_file_dialog()
 	if controller != null:
 		base = controller.get_calibration()
 	_reset_params_from_base()
@@ -81,6 +83,8 @@ func open() -> void:
 	opened = true
 	visible = true
 	set_process(true)
+	if hud != null and hud.has_method("use_default_still"):
+		hud.call("use_default_still")
 	if controller != null:
 		controller.set_preview_enabled(true)
 		base = controller.get_calibration()
@@ -96,6 +100,8 @@ func close() -> void:
 	opened = false
 	visible = false
 	set_process(false)
+	if hud != null and hud.has_method("use_camera"):
+		hud.call("use_camera")
 	if controller != null:
 		controller.set_preview_enabled(false)
 
@@ -467,6 +473,12 @@ func _build_controls(parent: Control) -> void:
 	var reset_button := _button("Reset", _on_reset_pressed)
 	reset_button.name = "ResetCalibration"
 	actions.add_child(reset_button)
+	var load_button := _button("Load still...", _on_load_still_pressed)
+	load_button.name = "LoadStill"
+	actions.add_child(load_button)
+	var camera_button := _button("Use camera", _on_use_camera_pressed)
+	camera_button.name = "UseCamera"
+	actions.add_child(camera_button)
 
 	action_status = _label("", 11, OK_COLOUR)
 	action_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -718,6 +730,40 @@ func _on_preview_toggled(pressed: bool) -> void:
 		camera_view.set_preview_enabled(pressed)
 	if controller != null:
 		controller.set_preview_enabled(pressed)
+
+
+func _build_file_dialog() -> void:
+	file_dialog = FileDialog.new()
+	file_dialog.name = "StillFileDialog"
+	file_dialog.title = "Load a still image (development)"
+	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.filters = PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; Images"])
+	file_dialog.file_selected.connect(_on_still_selected)
+	add_child(file_dialog)
+
+
+func _on_load_still_pressed() -> void:
+	if file_dialog != null:
+		file_dialog.popup_centered_ratio(0.7)
+
+
+func _on_still_selected(path: String) -> void:
+	if hud == null or not hud.has_method("use_still"):
+		return
+	if bool(hud.call("use_still", path)):
+		if action_status != null:
+			action_status.text = "Still: " + path.get_file()
+	else:
+		if action_status != null:
+			action_status.text = "Still load failed"
+
+
+func _on_use_camera_pressed() -> void:
+	if hud != null and hud.has_method("use_camera"):
+		hud.call("use_camera")
+	if action_status != null:
+		action_status.text = "Camera source"
 
 
 func _on_close_pressed() -> void:

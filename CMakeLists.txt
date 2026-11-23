@@ -124,6 +124,7 @@ add_library(avatar_capture STATIC
     native/capture/src/tracking_frame_gate.cpp
     native/capture/src/test_pattern_source.cpp
     native/capture/src/synthetic_face_source.cpp
+    native/capture/src/still_image_source.cpp
     native/capture/src/y4m_reader.cpp
     native/capture/src/replay_source.cpp
     native/capture/src/camera_device.cpp

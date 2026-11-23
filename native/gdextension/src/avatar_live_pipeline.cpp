@@ -3,8 +3,10 @@
 #include "avatar/capture/synthetic_face_source.h"
 #include "avatar/tracking/scripted_tracker.h"
 
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
@@ -161,6 +163,35 @@ bool AvatarLivePipeline::initialize(const godot::Dictionary& config) {
         synthetic.format = avatar::capture::PixelFormat::bgra8;
         synthetic_source_ = new SyntheticFaceSource(clock_, synthetic);
         source_.reset(synthetic_source_);
+    } else if (source_kind_ == "still") {
+        still_path_ = godot::String(config.get("still_image", godot::String(""))).strip_edges();
+        if (still_path_.is_empty()) {
+            last_error_ = "still source requires still_image";
+            return false;
+        }
+        godot::Ref<godot::Image> image;
+        image.instantiate();
+        const godot::Error load_error = image->load(still_path_);
+        if (load_error != godot::OK || image->is_empty()) {
+            last_error_ = "still image not found or unreadable: " + still_path_;
+            return false;
+        }
+        image->convert(godot::Image::FORMAT_RGB8);
+        const int width = image->get_width();
+        const int height = image->get_height();
+        if (width <= 0 || height <= 0) {
+            last_error_ = "still image has no dimensions: " + still_path_;
+            return false;
+        }
+        const godot::PackedByteArray bytes = image->get_data();
+        avatar::capture::StillImageConfig still;
+        still.width = static_cast<std::uint32_t>(width);
+        still.height = static_cast<std::uint32_t>(height);
+        still.format = avatar::capture::PixelFormat::bgra8;
+        still.fps = static_cast<std::uint32_t>(std::max<int64_t>(fps, 1));
+        still.rgb.assign(bytes.ptr(), bytes.ptr() + bytes.size());
+        still_source_ = new avatar::capture::StillImageSource(clock_, std::move(still));
+        source_.reset(still_source_);
     } else {
         source_kind_ = "camera";
         backend_ = avatar::capture::create_platform_camera_backend();
@@ -259,6 +290,8 @@ void AvatarLivePipeline::shutdown() {
     backend_.reset();
     camera_source_ = nullptr;
     synthetic_source_ = nullptr;
+    still_source_ = nullptr;
+    still_path_ = godot::String();
     cabi_tracker_ = nullptr;
     initialized_ = false;
     tracker_available_ = false;
@@ -454,8 +487,7 @@ godot::Dictionary AvatarLivePipeline::tick() {
             // of taking a second pin on the same slot.
             preview_slot_ = selected_slot_;
         } else {
-            const godot::Dictionary newest =
-                ring_->select_for_tracking(static_cast<int64_t>(now));
+            const godot::Dictionary newest = ring_->select_for_tracking(static_cast<int64_t>(now));
             if (static_cast<bool>(newest.get("valid", false))) {
                 preview_slot_ = static_cast<std::int64_t>(newest.get("slot", -1));
                 preview_pinned_ = preview_slot_ >= 0;
@@ -546,6 +578,13 @@ godot::Dictionary AvatarLivePipeline::get_stats() {
         camera["restarts"] = static_cast<int64_t>(camera_source_->restarts());
         camera["reconnects"] = static_cast<int64_t>(camera_source_->reconnects());
         camera["timestamp_resets"] = static_cast<int64_t>(camera_source_->timestamp_resets());
+    } else if (still_source_ != nullptr) {
+        camera["state"] = "streaming";
+        camera["device"] = still_path_;
+        camera["frames_published"] = static_cast<int64_t>(still_source_->frames_published());
+        camera["restarts"] = 0;
+        camera["reconnects"] = 0;
+        camera["timestamp_resets"] = 0;
     }
     out["camera"] = camera;
     if (ring_.is_valid()) {
@@ -565,12 +604,19 @@ godot::Dictionary AvatarLivePipeline::get_config() const {
     out["tracker_input"] = tracker_input_;
     out["capture_request"] = capture_request_;
     out["camera"] = camera_device_;
+    out["still_image"] = still_path_;
     if (camera_source_ != nullptr) {
         const auto mode = camera_source_->negotiated_mode();
         out["width"] = static_cast<int64_t>(mode.width);
         out["height"] = static_cast<int64_t>(mode.height);
         out["fps"] = mode.fps();
         out["format"] = godot::String(avatar::capture::pixel_format_name(mode.format));
+    } else if (still_source_ != nullptr) {
+        const auto info = still_source_->info();
+        out["width"] = static_cast<int64_t>(info.width);
+        out["height"] = static_cast<int64_t>(info.height);
+        out["fps"] = 60.0;
+        out["format"] = godot::String(avatar::capture::pixel_format_name(info.format));
     } else {
         out["width"] = static_cast<int64_t>(1280);
         out["height"] = static_cast<int64_t>(720);
