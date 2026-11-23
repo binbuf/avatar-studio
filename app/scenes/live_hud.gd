@@ -6,9 +6,15 @@ extends CanvasLayer
 ## adds the honest status bar, the panic banner, the edit guard and a small
 ## window-output monitor. It owns no rendering: the output is the T23 gate and
 ## the avatar viewport is sampled for the monitor only.
+##
+## T26 wires the real capture/tracker/FaceRig/decal pipeline through
+## `live_pipeline_controller.gd`. The HUD numbers and the four states are now
+## the pipeline's values; the debug trigger remains a review aid.
+
+const PipelineController = preload("res://scenes/live_pipeline_controller.gd")
 
 const HUD_INTERVAL := 0.25
-const OUTPUT_INTERVAL := 0.10
+const OUTPUT_INTERVAL := 1.0 / 30.0
 const OUTPUT_SIZE := Vector2i(640, 360)
 const UI_SCALES := [1.0, 1.5, 2.0]
 const EDIT_KINDS := [
@@ -54,6 +60,11 @@ var single_instance_state: Dictionary = {}
 var single_instance_ready := false
 var activation_paths: Dictionary = {}
 var window_raised := false
+var pipeline_controller = null
+var pipeline_state: Dictionary = {}
+var last_submit_cost_ms := 0.0
+var max_submit_cost_ms := 0.0
+var submit_pending := false
 
 
 func _enter_tree() -> void:
@@ -76,6 +87,7 @@ func _ready() -> void:
 	live_session.call("start_global_hotkey")
 	if "--live-debug" in OS.get_cmdline_user_args():
 		set_debug_states_visible(true)
+	_init_pipeline()
 	_start_live()
 	if bool(single_instance_state.get("new_instance", false)):
 		var copy: Dictionary = single_instance_state.get("copy", {})
@@ -88,6 +100,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if single_instance != null:
 		single_instance.call("stop")
+	if pipeline_controller != null:
+		pipeline_controller.stop()
 	if live_session != null:
 		live_session.call("stop_global_hotkey")
 	if output_manager != null:
@@ -189,6 +203,9 @@ func _process(delta: float) -> void:
 		return
 	var now := _now_ns()
 	live_session.call("tick", now)
+	if pipeline_controller != null:
+		pipeline_state = pipeline_controller.tick()
+		_feed_pipeline(pipeline_state)
 	if runtime != null:
 		live_session.call("report_frame", now, float(runtime.call("get_last_frame_time_ms")))
 	if bool(live_session.call("consume_global_hotkey")):
@@ -204,7 +221,6 @@ func _process(delta: float) -> void:
 	if output_timer >= OUTPUT_INTERVAL:
 		output_timer = 0.0
 		_submit_output(now)
-
 
 func _unhandled_input(event: InputEvent) -> void:
 	if live_session == null:
@@ -423,6 +439,10 @@ func _start_live() -> void:
 	var now := _now_ns()
 	live_session.call("start_live", now)
 	live_session.call("clear_debug_state")
+	if pipeline_controller != null:
+		if not pipeline_controller.start():
+			push_warning("CAP-001: live pipeline did not start: "
+					+ String(pipeline_controller.last_error))
 	_init_output()
 	if runtime != null:
 		runtime.call("set_consumer_connected", true)
@@ -435,6 +455,9 @@ func _stop_live() -> void:
 		return
 	var now := _now_ns()
 	live_session.call("stop_live", now)
+	if pipeline_controller != null:
+		pipeline_controller.stop()
+	submit_pending = false
 	if output_manager != null:
 		output_manager.call("shutdown")
 	if runtime != null:
@@ -443,6 +466,51 @@ func _stop_live() -> void:
 		output_target.texture = null
 	_show_notice("Live is stopped.", "Choose Go Live to start the output.", "", false, 0.0)
 	_update_hud(now)
+
+
+func _init_pipeline() -> void:
+	# A headless shell smoke instantiates main.tscn; loading MediaPipe there
+	# would print third-party warnings and open a camera for no reason. The
+	# headless pipeline tests opt in with an explicit --live-source.
+	if DisplayServer.get_name() == "headless" \
+			and not ("--live-source" in OS.get_cmdline_user_args()):
+		return
+	pipeline_controller = PipelineController.new()
+	var options := _pipeline_options()
+	if not pipeline_controller.setup(runtime, options):
+		push_warning("CAP-001: live pipeline setup failed: "
+				+ String(pipeline_controller.last_error))
+
+
+func _pipeline_options() -> Dictionary:
+	var args := OS.get_cmdline_user_args()
+	var source := _arg_value(args, "--live-source")
+	if source == "":
+		source = "camera"
+	var tracker := _arg_value(args, "--live-tracker")
+	if tracker == "":
+		if source == "synthetic":
+			tracker = "scripted"
+		else:
+			var dll := ProjectSettings.globalize_path("res://bin/libavatartracker.dll")
+			if FileAccess.file_exists(dll):
+				tracker = dll
+	return {
+		"source": source,
+		"tracker": tracker,
+		"camera": _arg_value(args, "--camera"),
+		"tracker_input": 0,
+		"fps": 60,
+	}
+
+
+func _feed_pipeline(state: Dictionary) -> void:
+	if live_session == null or state.is_empty():
+		return
+	live_session.call("set_camera_status", String(state.get("camera", "none")))
+	live_session.call("set_face_status", String(state.get("face", "unavailable")),
+			float(state.get("confidence", 0.0)))
+	live_session.call("set_tracker_available", bool(state.get("tracker_available", false)))
 
 
 func _init_output() -> void:
@@ -478,6 +546,8 @@ func _toggle_panic(reason: String) -> void:
 
 
 func _submit_output(now_ns: int) -> void:
+	if submit_pending:
+		return
 	if output_manager == null or not bool(output_manager.call("is_initialized")):
 		return
 	if viewport == null or DisplayServer.get_name() == "headless":
@@ -485,7 +555,21 @@ func _submit_output(now_ns: int) -> void:
 	var texture := viewport.get_texture()
 	if texture == null:
 		return
+	submit_pending = true
+	_readback_and_submit(texture, now_ns)
+
+
+func _readback_and_submit(texture: Texture2D, now_ns: int) -> void:
+	# Read after the draw, not before it: a pre-draw get_image() can block on
+	# the GPU and cost tens of milliseconds. This is still a synchronous
+	# readback (T46 owns the async path), but it is off the frame's critical
+	# section.
+	await RenderingServer.frame_post_draw
+	var start := Time.get_ticks_usec()
 	var image := texture.get_image()
+	last_submit_cost_ms = float(Time.get_ticks_usec() - start) / 1000.0
+	max_submit_cost_ms = maxf(max_submit_cost_ms, last_submit_cost_ms)
+	submit_pending = false
 	if image == null or image.is_empty():
 		return
 	submit_output_image(image, now_ns)
@@ -507,6 +591,8 @@ func submit_output_image(image: Image, now_ns: int = -1) -> Dictionary:
 	var gate_signal: Dictionary = live_session.call("get_gate_signal", now_ns)
 	var decision: Dictionary = output_manager.call("submit_frame", frame, gate_signal)
 	live_session.call("set_output_state", String(decision.get("state", "blank")))
+	if pipeline_controller != null:
+		pipeline_controller.record_submit()
 	return decision
 
 
@@ -563,6 +649,46 @@ func get_status() -> Dictionary:
 	if live_session == null:
 		return {}
 	return live_session.call("get_status")
+
+
+func get_pipeline_state() -> Dictionary:
+	if pipeline_controller == null:
+		return {}
+	return pipeline_controller.get_state()
+
+
+func get_pipeline_stats() -> Dictionary:
+	if pipeline_controller == null:
+		return {}
+	return pipeline_controller.get_stats()
+
+
+func get_pipeline_config() -> Dictionary:
+	if pipeline_controller == null:
+		return {}
+	return pipeline_controller.get_config()
+
+
+func get_build_info() -> Dictionary:
+	if pipeline_controller == null:
+		return {}
+	return pipeline_controller.get_build_info()
+
+
+func get_output_stats() -> Dictionary:
+	if output_manager == null:
+		return {}
+	var stats: Dictionary = output_manager.call("get_stats")
+	stats["last_submit_cost_ms"] = last_submit_cost_ms
+	stats["max_submit_cost_ms"] = max_submit_cost_ms
+	return stats
+
+
+func reset_metrics() -> void:
+	max_submit_cost_ms = 0.0
+	last_submit_cost_ms = 0.0
+	if pipeline_controller != null:
+		pipeline_controller.reset_stats()
 
 
 func is_live() -> bool:

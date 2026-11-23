@@ -287,6 +287,46 @@ double AvatarRuntime::get_frame_time_p99_ms() const {
     return static_cast<double>(frame_time_histogram_.p99_ns()) / 1'000'000.0;
 }
 
+double AvatarRuntime::get_frame_time_p50_ms() const {
+    return static_cast<double>(frame_time_histogram_.p50_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_frame_time_p95_ms() const {
+    return static_cast<double>(frame_time_histogram_.p95_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_frame_time_mean_ms() const {
+    return frame_time_histogram_.mean_ns() / 1'000'000.0;
+}
+
+double AvatarRuntime::get_frame_time_max_ms() const {
+    return static_cast<double>(frame_time_histogram_.max_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_interval_p50_ms() const {
+    return static_cast<double>(interval_histogram_.p50_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_interval_p95_ms() const {
+    return static_cast<double>(interval_histogram_.p95_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_interval_mean_ms() const {
+    return interval_histogram_.mean_ns() / 1'000'000.0;
+}
+
+double AvatarRuntime::get_jitter_p50_ms() const {
+    return static_cast<double>(jitter_histogram_.p50_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_jitter_p95_ms() const {
+    return static_cast<double>(jitter_histogram_.p95_ns()) / 1'000'000.0;
+}
+
+double AvatarRuntime::get_jitter_mean_ms() const {
+    return jitter_histogram_.mean_ns() / 1'000'000.0;
+}
+
 double AvatarRuntime::get_interval_p99_ms() const {
     return static_cast<double>(interval_histogram_.p99_ns()) / 1'000'000.0;
 }
@@ -884,6 +924,17 @@ void AvatarRuntime::_bind_methods() {
                          &AvatarRuntime::get_last_frame_time_ms);
     ClassDB::bind_method(D_METHOD("get_last_interval_ms"), &AvatarRuntime::get_last_interval_ms);
     ClassDB::bind_method(D_METHOD("get_frame_time_p99_ms"), &AvatarRuntime::get_frame_time_p99_ms);
+    ClassDB::bind_method(D_METHOD("get_frame_time_p50_ms"), &AvatarRuntime::get_frame_time_p50_ms);
+    ClassDB::bind_method(D_METHOD("get_frame_time_p95_ms"), &AvatarRuntime::get_frame_time_p95_ms);
+    ClassDB::bind_method(D_METHOD("get_frame_time_mean_ms"),
+                         &AvatarRuntime::get_frame_time_mean_ms);
+    ClassDB::bind_method(D_METHOD("get_frame_time_max_ms"), &AvatarRuntime::get_frame_time_max_ms);
+    ClassDB::bind_method(D_METHOD("get_interval_p50_ms"), &AvatarRuntime::get_interval_p50_ms);
+    ClassDB::bind_method(D_METHOD("get_interval_p95_ms"), &AvatarRuntime::get_interval_p95_ms);
+    ClassDB::bind_method(D_METHOD("get_interval_mean_ms"), &AvatarRuntime::get_interval_mean_ms);
+    ClassDB::bind_method(D_METHOD("get_jitter_p50_ms"), &AvatarRuntime::get_jitter_p50_ms);
+    ClassDB::bind_method(D_METHOD("get_jitter_p95_ms"), &AvatarRuntime::get_jitter_p95_ms);
+    ClassDB::bind_method(D_METHOD("get_jitter_mean_ms"), &AvatarRuntime::get_jitter_mean_ms);
     ClassDB::bind_method(D_METHOD("get_interval_p99_ms"), &AvatarRuntime::get_interval_p99_ms);
     ClassDB::bind_method(D_METHOD("get_jitter_p99_ms"), &AvatarRuntime::get_jitter_p99_ms);
     ClassDB::bind_method(D_METHOD("get_max_interval_ms"), &AvatarRuntime::get_max_interval_ms);

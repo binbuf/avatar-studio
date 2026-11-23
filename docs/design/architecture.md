@@ -525,6 +525,17 @@ The pipeline is deliberately **not** pipelined to minimise latency at the cost o
 target is smoothness plus responsiveness, and the tracking interval (33 ms at 30 fps camera) sets a
 floor on how fresh the pose can be.
 
+T26 measures the app-side row on the real path: `LivePipeline` records the
+capture-callback timestamp of the frame that produced the pose and the timestamp
+at the window-transport submit. The 10-minute soak reports p50/p95 in the T05
+JSON shape and `tests/gates/T27.ps1` applies the 70/100 ms limits. The M1
+transport is the T25 30 Hz readback monitor, so the measurement includes its
+cadence; T46 replaces the readback with the render-cadence async path and keeps
+the same histogram. Frame time is the runtime's render-thread work; the wall
+clock interval (and its absolute deviation from 16.667 ms) is the pacing
+evidence. GPU frame timing and photon-to-display remain T46/T50 work. See
+[testing-and-quality.md](testing-and-quality.md#t26-m1-golden-suite-and-soak).
+
 ## Failure handling
 
 | Failure | Detection | Behaviour |
@@ -786,3 +797,4 @@ Checked against upstream sources on 2026-11-20:
 Not verified, and treated as assumptions until M0/M3: achievable MediaPipe inference latency per
 platform; feasibility of zero-copy texture sharing per API pair; OBS PipeWire camera source
 behaviour across versions; exact alpha expectations of each transport.
+

@@ -34,6 +34,11 @@ public:
     bool publish_bgra(const godot::PackedByteArray& pixels, int64_t width, int64_t height,
                       int64_t timestamp_ns, int64_t sequence);
 
+    /// C++-only publish path for the live pipeline: no PackedByteArray copy and
+    /// no Variant marshalling on the per-frame path. Returns false and sets the
+    /// error when the frame is dropped or the upload fails.
+    bool publish_video_frame(const avatar::capture::VideoFrame& frame);
+
     godot::Dictionary select(int64_t source_timestamp_ns, int64_t render_time_ns);
     godot::Dictionary select_for_tracking(int64_t render_time_ns);
     void release(int64_t slot);

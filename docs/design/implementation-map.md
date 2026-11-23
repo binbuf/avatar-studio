@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T25a (single instance, local activation and `--new-instance` isolation implemented with native and headless Godot evidence; Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T26 (M1 golden matrix, live capture→tracker→FaceRig→decal wiring and the measured 10-minute app soak implemented with 28 Forward+ goldens, an SSIM + decal-bbox guard and the T05-shaped soak JSON; single instance, local activation and `--new-instance` isolation implemented with native and headless Godot evidence; Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -196,7 +196,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Cross-process frame transport and the three OS virtual cameras | `platform/windows/vcam/`, `platform/macos/vcam/`, `platform/linux/vcam/` | T53, T54, T56, T57 |
 | Shaded surface mode and lighting | `app/shaders/`, `app/scenes/` | T39 |
 | Editor, library and settings screens; minimal Live surface exists | `app/scenes/live_hud.gd`, `app/ui/` | T25, T33–T42 |
-| Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
+| Golden-image suite, matte tests, real-model corpus | `tests/golden/m1/`, `app/tests/m1_golden.gd` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
 | Bundled CC0 examples and provenance manifests | `examples/`, `assets/models/` (one unmanifested dev model exists) | T43a, T60 |
 | Installers, signing, notarisation, full product notices (Eigen notice exists) | `installer/`, `NOTICE` | T57, T59, T60 |
@@ -243,12 +243,12 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay is T36` |
 | Subsystem contract — output | `native/output/`, `native/gdextension/src/window_output.cpp` | T23, T25, T46 | `Implemented (T23 gate, Null/File/Window, T25 panic blank); async readback/queues T46` |
 | Timestamp-paired camera texture ring, drop gate and FaceRig newest-not-after selection | `native/capture/camera_texture_ring.h`, `native/capture/tracking_frame_gate.h`, `native/rig/src/face_rig.cpp`, `native/gdextension/src/avatar_camera_ring.cpp` | T24 | `Implemented` |
-| Live capture → tracker → rig → decal wiring | `native/`, `app/` | T26, T32 | `Planned` |
-| Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24, T26, T46 | `Planned` |
+| Live capture → tracker → rig → decal wiring | `native/live/`, `native/gdextension/src/avatar_live_pipeline.*`, `app/scenes/live_pipeline_controller.gd` | T26, T32 | `Implemented (T26); calibration/auto-placement T32` |
+| Frame lifecycle (capture → pose → decal → output) | `native/live/`, `native/gdextension/`, `app/` | T16, T24, T26, T46 | `Implemented (T16/T24/T26); async output T46` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
 | GDExtension binding rules: runtime node, C++ counters and hidden HUD, no per-frame GDScript | `native/gdextension/` | T16 | `Implemented` |
 | GDExtension binding rules: one-time GLB import, persistent mesh data, no per-frame marshalling | `native/gdextension/` | T17 | `Implemented` |
-| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24, T26 | `Ring adapter implemented (T24); native live capture path T26` |
+| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24, T26 | `Ring and live pipeline adapters implemented (T24/T26); no per-frame Variant marshalling` |
 | Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
 | Rendering strategy: runtime GLB import, bind pose, units/axes, model check | `native/gdextension/`, `app/scenes/`, `app/tests/` | T17 | `Implemented` |
 | Rendering strategy: decal pass | `app/shaders/`, `app/scenes/face_decal_flat.gd`, `app/scenes/face_decal_surface.gd` | T20, T21 | `Implemented` |
@@ -256,7 +256,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Decal colour and alpha: linear camera, gain/lift, facing², opacity | `app/shaders/` | T20, T21 | `Implemented` |
 | Lighting and output colour/alpha | `app/shaders/`, `native/output/` | T23, T39, T48 | `Colour/alpha boundary implemented (T23); lighting T39 and test cards T48 planned` |
 | Latency budget: harness proxy metric | `tests/performance/` | T05 | `Implemented` |
-| Latency budget: real capture-to-transport measurement | `tests/performance/`, `native/output/` | T26, T46 | `Planned` |
+| Latency budget: real capture-to-transport measurement | `native/live/src/live_pipeline.cpp`, `app/tests/m1_soak.gd`, `tests/gates/T27.ps1` | T26, T46 | `Implemented (T26); render-cadence transport T46` |
 | Failure handling and recovery paths | `native/`, `app/`, `native/output/` | T23, T25, T41, T46, T58 | `Panic blank, four degraded states and edit guard implemented (T25); full state table T41` |
 | Repository layout: foundation subtree | `native/`, `app/`, `tests/`, `scripts/` | T01–T07 | `Implemented` |
 | Repository layout: remaining `avatar/`, `output/`, `platform/`, `models/`, `examples/` | see the missing-component table above | T10–T57 | `Planned` |
@@ -306,7 +306,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Real-corpus reprojection and occlusion quality validation | `native/tracking/`, `tests/` | T26, T27 | `Planned` |
 | Pose filtering, prediction, timestamp guard and 150 ms loss hold | `native/rig/` | T18 | `Implemented` |
 | Source-image timestamp pairing and FaceRig newest-not-after selection | `native/rig/`, `native/capture/` | T24 | `Implemented` |
-| Live tracker/render integration and recovery/output transitions | `native/gdextension/`, `app/` | T26, T32 | `Planned` |
+| Live tracker/render integration and recovery/output transitions | `native/gdextension/`, `app/` | T26, T32 | `Implemented (T26 live pipeline); recovery/output transitions T41/T46` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Implemented (gate/blank T23); recovery surfaces T41` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x or the pinned backend cannot be built reproducibly) |
@@ -318,7 +318,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | M0 macOS/Linux real-backend build and capture evidence | `native/tracking/mediapipe/`, `native/capture/macos/`, `native/capture/linux/` | T52, T55 | `Planned` (deferred from the Windows MVP gate by ADR-0025) |
 | M0 Reference/Minimum hardware tier evidence | `tests/performance/` | T26, T64 | `Planned` (the local host exceeds Reference; numbers are local feasibility) |
 | M0 rendered motion-swimming judgment | `tests/`, review packages | T27 | `Planned` (needs the M1 renderer and decal) |
-| Instrumentation: app-facing real tracker stats (HUD) and reprojection error | `native/tracking/`, `tests/performance/` | T26 | `Planned` |
+| Instrumentation: app-facing real tracker stats (HUD) and reprojection error | `native/tracking/`, `tests/performance/` | T26 | `Partial (T26 app-side submit/poll counts); vendor stats need ABI v2` |
 
 ## [camera-capture.md](camera-capture.md)
 
@@ -339,7 +339,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Failure surfaces in the UI | `app/` | T41 | `Planned` |
 | Capture callback → ring publish (< 1 ms) | `native/capture/` | T10 | `Implemented` |
 | Long-run tracker drop and memory soak | `tests/m0/` | T13 | `Implemented` |
-| NV12 upload and downscale drop gates | `tests/performance/` | T26 | `Planned` |
+| NV12 upload and downscale drop gates | `tests/performance/` | T26 | `Implemented (T24/T26 upload p50/p95 in the soak JSON)` |
 | Local ring upload and GPU downscale measurement | `app/tests/camera_ring.gd`, `tests/gates/T24.ps1` | T24 | `Implemented` |
 
 ## [output-and-virtual-camera.md](output-and-virtual-camera.md)
@@ -432,14 +432,14 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Test pyramid and CTest labels | `CMakeLists.txt`, `tests/unit/` | T01, T06 | `Implemented` |
 | Headless shell smoke and runtime pacing test | `app/tests/smoke.gd`, `app/tests/runtime.gd`, `scripts/smoke.*` | T02, T06, T16 | `Implemented` |
 | Determinism: synthetic sources, replay, golden comparator | `native/capture/`, `tests/tools/golden_compare/` | T04 | `Implemented` |
-| Golden-image tests | `tests/golden/` | T26, T43 | `Planned` |
+| Golden-image tests | `tests/golden/m1/`, `app/tests/m1_golden.gd` | T26, T43 | `Implemented (T26 M1 matrix); matte T40, corpus T43` |
 | Output invariant test (no passthrough, blank on loss) | `tests/`, `native/output/` | T23 | `Implemented` |
 | Matte tests | `tests/`, `native/` | T40 | `Planned` |
 | Real-model corpus | `tests/`, `examples/` | T43 | `Planned` |
 | Performance harness | `tests/performance/` | T05 | `Implemented` |
 | M0 headless harness, short CI run and 30-minute soak | `tests/m0/`, `tests/gates/T14.ps1` | T13 | `Implemented` |
 | M0 contract audit, stale-doc checks and implementation-map consistency | `tests/gates/T15.ps1` | T15 | `Implemented` |
-| Render and transport performance gates | `tests/performance/` | T26, T46 | `Planned` |
+| Render and transport performance gates | `app/tests/m1_soak.gd`, `tests/gates/T27.ps1` | T26, T46 | `Implemented (T26 app soak); render-cadence transport T46` |
 | Integration tests per platform | `tests/integration/` | T58 | `Planned` |
 | CI matrix and workflow jobs | `.github/workflows/` | T06 | `Implemented` |
 | Sanitizers and clang-tidy | `.github/workflows/nightly.yml` | T06 | `Implemented` |
@@ -521,6 +521,8 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0033](adr/0033-output-gate-and-window-transport.md) | Output gate and window transport | T23, T46 | Accepted |
 | [ADR-0034](adr/0034-timestamp-paired-camera-ring.md) | Timestamp-paired camera texture ring and shader YUV decode | T24, T26, T39 | Accepted |
 | [ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md) | Live HUD, deliberate panic blank and the live edit guard | T25, T41, T49 | Accepted |
+| [ADR-0036](adr/0036-single-instance-and-activation.md) | Single instance, local activation and the `--new-instance` escape hatch | T25a, T58 | Accepted |
+| [ADR-0037](adr/0037-m1-golden-matrix-and-live-soak.md) | M1 golden matrix, decal-bbox guard and the live soak | T26, T27, T43, T46 | Accepted |
 
 ---
 
@@ -571,3 +573,4 @@ reports stale reclamation after a crash, and a `--new-instance` identity with di
 activation and shared-memory names and virtual-camera/output-registration flags off. The camera is
 not special-cased, so contention is the existing `CAP-002` state. Cross-session (RDP) locking and the
 full platform matrix remain T58.
+

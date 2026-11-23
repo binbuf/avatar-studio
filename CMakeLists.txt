@@ -159,6 +159,7 @@ avatar_enable_warnings(avatar_list_cameras)
 add_library(avatar_tracking STATIC
     native/tracking/src/scripted_tracker.cpp
     native/tracking/src/tracker_c_api.cpp
+    native/tracking/src/cabi_tracker.cpp
     native/tracking/src/landmark_map.cpp
     native/tracking/src/canonical_face_frame.cpp
     native/tracking/src/profile_correspondence.cpp
@@ -261,13 +262,14 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(avatar_live STATIC
     native/live/src/live_session.cpp
+    native/live/src/live_pipeline.cpp
 )
 add_library(avatar::live ALIAS avatar_live)
 target_include_directories(avatar_live
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/live/include"
 )
 target_compile_features(avatar_live PUBLIC cxx_std_20)
-target_link_libraries(avatar_live PUBLIC avatar::core)
+target_link_libraries(avatar_live PUBLIC avatar::core avatar::capture avatar::tracking avatar::rig)
 avatar_enable_warnings(avatar_live)
 
 if(AVATAR_TESTS)
@@ -277,6 +279,19 @@ if(AVATAR_TESTS)
     avatar_enable_warnings(avatar_live_tests)
     add_test(NAME avatar_live_unit COMMAND avatar_live_tests)
     set_tests_properties(avatar_live_unit PROPERTIES LABELS "fast;task_T25" TIMEOUT 60)
+
+    # T26: the framework-free live pipeline. It drives the deterministic
+    # synthetic face through the real FaceRig, so the camera, tracker and rig
+    # contracts are exercised without a camera, a GPU or MediaPipe.
+    add_executable(avatar_live_pipeline_tests
+        tests/unit/test_main.cpp
+        tests/unit/test_live_pipeline.cpp
+    )
+    target_include_directories(avatar_live_pipeline_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_live_pipeline_tests PRIVATE avatar::live)
+    avatar_enable_warnings(avatar_live_pipeline_tests)
+    add_test(NAME avatar_live_pipeline_unit COMMAND avatar_live_pipeline_tests)
+    set_tests_properties(avatar_live_pipeline_unit PROPERTIES LABELS "fast;task_T26" TIMEOUT 60)
 endif()
 
 if(AVATAR_TESTS)

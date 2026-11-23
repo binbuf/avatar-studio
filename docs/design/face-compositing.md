@@ -726,6 +726,29 @@ face curvature, no face-like region) and warns rather than blocks.
 
 ---
 
+## T26 live pipeline
+
+The app's live path is one adapter, not a second state machine:
+`native/live/src/live_pipeline.cpp` owns camera → tracker → FaceRig and the
+paired timestamp; `AvatarLivePipeline` binds it to the platform `CameraSource`,
+the C-ABI tracker, the T24 `CameraTextureRing` and the T25
+`AvatarLiveSession`. Per frame the adapter publishes the newest camera frame
+into the ring, selects the slot whose timestamp equals
+`FaceRigOutput.source_timestamp_ns` (never the newest pixels), and hands the
+homography, region anchors and head rotation to the `FaceDecalSurface` built on
+the runtime's model. The decal is disabled while `features_valid` is false, so
+the output gate receives the blank signal and the frame never shows a frozen or
+mispaired face. The HUD's camera/face/tracker/confidence values and the four
+degraded states come from this pipeline on a normal launch.
+
+The provisional calibration is `app/scenes/face_calibration_defaults.gd` (one
+cut-mode head region and the three regions derived from the model AABB). T32/T34
+replace it with auto-placement and the calibration gizmo. The app filters camera
+preferences to NV12 and BGRA/RGBA, the formats the ring uploads; a step-down
+therefore never lands on YUY2. Measured on the T26 host, the C920 negotiates
+640×480@30 NV12 after the 1080p mode cannot sustain 30 fps. The latency and
+golden evidence is in [testing-and-quality.md](testing-and-quality.md#t26-m1-golden-suite-and-soak).
+
 ## Performance
 
 | Item | Budget at 1080p |

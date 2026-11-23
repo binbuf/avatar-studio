@@ -93,6 +93,19 @@ The user can override in settings; the default is chosen from measured device ca
 than assumed. A camera that advertises 1080p60 but delivers 12 fps will be demoted automatically
 (after 3 s of sustained shortfall) and the change is shown, not silent.
 
+### T26 app preference filter
+
+The live app keeps this order but drops formats the T24 texture ring cannot
+upload: `AvatarLivePipeline` builds its `CameraConfig::preferences` from
+`default_camera_preferences()` and keeps only NV12 and BGRA8. YUY2 and MJPEG
+remain valid capture formats for the `CameraSource` and the M0 harness, but they
+have no shader path in the decal yet, so a throughput step-down must not land on
+them. The C920 on the T26 host advertises 1280×720@10 YUY2 and 1920×1080@5 YUY2
+but only 640×480@30 NV12 at a sustainable rate; the app therefore settles on
+640×480@30 NV12 after the 1080p mode fails the 30 fps shortfall check. The
+negotiated input format is recorded in the soak JSON; the 1080p60 claim is about
+the output pipeline, not the camera sensor.
+
 ## Per-platform backends
 
 ### Windows — Media Foundation

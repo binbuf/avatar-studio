@@ -70,6 +70,16 @@ public:
     double get_interval_p99_ms() const;
     double get_jitter_p99_ms() const;
     double get_max_interval_ms() const;
+    double get_frame_time_p50_ms() const;
+    double get_frame_time_p95_ms() const;
+    double get_frame_time_mean_ms() const;
+    double get_frame_time_max_ms() const;
+    double get_interval_p50_ms() const;
+    double get_interval_p95_ms() const;
+    double get_interval_mean_ms() const;
+    double get_jitter_p50_ms() const;
+    double get_jitter_p95_ms() const;
+    double get_jitter_mean_ms() const;
     int64_t get_max_burst_frames() const;
     int64_t get_dropped_frames() const;
     int64_t get_pacing_sample_count() const;

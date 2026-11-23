@@ -29,7 +29,7 @@ try {
     if (Test-Path -LiteralPath .tools/T25-live.json) {
         Remove-Item -LiteralPath .tools/T25-live.json
     }
-    & $godot --headless --path app --script res://tests/live_hud.gd --quit-after 60000
+    & $godot --headless --path app --script res://tests/live_hud.gd --quit-after 60000 -- --live-source synthetic --live-tracker scripted
     if ($LASTEXITCODE -ne 0) { throw 'Live HUD headless contract failed' }
     $headless = Get-Content .tools/T25-live.json -Raw | ConvertFrom-Json
     if (-not $headless.passed -or $headless.rendered) { throw 'Incomplete headless Live evidence' }
@@ -81,7 +81,7 @@ try {
     $errors = Join-Path $root '.tools/T25-render-error.log'
     $process = Start-Process -FilePath $godot -WindowStyle Hidden -ArgumentList @(
         '--path', 'app', '--resolution', '1280x720',
-        '--script', 'res://tests/live_hud.gd', '--quit-after', 60000, '--', '--render'
+        '--script', 'res://tests/live_hud.gd', '--quit-after', 60000, '--', '--render', '--live-source', 'synthetic', '--live-tracker', 'scripted'
     ) -RedirectStandardOutput $output -RedirectStandardError $errors -PassThru -Wait
     Get-Content -LiteralPath $output | Write-Host
     $errorText = Get-Content -LiteralPath $errors -Raw
@@ -132,3 +132,4 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Formatting check failed' }
     Write-Host 'T25 gate: PASS (Live state, panic blank, restore, hotkey, edit guard, four states, 100/200% layout)'
 } finally { Pop-Location }
+

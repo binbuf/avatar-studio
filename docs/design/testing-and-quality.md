@@ -6,14 +6,17 @@ C ABI contract harness (T09), the real Windows tracker contracts (T11), the land
 tests (T12), the headless M0 harness with its 30-minute soak (T13), the Windows-scoped M0 contract
 audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16), the runtime GLB import with
 its fixture set (T17), FaceRig numerical/CPU gates (T18), head-region cut/node geometry and goldens
-(T19), and the flat decal pass with its analytic-reference goldens (T20) are implemented. The
-10-minute app soak and the central golden-image suite remain `Planned`. ·
+(T19), the flat decal pass with its analytic-reference goldens (T20), the shared-surface decal with
+two-renderer goldens (T21), the M1 golden matrix, the live capture→tracker→rig→decal wiring and the
+measured 10-minute app soak (T26) are implemented. The matte tests, real-model corpus and
+cross-vendor golden runners remain `Planned`. ·
 **Last updated:** 2026-11-22
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
 [ADR-0015](adr/0015-performance-harness-and-local-baseline.md),
 [ADR-0016](adr/0016-ci-quality-gates.md),
 [ADR-0023](adr/0023-m0-headless-harness-and-thresholds.md),
-[ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)
+[ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md),
+[ADR-0037](adr/0037-m1-golden-matrix-and-live-soak.md)
 
 An avatar app fails in ways unit tests cannot see: the face slides at 20° of yaw, the colour is
 slightly wrong, the stream stutters every few seconds. This document defines what is measured, how it
@@ -266,8 +269,9 @@ artifacts. `--self-test <dir>` exercises the pass, fail, max-delta and artifact 
 registered as the `golden_compare_cli` test.
 
 PPM is chosen because it needs no third-party decoder and is trivial to inspect; T26 can add a PNG
-converter if CI viewers need one. The guard is global in T04; the decal-bounding-box region mask is
-T26 work.
+converter if CI viewers need one. The guard is global in T04; the T26 M1 suite adds the
+decal-bounding-box max-delta guard in `app/tests/golden_image.gd` (see
+[T26 M1 golden suite and soak](#t26-m1-golden-suite-and-soak)).
 
 ---
 
@@ -366,6 +370,71 @@ design markers, ADR-0036, the design-link check and the pinned formatting check.
 contention case is `a_second_instance_opening_a_held_camera_reports_cap_002` in
 `test_camera_source.cpp`: the second source sees the existing `CAP-002` state. Local evidence is
 `.tools/T25a-single-instance.json` and `.tools/T25a-single-instance.log`; none of it is committed.
+
+## T26 M1 golden suite and soak
+
+`app/tests/m1_golden.gd` renders the reviewed M1 matrix through the real
+`FaceDecalSurface` pass and compares it with committed baselines in
+`tests/golden/m1/forward_plus/`. The matrix is three avatar archetypes (flat,
+spherical, high-curvature `sculpted`) × three motions (still, 30° yaw sweep,
+22°/8°/−6° fast nod) × two lighting setups (key, key+fill), plus the asymmetric
+magenta marker, four framing cases (model fit, head fit, zoom-in, offset), four
+head-region cases (cut and node at ±30° yaw), one synthetic radial barrel-warp
+case (`k1 = 0.08`) and three blank states (no face, missing mouth, tracker
+timeout). That is **28 image baselines**.
+
+The comparator is `app/tests/golden_image.gd`; it mirrors
+`tests/tools/golden_compare` exactly: global SSIM over 8×8 luma windows with
+BT.601 luma and C1/C2 from L = 255. A case passes when **SSIM ≥ 0.995 and the
+maximum per-channel delta inside the decal bounding box is ≤ 8**. The bounding
+box is derived per case from the decal-on minus decal-off frame, so it follows
+the scene rather than a hand-maintained rectangle; a global SSIM alone forgives a
+decal that shifted a few pixels. On failure the suite writes
+`.tools/T26-golden-artifacts/<case>.{actual,baseline,diff}.png`.
+
+Baselines are regenerated only with `--update-goldens` in a reviewed commit: run
+`Godot --path app --resolution 320x320 --script res://tests/m1_golden.gd --render
+-- --update-goldens`, inspect the three PNGs per changed case, and explain the
+visual change in the commit message. A threshold is never loosened to make a run
+pass; a real regression is fixed or waived in a new ADR.
+
+`app/tests/m1_soak.gd` runs the real `main.tscn` (runtime, live pipeline, Live
+HUD and window output) at 1080p60 and writes `.tools/T26-soak.json` in the
+`avatar_bench.result.v1` shape used by T05. The measurement is:
+frame-time/interval/jitter percentiles from the runtime histograms, app-side
+latency from the capture callback to the transport submit
+(`LivePipeline::record_transport_submit`, 100 µs buckets over 204.8 ms), RSS and
+CPU samples every 5 s, transport submit/drop counters, and the display mode.
+The 30 s warm-up is discarded and the metrics reset; the 10-minute run is the
+minimum. `tests/gates/T27.ps1` reads the JSON and re-applies the thresholds
+independently of the harness's own `passed` flag: frame-time p99 ≤ 16.6 ms,
+interval-jitter p99 ≤ 16.6 ms (the absolute deviation from the 16.667 ms cadence,
+the T16 definition; the raw interval can never be below its own nominal value),
+app-side p50 ≤ 70 ms / p95 ≤ 100 ms, RSS growth ≤ 5%, zero dropped output
+frames, and pacing drift ≤ 5%.
+
+The M1 window transport is the T25 30 Hz readback monitor; app-side latency is
+honest for that transport and includes its cadence. T46 replaces it with the
+render-cadence async readback and keeps the histogram and JSON shape. The
+tracker C ABI has no statistics query, so the JSON's tracker counters are
+app-side submit/poll counts.
+
+Measured on the T26 host (RTX 4080, 240 Hz display): 10-minute soak, 1080p60
+output, real Logitech C920 (stepped down to 640×480@30 NV12 because the 1080p
+mode cannot sustain 30 fps on this host). Result: 35,990 rendered frames in
+600 s (59.98 fps), frame-time p99 0.055 ms, interval-jitter p99 0.285 ms,
+app-side latency p50 36.15 ms / p95 79.15 ms / p99 103.15 ms (9,000 submits),
+RSS growth 0.46% (peak 612.6 MB), 0 dropped output frames, CPU 42.6% of one
+core, camera 15,014 frames. The transport is the T25 window monitor at its
+1/30 s timer after the draw, ~30 Hz with the 1080p readback); T46 replaces it with
+the render-cadence async path. Results are recorded in the local
+`docs/progress/T26.md` workspace; the gate reads `.tools/T26-soak.json`.
+`tests/gates/T26.ps1` runs the native pipeline suite, the rendered goldens, the
+soak and the T27 threshold reader; `-Fast` runs a 20 s soak instead of 10
+minutes. Pacing on 60/120/144 Hz displays: the 60 fps cadence is measured on this
+240 Hz host; the 120 and 144 Hz display modes are marked
+`pending-human-hardware` in the JSON, while `avatar_core_unit` covers the
+`FramePacer` mode selection for 60/120/144/240 Hz.
 
 ## T24 timestamp pairing
 
@@ -558,8 +627,9 @@ workspace; [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) is p
 
 T16 applies the frame-time and interval-jitter rows to a 10-second runtime run (headless in the
 verify path, windowed on the host display when available); T26 applies them to the 10-minute app
-soak with real avatar content. The 16.6 ms limit is the render budget, not the nominal 16.667 ms
-interval; interval jitter is measured as the absolute deviation from the target.
+soak with real avatar content and the real pipeline. The 16.6 ms limit is the render budget, not
+the nominal 16.667 ms interval; interval jitter is measured as the absolute deviation from the
+target.
 
 Runs are scripted so results are comparable across machines and stored as JSON
 with hardware fingerprints. A regression beyond 10% on any metric fails the
@@ -986,3 +1056,4 @@ The gate asserts containment for model fit at zoom 0.5/1.0 and margins 0–0.5, 
 `model-zoom-in` as the documented crop, and checks that positive x offset moves the silhouette
 right. Head fit deliberately crops the body. `zoom > 1` is not a fit failure; see
 [ADR-0032](adr/0032-presentation-framing-and-mirroring.md).
+

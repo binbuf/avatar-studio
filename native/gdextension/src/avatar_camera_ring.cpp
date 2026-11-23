@@ -298,6 +298,19 @@ bool AvatarCameraRing::publish_bgra(const godot::PackedByteArray& pixels, int64_
     return true;
 }
 
+bool AvatarCameraRing::publish_video_frame(const avatar::capture::VideoFrame& frame) {
+    if (ring_ == nullptr) {
+        set_error("ring is not initialized");
+        return false;
+    }
+    if (!ring_->publish(frame)) {
+        set_error("frame dropped (slow consumer, format change or upload failure)");
+        return false;
+    }
+    last_error_ = godot::String();
+    return true;
+}
+
 godot::Dictionary AvatarCameraRing::select(int64_t source_timestamp_ns, int64_t render_time_ns) {
     godot::Dictionary result;
     if (ring_ == nullptr) {

@@ -29,6 +29,7 @@ add_library(avatar_gdextension SHARED
     src/avatar_runtime.cpp
     src/avatar_output_manager.cpp
     src/avatar_live_session.cpp
+    src/avatar_live_pipeline.cpp
     src/global_hotkey.cpp
     src/avatar_camera_ring.cpp
     src/avatar_single_instance.cpp
@@ -46,7 +47,13 @@ endif()
 # the import path must never download or use a system copy.
 target_link_libraries(avatar_gdextension PRIVATE godot::cpp avatar::core avatar::capture avatar::rig avatar::output avatar::live avatar::instance avatar_json)
 target_include_directories(avatar_gdextension PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_definitions(avatar_gdextension PRIVATE AVATAR_RUNTIME_VERSION="0.1.0")
+target_compile_definitions(avatar_gdextension PRIVATE
+    AVATAR_RUNTIME_VERSION="0.1.0"
+    AVATAR_GIT_COMMIT="${AVATAR_GIT_COMMIT}"
+    AVATAR_GIT_DIRTY=${AVATAR_GIT_DIRTY}
+    AVATAR_BUILD_TYPE="$<CONFIG>"
+    AVATAR_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+)
 target_compile_features(avatar_gdextension PRIVATE cxx_std_20)
 avatar_enable_warnings(avatar_gdextension)
 
@@ -57,7 +64,7 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(avatar_gdextension PRIVATE winmm user32)
+    target_link_libraries(avatar_gdextension PRIVATE winmm user32 psapi)
     set(AVATAR_GDE_OS "windows")
     set(AVATAR_GDE_EXT "dll")
 elseif(APPLE)
