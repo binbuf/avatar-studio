@@ -12,6 +12,7 @@ extends CanvasLayer
 ## the pipeline's values; the debug trigger remains a review aid.
 
 const PipelineController = preload("res://scenes/live_pipeline_controller.gd")
+const SetupWindow = preload("res://scenes/setup_window.gd")
 
 const HUD_INTERVAL := 0.25
 const OUTPUT_INTERVAL := 1.0 / 30.0
@@ -62,6 +63,8 @@ var activation_paths: Dictionary = {}
 var window_raised := false
 var pipeline_controller = null
 var pipeline_state: Dictionary = {}
+var setup_window = null
+var setup_button: Button = null
 var last_submit_cost_ms := 0.0
 var max_submit_cost_ms := 0.0
 var submit_pending := false
@@ -89,6 +92,9 @@ func _ready() -> void:
 		set_debug_states_visible(true)
 	_init_pipeline()
 	_start_live()
+	_build_setup()
+	if "--setup" in OS.get_cmdline_user_args():
+		open_setup()
 	if bool(single_instance_state.get("new_instance", false)):
 		var copy: Dictionary = single_instance_state.get("copy", {})
 		_show_notice(String(copy.get("sentence", "")), String(copy.get("action", "")), "",
@@ -100,6 +106,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if single_instance != null:
 		single_instance.call("stop")
+	if setup_window != null:
+		setup_window.close()
 	if pipeline_controller != null:
 		pipeline_controller.stop()
 	if live_session != null:
@@ -223,6 +231,12 @@ func _process(delta: float) -> void:
 		_submit_output(now)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F2:
+		if setup_window != null and bool(setup_window.is_open()):
+			close_setup()
+		else:
+			open_setup()
+		return
 	if live_session == null:
 		return
 	if event.is_action_pressed("live_panic"):
@@ -392,10 +406,45 @@ func _build_ui() -> void:
 	buttons.add_child(go_live_button)
 	buttons.add_child(edit_menu)
 	buttons.add_child(debug_menu)
+	setup_button = _make_button("Setup", _on_setup_pressed)
+	buttons.add_child(setup_button)
 	var button_spacer := Control.new()
 	button_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buttons.add_child(button_spacer)
 	buttons.add_child(scale_button)
+
+
+func _build_setup() -> void:
+	setup_window = SetupWindow.new()
+	setup_window.name = "SetupWindow"
+	root.add_child(setup_window)
+	setup_window.configure(self, pipeline_controller, runtime, viewport)
+	if setup_button != null:
+		setup_button.text = "Setup"
+
+
+func open_setup() -> void:
+	if setup_window == null:
+		return
+	setup_window.open()
+	if setup_button != null:
+		setup_button.text = "Close setup"
+	if live_session != null:
+		notice = {}
+		_update_hud(_now_ns())
+
+
+func close_setup() -> void:
+	if setup_window == null:
+		return
+	setup_window.close()
+	if setup_button != null:
+		setup_button.text = "Setup"
+	_update_hud(_now_ns())
+
+
+func get_setup_window():
+	return setup_window
 
 
 func _make_label(text: String, font_size: int) -> Label:
@@ -784,6 +833,13 @@ func _on_debug_selected(id: int) -> void:
 
 func _on_scale_pressed() -> void:
 	cycle_ui_scale()
+
+
+func _on_setup_pressed() -> void:
+	if setup_window != null and bool(setup_window.is_open()):
+		close_setup()
+	else:
+		open_setup()
 
 
 func _on_stop_and_switch_pressed() -> void:

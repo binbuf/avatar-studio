@@ -612,6 +612,10 @@ FaceRigOutput FaceRig::sample_current(core::TimestampNs render_time_ns) const {
     const bool held = render_time_ns > s.good_ns && render_time_ns - s.good_ns > kHoldNs;
     output.features_valid = !held;
     output.confidence = held ? 0 : s.confidence;
+    for (std::size_t i = 0; i < 3; ++i) {
+        output.rest_regions[i] =
+            RegionAnchor{static_cast<float>(s.rest[i].x()), static_cast<float>(s.rest[i].y())};
+    }
     const double horizon = std::min(kPredictionSeconds, age);
     const Quat q = rotation(s.euler + s.angular_velocity * horizon);
     const Vec3 t = s.translation + s.velocity * horizon;

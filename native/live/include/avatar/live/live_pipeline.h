@@ -96,6 +96,12 @@ public:
     [[nodiscard]] FaceState face_state(TimestampNs now_ns) const noexcept;
     [[nodiscard]] float confidence() const noexcept;
     [[nodiscard]] const rig::FaceRigOutput& output() const noexcept { return output_; }
+    /// The dense landmarks of the newest consumed tracker result. Copied once
+    /// per result, not per render frame; the Setup window reads them for its
+    /// diagnostic overlay.
+    [[nodiscard]] const tracking::LandmarkSet& last_landmarks() const noexcept {
+        return last_landmarks_;
+    }
     [[nodiscard]] TimestampNs paired_timestamp() const noexcept { return paired_timestamp_; }
     [[nodiscard]] TimestampNs paired_arrival() const noexcept { return paired_arrival_; }
 
@@ -120,6 +126,7 @@ private:
     CameraState camera_ = CameraState::ok;
 
     rig::FaceRigOutput output_{};
+    tracking::LandmarkSet last_landmarks_{};
     TimestampNs paired_timestamp_ = 0;
     TimestampNs paired_arrival_ = 0;
 

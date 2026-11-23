@@ -151,6 +151,7 @@ bool AvatarLivePipeline::initialize(const godot::Dictionary& config) {
         godot::String(config.get("tracker", godot::String(""))).strip_edges();
     const int64_t tracker_input =
         static_cast<int64_t>(config.get("tracker_input", static_cast<int64_t>(0)));
+    tracker_input_ = tracker_input;
     const int64_t fps = static_cast<int64_t>(config.get("fps", static_cast<int64_t>(60)));
 
     if (source_kind_ == "synthetic") {
@@ -172,6 +173,31 @@ bool AvatarLivePipeline::initialize(const godot::Dictionary& config) {
         // The T24 ring uploads NV12 and BGRA/RGBA only. Keep the platform
         // preference order but drop YUY2/MJPEG so a throughput step-down cannot
         // land on a format the decal cannot sample.
+        const int64_t request_width =
+            static_cast<int64_t>(config.get("capture_width", static_cast<int64_t>(0)));
+        const int64_t request_height =
+            static_cast<int64_t>(config.get("capture_height", static_cast<int64_t>(0)));
+        const int64_t request_fps =
+            static_cast<int64_t>(config.get("capture_fps", static_cast<int64_t>(0)));
+        capture_request_ = "auto";
+        if (request_width > 0 && request_height > 0 && request_fps > 0) {
+            capture_request_ = godot::String(std::to_string(request_width).c_str()) + "x" +
+                               godot::String(std::to_string(request_height).c_str()) + "@" +
+                               godot::String(std::to_string(request_fps).c_str());
+            // Exact requested mode first, then the standard fallback list. The
+            // camera source reports the negotiated mode, so a request the C920
+            // does not advertise is visible rather than silently replaced.
+            for (const avatar::capture::PixelFormat format :
+                 {avatar::capture::PixelFormat::nv12, avatar::capture::PixelFormat::bgra8}) {
+                avatar::capture::CameraMode mode;
+                mode.width = static_cast<std::uint32_t>(request_width);
+                mode.height = static_cast<std::uint32_t>(request_height);
+                mode.fps_numerator = static_cast<std::uint32_t>(request_fps);
+                mode.fps_denominator = 1;
+                mode.format = format;
+                camera.preferences.push_back(mode);
+            }
+        }
         for (const auto& mode : avatar::capture::default_camera_preferences()) {
             if (mode.format == avatar::capture::PixelFormat::nv12 ||
                 mode.format == avatar::capture::PixelFormat::bgra8) {
@@ -237,6 +263,11 @@ void AvatarLivePipeline::shutdown() {
     initialized_ = false;
     tracker_available_ = false;
     selected_slot_ = -1;
+    preview_slot_ = -1;
+    preview_pinned_ = false;
+    landmarks_ = godot::PackedVector2Array();
+    face_box_ = godot::Rect2();
+    landmark_count_ = 0;
     published_timestamp_ = 0;
     publish_count_ = 0;
     latest_timestamp_ = 0;
@@ -280,6 +311,29 @@ void AvatarLivePipeline::set_camera_ring(godot::Object* ring) {
     ring_ = godot::Ref<AvatarCameraRing>(adapter);
 }
 
+void AvatarLivePipeline::set_preview_enabled(bool enabled) {
+    preview_enabled_ = enabled;
+    if (!enabled) {
+        if (preview_pinned_ && ring_.is_valid()) {
+            ring_->release(preview_slot_);
+        }
+        preview_pinned_ = false;
+        preview_slot_ = -1;
+    }
+}
+
+bool AvatarLivePipeline::is_preview_enabled() const {
+    return preview_enabled_;
+}
+
+godot::PackedVector2Array AvatarLivePipeline::get_landmarks() const {
+    return landmarks_;
+}
+
+godot::Rect2 AvatarLivePipeline::get_face_box() const {
+    return face_box_;
+}
+
 void AvatarLivePipeline::release_selection() {
     if (ring_.is_valid() && selected_slot_ >= 0) {
         ring_->release(selected_slot_);
@@ -292,6 +346,14 @@ godot::Dictionary AvatarLivePipeline::tick() {
         return get_state();
     }
     const TimestampNs now = time_.now_ns();
+    // Release last tick's preview pin before the decal selects its paired slot.
+    // Releasing after selection could unpin a slot the decal just selected when
+    // the newest frame and the pose frame are the same.
+    if (preview_pinned_ && ring_.is_valid()) {
+        ring_->release(preview_slot_);
+    }
+    preview_pinned_ = false;
+    preview_slot_ = -1;
     const avatar::live::PipelineTick tick = pipeline_->tick(
         now, map_camera(camera_source_ != nullptr ? camera_source_->state()
                                                   : avatar::capture::CameraState::streaming));
@@ -345,9 +407,20 @@ godot::Dictionary AvatarLivePipeline::tick() {
         regions.append(godot::Vector2(region.u, region.v));
     }
     out["regions"] = regions;
+    godot::Array rest_regions;
+    for (const auto& region : tick.output.rest_regions) {
+        rest_regions.append(godot::Vector2(region.u, region.v));
+    }
+    out["region_rest"] = rest_regions;
     out["features_valid"] = tick.output.features_valid;
     out["inlier_count"] = static_cast<int64_t>(tick.output.inlier_count);
     out["solve_failed"] = tick.output.solve_failed;
+
+    if (tick.consumed) {
+        update_landmark_cache();
+    }
+    out["landmark_count"] = static_cast<int64_t>(landmark_count_);
+    out["landmark_timestamp_ns"] = static_cast<int64_t>(pipeline_->output().source_timestamp_ns);
 
     godot::Dictionary slot;
     bool paired = false;
@@ -373,7 +446,53 @@ godot::Dictionary AvatarLivePipeline::tick() {
         pipeline_->note_paired_frame(latest_timestamp_, latest_arrival_);
     }
     out["camera_slot"] = slot;
+
+    godot::Dictionary preview;
+    if (preview_enabled_ && ring_.is_valid()) {
+        if (paired) {
+            // The decal already pinned the newest pose frame; share it instead
+            // of taking a second pin on the same slot.
+            preview_slot_ = selected_slot_;
+        } else {
+            const godot::Dictionary newest =
+                ring_->select_for_tracking(static_cast<int64_t>(now));
+            if (static_cast<bool>(newest.get("valid", false))) {
+                preview_slot_ = static_cast<std::int64_t>(newest.get("slot", -1));
+                preview_pinned_ = preview_slot_ >= 0;
+            }
+        }
+        if (preview_slot_ >= 0) {
+            preview = ring_->get_slot_info(preview_slot_);
+        }
+    }
+    out["preview_slot"] = preview;
     return out;
+}
+
+void AvatarLivePipeline::update_landmark_cache() {
+    const auto& landmarks = pipeline_->last_landmarks();
+    const std::size_t count =
+        std::min<std::size_t>(landmarks.count, avatar::tracking::LandmarkSet::kCapacity);
+    landmark_count_ = static_cast<std::uint32_t>(count);
+    landmarks_ = godot::PackedVector2Array();
+    if (count == 0) {
+        face_box_ = godot::Rect2();
+        return;
+    }
+    landmarks_.resize(static_cast<int64_t>(count));
+    float min_x = 1.0F;
+    float min_y = 1.0F;
+    float max_x = 0.0F;
+    float max_y = 0.0F;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& point = landmarks.points[i];
+        landmarks_[static_cast<int64_t>(i)] = godot::Vector2(point.x, point.y);
+        min_x = std::min(min_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_x = std::max(max_x, point.x);
+        max_y = std::max(max_y, point.y);
+    }
+    face_box_ = godot::Rect2(min_x, min_y, max_x - min_x, max_y - min_y);
 }
 
 godot::Dictionary AvatarLivePipeline::get_state() const {
@@ -443,6 +562,8 @@ godot::Dictionary AvatarLivePipeline::get_config() const {
     out["source"] = source_kind_;
     out["tracker"] = tracker_kind_;
     out["tracker_available"] = tracker_available_;
+    out["tracker_input"] = tracker_input_;
+    out["capture_request"] = capture_request_;
     out["camera"] = camera_device_;
     if (camera_source_ != nullptr) {
         const auto mode = camera_source_->negotiated_mode();
@@ -588,6 +709,13 @@ void AvatarLivePipeline::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("is_running"), &AvatarLivePipeline::is_running);
     godot::ClassDB::bind_method(godot::D_METHOD("set_camera_ring", "ring"),
                                 &AvatarLivePipeline::set_camera_ring);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_preview_enabled", "enabled"),
+                                &AvatarLivePipeline::set_preview_enabled);
+    godot::ClassDB::bind_method(godot::D_METHOD("is_preview_enabled"),
+                                &AvatarLivePipeline::is_preview_enabled);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_landmarks"),
+                                &AvatarLivePipeline::get_landmarks);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_face_box"), &AvatarLivePipeline::get_face_box);
     godot::ClassDB::bind_method(godot::D_METHOD("tick"), &AvatarLivePipeline::tick);
     godot::ClassDB::bind_method(godot::D_METHOD("get_state"), &AvatarLivePipeline::get_state);
     godot::ClassDB::bind_method(godot::D_METHOD("get_stats"), &AvatarLivePipeline::get_stats);

@@ -20,6 +20,10 @@ struct FaceRigOutput {
     std::array<float, 16> head_from_camera{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
     std::array<float, 9> canonical_to_image{1, 0, 0, 0, 1, 0, 0, 0, 1};
     std::array<RegionAnchor, 3> regions{}; // eye_l, eye_r, mouth; absolute canonical centres
+    // First accepted-frame centroids. The decal adapter subtracts these from
+    // `regions` so a region follows the content (gaze/lips) instead of being
+    // offset by the absolute canonical position a second time.
+    std::array<RegionAnchor, 3> rest_regions{};
     float confidence = 0.0f;
     bool features_valid = false;
     std::size_t inlier_count = 0;

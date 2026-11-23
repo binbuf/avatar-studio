@@ -88,10 +88,18 @@ TEST_CASE(rig_bootstraps_canonical_axes_and_filters_region_centroids) {
     rig::FaceRig rig;
     rig.configure(f.profile);
     const auto first = rig.update(r, kStart);
+    // The adapter subtracts the rest centroid from the live centroid; the first
+    // accepted frame defines rest exactly.
+    for (std::size_t i = 0; i < 3; ++i) {
+        CHECK(std::abs(first.rest_regions[i].u - first.regions[i].u) < 1e-6f);
+        CHECK(std::abs(first.rest_regions[i].v - first.regions[i].v) < 1e-6f);
+    }
     // Move only an expression landmark. It must not enter the rigid H fit.
     r.landmarks.points[*f.map.resolve("iris_center_r")].x -= 0.12f;
     r.source_timestamp_ns += kStep;
     const auto second = rig.update(r, r.source_timestamp_ns);
+    CHECK(std::abs(second.rest_regions[1].u - first.rest_regions[1].u) < 1e-6f);
+    CHECK(second.regions[1].u != first.regions[1].u);
     const double raw_shift = 0.12 / 3 / std::abs(first.canonical_to_image[0]);
     const double expected = std::min(0.12, raw_shift * (1 - std::exp(-1.0 / 60 / 0.150)));
     CHECK(std::abs(second.regions[1].u - first.regions[1].u - expected) < 1e-5);

@@ -421,14 +421,14 @@ app-side submit/poll counts.
 
 Measured on the T26 host (RTX 4080, 240 Hz display): 10-minute soak, 1080p60
 output, real Logitech C920 (stepped down to 640×480@30 NV12 because the 1080p
-mode cannot sustain 30 fps on this host). Result: 35,990 rendered frames in
-600 s (59.98 fps), frame-time p99 0.055 ms, interval-jitter p99 0.285 ms,
-app-side latency p50 36.15 ms / p95 79.15 ms / p99 103.15 ms (9,000 submits),
-RSS growth 0.46% (peak 612.6 MB), 0 dropped output frames, CPU 42.6% of one
-core, camera 15,014 frames. The transport is the T25 window monitor at its
-1/30 s timer after the draw, ~30 Hz with the 1080p readback); T46 replaces it with
-the render-cadence async path. Results are recorded in the local
-`docs/progress/T26.md` workspace; the gate reads `.tools/T26-soak.json`.
+mode cannot sustain 30 fps on this host). Result: 35,996 rendered frames in
+600 s (59.99 fps), frame-time p99 0.055 ms, interval-jitter p99 0.425 ms,
+app-side latency p50 27.35 ms / p95 46.95 ms / p99 65.35 ms (12,935 submits),
+RSS growth 0.32% (peak 610.7 MB), 0 dropped output frames, CPU 41.7% of one
+core, camera 20,104 frames. The transport is the T25 window monitor at its
+1/30 s timer after the draw (~21 Hz effective with the 1080p readback); T46
+replaces it with the render-cadence async path. Results are recorded in the
+local `docs/progress/T26.md` workspace; the gate reads `.tools/T26-soak.json`.
 `tests/gates/T26.ps1` runs the native pipeline suite, the rendered goldens, the
 soak and the T27 threshold reader; `-Fast` runs a 20 s soak instead of 10
 minutes. Pacing on 60/120/144 Hz displays: the 60 fps cadence is measured on this

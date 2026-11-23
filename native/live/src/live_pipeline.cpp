@@ -34,6 +34,7 @@ void LivePipeline::reset() {
     last_output_timestamp_ = 0;
     camera_ = CameraState::ok;
     output_ = {};
+    last_landmarks_ = {};
     paired_timestamp_ = 0;
     paired_arrival_ = 0;
     app_latency_.reset();
@@ -66,6 +67,7 @@ PipelineTick LivePipeline::tick(TimestampNs render_time_ns, CameraState camera) 
             last_valid_ = result->valid;
             last_features_valid_ = result->features_valid;
             last_confidence_ = result->confidence;
+            last_landmarks_ = result->landmarks;
             last_result_ns_ =
                 result->source_timestamp_ns != 0 ? result->source_timestamp_ns : render_time_ns;
             rig_.submit(*result);

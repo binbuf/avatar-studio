@@ -29,6 +29,8 @@ var running := false
 var using_surface := true
 var decal_visible := true
 var preview_enabled := false
+var options: Dictionary = {}
+var region_rest: Array = []
 
 
 
@@ -45,6 +47,7 @@ func setup(runtime: Node, options: Dictionary = {}) -> bool:
 		last_error = String(ring.call("get_last_error"))
 		return false
 	pipeline.call("set_camera_ring", ring)
+	self.options = options.duplicate(true)
 	if runtime != null:
 		model = runtime.call("get_avatar_model")
 	if model != null and is_instance_valid(model):
@@ -52,6 +55,7 @@ func setup(runtime: Node, options: Dictionary = {}) -> bool:
 	if not bool(pipeline.call("initialize", options)):
 		last_error = String(pipeline.call("get_last_error"))
 		return false
+	pipeline.call("set_preview_enabled", preview_enabled)
 	last_error = ""
 	return true
 
@@ -120,10 +124,30 @@ func apply_calibration(values: Dictionary, configure_head := true) -> Dictionary
 			var id := str(entry.id)
 			if not bool(decal.set_region_geometry(id, entry.center, entry.size)):
 				return {"ok": false, "error": String(decal.get_last_error())}
-			(void)decal.set_region_feather(id, float(entry.feather))
+			decal.set_region_feather(id, float(entry.feather))
 	calibration = resolved
 	last_error = ""
 	return {"ok": true, "error": ""}
+
+
+## Persists the current calibration to the controller's path. The Setup window
+## calls this only from Apply to model, never while a slider is moving.
+func save_calibration() -> Dictionary:
+	if calibration.is_empty():
+		return {"ok": false, "path": calibration_path, "error": "no calibration to save"}
+	return Calibration.save(calibration, calibration_path)
+
+
+## Restores the AABB-derived provisional mapping and applies it live. It does
+## not write the file; the operator presses Apply to persist the reset.
+func reset_calibration() -> Dictionary:
+	if model == null or not is_instance_valid(model):
+		return {"ok": false, "error": "no avatar model", "values": {}}
+	var aabb: AABB = model.call("get_model_aabb")
+	var values := Calibration.defaults(aabb)
+	var applied := apply_calibration(values, true)
+	return {"ok": bool(applied.get("ok", false)), "error": String(applied.get("error", "")),
+			"values": calibration.duplicate(true)}
 
 
 ## Re-reads the persisted mapping and rebuilds the decal. The test uses this to
@@ -147,6 +171,34 @@ func set_preview_enabled(enabled: bool) -> void:
 	preview_enabled = enabled
 	if pipeline != null:
 		pipeline.call("set_preview_enabled", enabled)
+
+
+## Restarts the native pipeline with new capture/tracker options. The decal and
+## calibration stay; only the camera source, tracker and ring binding restart.
+## Used by the Setup window's capture-mode and tracker-input selectors.
+func restart(new_options: Dictionary) -> Dictionary:
+	if pipeline == null:
+		return {"ok": false, "error": "pipeline is not initialized"}
+	stop()
+	pipeline.call("shutdown")
+	options = new_options.duplicate(true)
+	if not bool(pipeline.call("initialize", options)):
+		last_error = String(pipeline.call("get_last_error"))
+		return {"ok": false, "error": last_error}
+	pipeline.call("set_camera_ring", ring)
+	pipeline.call("set_preview_enabled", preview_enabled)
+	if not start():
+		return {"ok": false, "error": last_error}
+	last_error = ""
+	return {"ok": true, "error": ""}
+
+
+func set_options(new_options: Dictionary) -> void:
+	options = new_options.duplicate(true)
+
+
+func get_options() -> Dictionary:
+	return options.duplicate(true)
 
 
 
@@ -193,8 +245,14 @@ func _apply_decal(state: Dictionary) -> void:
 	if homography.size() == 9:
 		decal.set_canonical_to_image(_basis_from_row_major(homography))
 	var regions: Array = state.get("regions", [])
+	region_rest = state.get("region_rest", region_rest)
 	for index in range(mini(regions.size(), REGION_IDS.size())):
-		decal.set_region_anchor(REGION_IDS[index], regions[index])
+		# FaceRig publishes absolute canonical centroids; the shader adds the
+		# anchor to the authored region centre, so pass the delta from rest.
+		var anchor: Vector2 = regions[index]
+		if index < region_rest.size():
+			anchor -= region_rest[index]
+		decal.set_region_anchor(REGION_IDS[index], anchor)
 	var head: PackedFloat32Array = state.get("head_from_camera", PackedFloat32Array())
 	if model != null and is_instance_valid(model) and head.size() == 16:
 		model.call("set_head_rotation", _head_rotation(head))
@@ -246,6 +304,28 @@ func get_state() -> Dictionary:
 
 func get_calibration() -> Dictionary:
 	return calibration.duplicate(true)
+
+
+func get_region_rest() -> Array:
+	return region_rest.duplicate()
+
+
+## Dense tracker landmarks in normalised image coordinates, cached by the
+## native adapter once per tracker result.
+func get_landmarks() -> PackedVector2Array:
+	if pipeline == null:
+		return PackedVector2Array()
+	return pipeline.call("get_landmarks")
+
+
+func get_face_box() -> Rect2:
+	if pipeline == null:
+		return Rect2()
+	return pipeline.call("get_face_box")
+
+
+func get_preview_slot() -> Dictionary:
+	return last_state.get("preview_slot", {})
 
 
 

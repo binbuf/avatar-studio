@@ -12,6 +12,8 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <godot_cpp/variant/rect2.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <cstdint>
@@ -46,6 +48,17 @@ public:
     godot::Dictionary get_stats();
     godot::Dictionary get_config() const;
     godot::Dictionary get_build_info() const;
+    /// The Setup window asks for the newest camera frame even when no face is
+    /// tracked, so the operator can recognize the camera feed. The pin is
+    /// released and re-selected every tick; it never shares the decal's pin.
+    void set_preview_enabled(bool enabled);
+    bool is_preview_enabled() const;
+    /// Dense tracker landmarks in normalised image coordinates (T25c overlay).
+    /// Cached once per tracker result, not rebuilt per render frame.
+    godot::PackedVector2Array get_landmarks() const;
+    /// Landmark bounds in normalised image coordinates; empty when there are
+    /// no landmarks. The Setup camera pane draws this face box.
+    godot::Rect2 get_face_box() const;
     void record_transport_submit();
     void set_tracker_available(bool available);
     void reset_stats();
@@ -61,6 +74,7 @@ private:
     static avatar::live::CameraState map_camera(avatar::capture::CameraState state);
     void update_process_sample();
     void release_selection();
+    void update_landmark_cache();
 
     avatar::core::SteadyTimeSource time_{};
     avatar::core::FrameClock clock_{time_};
@@ -78,15 +92,25 @@ private:
     bool initialized_ = false;
     bool running_ = false;
     bool tracker_available_ = false;
+    bool preview_enabled_ = false;
     std::int64_t selected_slot_ = -1;
+    std::int64_t preview_slot_ = -1;
+    bool preview_pinned_ = false;
     std::int64_t published_timestamp_ = 0;
     std::uint64_t publish_count_ = 0;
     avatar::core::TimestampNs latest_timestamp_ = 0;
     avatar::core::TimestampNs latest_arrival_ = 0;
 
+    // T25c diagnostic overlay data, rebuilt when a tracker result is consumed.
+    godot::PackedVector2Array landmarks_{};
+    godot::Rect2 face_box_{};
+    std::uint32_t landmark_count_ = 0;
+
     godot::String source_kind_{"camera"};
     godot::String tracker_kind_{"none"};
     godot::String camera_device_{};
+    godot::String capture_request_{"auto"};
+    int64_t tracker_input_ = 0;
     godot::String last_error_{};
 
     std::uint64_t last_cpu_sample_ns_ = 0;

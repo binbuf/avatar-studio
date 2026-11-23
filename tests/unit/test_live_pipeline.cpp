@@ -177,6 +177,30 @@ TEST_CASE(pipeline_times_out_a_stale_result) {
     CHECK(h.pipeline.face_state(h.now) == FaceState::not_visible);
 }
 
+TEST_CASE(pipeline_holds_the_setup_decal_while_the_face_state_reports_loss) {
+    Harness h;
+    avatar::live::PipelineTick tick;
+    for (int i = 0; i < 12; ++i) {
+        tick = h.step();
+    }
+    CHECK(tick.output.features_valid);
+    CHECK(tick.have_output);
+    const auto held_timestamp = tick.output.source_timestamp_ns;
+    h.tracker.set_valid(false);
+    tick = h.step();
+    // The OBS gate reads face_state and blanks immediately; the Setup decal
+    // reads output.features_valid and keeps the last FaceRig pose for 150 ms.
+    CHECK(h.pipeline.face_state(h.now) == FaceState::not_visible);
+    CHECK(tick.output.features_valid);
+    CHECK(tick.have_output);
+    CHECK_EQ(tick.output.source_timestamp_ns, held_timestamp);
+    for (int i = 0; i < 9; ++i) {
+        tick = h.step();
+    }
+    CHECK(!tick.output.features_valid);
+    CHECK(h.pipeline.face_state(h.now) == FaceState::not_visible);
+}
+
 TEST_CASE(pipeline_records_capture_to_submit_latency) {
     Harness h;
     h.pipeline.note_paired_frame(1'000, 5'000'000);

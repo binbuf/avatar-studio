@@ -178,9 +178,9 @@ static func _read_face(raw: Variant, fallback: Dictionary) -> Dictionary:
 	if not (raw is Dictionary):
 		return fallback.duplicate(true)
 	var source: Dictionary = raw
-	var origin := _vec3(source.get("origin", fallback.origin))
-	var normal := _vec3(source.get("normal", fallback.normal))
-	var up := _vec3(source.get("up", fallback.up))
+	var origin: Variant = _vec3(source.get("origin", fallback.origin))
+	var normal: Variant = _vec3(source.get("normal", fallback.normal))
+	var up: Variant = _vec3(source.get("up", fallback.up))
 	var scale: Variant = source.get("scale", fallback.scale)
 	if origin == null or normal == null or up == null:
 		return {}
@@ -215,8 +215,8 @@ static func _read_regions(raw: Variant, fallback: Array) -> Array:
 				break
 		if base.is_empty():
 			return []
-		var center := _vec2(source.get("center", base.center))
-		var size := _vec2(source.get("size", base.size))
+		var center: Variant = _vec2(source.get("center", base.center))
+		var size: Variant = _vec2(source.get("size", base.size))
 		var feather: Variant = source.get("feather", base.feather)
 		if center == null or size == null:
 			return []
@@ -242,8 +242,8 @@ static func _read_head(raw: Variant, fallback: Dictionary, face: Dictionary) -> 
 	if not (cut_raw is Dictionary):
 		return {}
 	var cut: Dictionary = cut_raw
-	var origin := _vec3(cut.get("origin", fallback.cut.origin))
-	var normal := _vec3(cut.get("normal", fallback.cut.normal))
+	var origin: Variant = _vec3(cut.get("origin", fallback.cut.origin))
+	var normal: Variant = _vec3(cut.get("normal", fallback.cut.normal))
 	var falloff: Variant = cut.get("falloff", fallback.cut.falloff)
 	if origin == null or normal == null:
 		return {}
