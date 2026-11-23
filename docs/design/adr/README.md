@@ -38,6 +38,7 @@ tell the difference between "we chose this" and "this happened".
 | [0031](0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | Accepted |
 | [0032](0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | Accepted |
 | [0033](0033-output-gate-and-window-transport.md) | Output gate and window transport | Accepted |
+| [0034](0034-timestamp-paired-camera-ring.md) | Timestamp-paired camera texture ring and shader YUV decode | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

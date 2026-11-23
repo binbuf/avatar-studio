@@ -3,7 +3,15 @@
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled;
 
+#include "res://shaders/yuv_convert.gdshaderinc"
+
 uniform sampler2D camera_tex : filter_linear, repeat_disable;
+uniform sampler2D camera_y_tex : filter_linear, repeat_disable;
+uniform sampler2D camera_uv_tex : filter_linear, repeat_disable;
+uniform bool camera_is_yuv = false;
+uniform int camera_matrix = 0; // 0 = BT.601, 1 = BT.709
+uniform int camera_range = 0;  // 0 = limited, 1 = full
+uniform bool camera_bgra = false;
 uniform mat3 canonical_to_image = mat3(1.0);
 uniform vec3 face_origin = vec3(0.0);
 uniform vec3 face_right = vec3(1.0, 0.0, 0.0);
@@ -27,6 +35,16 @@ varying vec3 posed_normal;
 
 vec3 srgb_to_linear(vec3 c) {
     return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+}
+
+vec3 sample_camera(vec2 uv) {
+    if (camera_is_yuv) {
+        float y = texture(camera_y_tex, uv).r;
+        vec2 chroma = texture(camera_uv_tex, uv).rg;
+        return clamp(yuv_to_rgb(y, chroma, camera_matrix, camera_range), 0.0, 1.0);
+    }
+    vec3 rgb = texture(camera_tex, uv).rgb;
+    return camera_bgra ? rgb.bgr : rgb;
 }
 
 void vertex() {
@@ -53,7 +71,7 @@ void fragment() {
     vec3 view = normalize(CAMERA_POSITION_WORLD - posed_pos);
     float facing = smoothstep(0.10, 0.35, dot(normalize(posed_normal), view));
     if (facing <= 0.0) { discard; }
-    vec3 rgb = srgb_to_linear(texture(camera_tex, uv).rgb);
+    vec3 rgb = srgb_to_linear(sample_camera(uv));
     vec3 premultiplied = vec3(0.0);
     float alpha = 0.0;
     for (int i = 0; i < 3; i++) {

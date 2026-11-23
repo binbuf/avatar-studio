@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T23 (output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T24 (timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -102,6 +102,21 @@ cut/node attachment and sampling variants. `tests/gates/T21.ps1` also measures t
 1080p Forward+ GPU delta (verified local 0.012 ms, spread 0.021 ms, target 0.7 ms). Cylindrical
 calibration, shaded mode, matte, tracker wiring and transport blanking remain later work.
 
+T24 implements the timestamp-paired camera texture ring. `avatar::capture::CameraTextureRing` owns
+four GPU-facing slots with source/arrival timestamps, sequence, format, colour space and a
+generation counter. `publish` uploads through an `ICameraTextureUploader`; the Godot adapter
+uploads NV12 as R8 luma + RG8 chroma and BGRA8/RGBA8 unchanged as RGBA8, and the shared
+`app/shaders/yuv_convert.gdshaderinc` decodes BT.601/709 limited/full in the shader. `select` accepts
+only an exact timestamp match (not future, not older than 150 ms); a miss blanks the decal.
+`TrackingFrameGate` drops every offer while one inference is in flight, so frames never accumulate.
+`FaceRig::submit` buffers at most four results and `sample(render_time)` applies the newest result at
+or before the render clock. `avatar_camera_ring_unit` covers the policy, the drop gate, FaceRig
+selection and the synthetic sliding regression (paired 0.66 px, naive 6.45 px).
+`app/tests/camera_ring.gd` drives the GDExtension adapter headlessly and in Compatibility, checks
+four colour-space/range colour-bar cases to 0.007 sRGB, proves the flat decal follows the selected
+older slot, and measures upload/downscale cost. [ADR-0034](adr/0034-timestamp-paired-camera-ring.md)
+records the decision. Live capture/tracker app wiring remains T26/T32.
+
 The foundation rows were re-verified from a clean worktree at T08 (2026-11-20): bootstrap, configure,
 RelWithDebInfo build, the full `fast` CTest label, the headless smoke, `scripts/ci.ps1`, the format,
 licence and design-link checks, and the performance harness against the local baseline all passed.
@@ -163,7 +178,7 @@ below). The table is listed so that a later session cannot mistake a design sect
 | Managed library, FaceProfiles, shows and settings | `native/avatar/`, `native/core/` | T30, T31, T42 |
 | Output manager, readback queue, transport backends | `native/output/` | T23, T46, T47 |
 | Cross-process frame transport and the three OS virtual cameras | `platform/windows/vcam/`, `platform/macos/vcam/`, `platform/linux/vcam/` | T53, T54, T56, T57 |
-| Runtime avatar content, decal shaders, YUV conversion | `app/scenes/`, `app/shaders/` | T20, T21, T24, T39 |
+| Shaded surface mode and lighting | `app/shaders/`, `app/scenes/` | T39 |
 | Editor, library, live and settings screens | `app/ui/` | T33–T42 |
 | Golden-image suite, matte tests, real-model corpus | `tests/golden/` | T26, T40, T43 |
 | Integration tests per platform, fuzzing | `tests/integration/` | T58, T61 |
@@ -211,11 +226,13 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Subsystem contract — head-region deformation | `native/gdextension/src/avatar_head.cpp`, `native/rig/include/avatar/rig/head_region.h` | T19 | `Implemented; cut CPU budget overrun (ADR-0029)` |
 | Subsystem contract — framing | `native/rig/`, `native/gdextension/src/avatar_runtime.cpp` | T22 | `Implemented; editor overlay is T36` |
 | Subsystem contract — output | `native/output/`, `native/gdextension/src/window_output.cpp` | T23, T46 | `Implemented (T23 gate, Null/File/Window); async readback/queues T46` |
-| Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24 | `Planned` |
+| Timestamp-paired camera texture ring, drop gate and FaceRig newest-not-after selection | `native/capture/camera_texture_ring.h`, `native/capture/tracking_frame_gate.h`, `native/rig/src/face_rig.cpp`, `native/gdextension/src/avatar_camera_ring.cpp` | T24 | `Implemented` |
+| Live capture → tracker → rig → decal wiring | `native/`, `app/` | T26, T32 | `Planned` |
+| Frame lifecycle (capture → pose → decal → output) | `native/`, `app/` | T16, T24, T26, T46 | `Planned` |
 | GDExtension binding rules: shell and binding skeleton | `native/gdextension/` | T02 | `Implemented` |
 | GDExtension binding rules: runtime node, C++ counters and hidden HUD, no per-frame GDScript | `native/gdextension/` | T16 | `Implemented` |
 | GDExtension binding rules: one-time GLB import, persistent mesh data, no per-frame marshalling | `native/gdextension/` | T17 | `Implemented` |
-| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24 | `Planned` |
+| GDExtension binding rules: per-frame data-plane bindings | `native/gdextension/`, `app/` | T24, T26 | `Ring adapter implemented (T24); native live capture path T26` |
 | Rendering strategy: one viewport, preview copy, 60 Hz pacing | `app/scenes/`, `native/gdextension/`, `native/core/` | T16 | `Implemented` |
 | Rendering strategy: runtime GLB import, bind pose, units/axes, model check | `native/gdextension/`, `app/scenes/`, `app/tests/` | T17 | `Implemented` |
 | Rendering strategy: decal pass | `app/shaders/`, `app/scenes/face_decal_flat.gd`, `app/scenes/face_decal_surface.gd` | T20, T21 | `Implemented` |
@@ -272,7 +289,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Reprojection consensus confidence and synthetic pose validation | `native/rig/`, `tests/unit/test_face_rig.cpp` | T18 | `Implemented` |
 | Real-corpus reprojection and occlusion quality validation | `native/tracking/`, `tests/` | T26, T27 | `Planned` |
 | Pose filtering, prediction, timestamp guard and 150 ms loss hold | `native/rig/` | T18 | `Implemented` |
-| Tracking/render integration, source-image pairing and recovery/output transitions | `native/gdextension/`, `app/` | T24 | `Planned` |
+| Source-image timestamp pairing and FaceRig newest-not-after selection | `native/rig/`, `native/capture/` | T24 | `Implemented` |
+| Live tracker/render integration and recovery/output transitions | `native/gdextension/`, `app/` | T26, T32 | `Planned` |
 | Segmentation output | `native/tracking/`, `native/` | T40 | `Planned` |
 | Failure behaviour (blank, hold, recovery) | `native/tracking/`, `native/output/` | T23, T41 | `Implemented (gate/blank T23); recovery surfaces T41` |
 | Alternative backends: ONNX Runtime fallback | `native/tracking/` | T14 | `Deferred` (re-entry: M0 numbers miss by more than 2x or the pinned backend cannot be built reproducibly) |
@@ -297,7 +315,8 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Linux backend: V4L2, PipeWire where required | `native/capture/linux/` | T55 | `Planned` |
 | Permission and busy detection (`CAP-002`, `CAP-006`) | `native/capture/` | T10 | `Implemented` |
 | Permission/privacy UI gates and deep links | `app/` | T41 | `Planned` |
-| Frame ring → GPU upload | `native/capture/`, `app/` | T16, T24 | `Planned` |
+| Frame ring → GPU upload (NV12 R8/RG8, BGRA/RGBA, exact timestamp pairing) | `native/capture/`, `native/gdextension/src/avatar_camera_ring.cpp`, `app/shaders/yuv_convert.gdshaderinc` | T24 | `Implemented` |
+| YUV → RGB in the shader (BT.601/709, limited/full) | `app/shaders/yuv_convert.gdshaderinc`, `app/tests/camera_ring.gd` | T24 | `Implemented` |
 | GPU zero-copy paths | — | — | `Deferred` (research spike, post-1.0) |
 | Test sources: test pattern, synthetic face, replay | `native/capture/` | T04 | `Implemented` |
 | Failure state machine: unplug, busy, preemption, stall, suspend/resume | `native/capture/` | T10 | `Implemented` |
@@ -305,6 +324,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Capture callback → ring publish (< 1 ms) | `native/capture/` | T10 | `Implemented` |
 | Long-run tracker drop and memory soak | `tests/m0/` | T13 | `Implemented` |
 | NV12 upload and downscale drop gates | `tests/performance/` | T26 | `Planned` |
+| Local ring upload and GPU downscale measurement | `app/tests/camera_ring.gd`, `tests/gates/T24.ps1` | T24 | `Implemented` |
 
 ## [output-and-virtual-camera.md](output-and-virtual-camera.md)
 
@@ -482,6 +502,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0031](adr/0031-surface-decal-shared-pass.md) | One shared-geometry surface decal pass | T21, T24, T39, T40 | Accepted |
 | [ADR-0032](adr/0032-presentation-framing-and-mirroring.md) | Fixed presentation, swept fit, and display-only preview mirroring | T22, T24, T36, T42 | Accepted |
 | [ADR-0033](adr/0033-output-gate-and-window-transport.md) | Output gate and window transport | T23, T46 | Accepted |
+| [ADR-0034](adr/0034-timestamp-paired-camera-ring.md) | Timestamp-paired camera texture ring and shader YUV decode | T24, T26, T39 | Accepted |
 
 ---
 
@@ -501,15 +522,22 @@ Phase 5 is sequenced after the MVP gate by
 [ADR-0017](adr/0017-windows-first-mvp-sequencing.md); it is not optional and not out of 1.0.
 
 T19 mechanism: [ADR-0029](adr/0029-shared-cpu-head-deformation.md), shared CPU vertex buffers,
-rest-position decal attribute, measured performance debt. Tracker wiring remains T24.
+rest-position decal attribute, measured performance debt. Timestamp pairing is T24; live app
+tracker wiring remains T26/T32.
 
 T20 mechanism: [ADR-0030](adr/0030-flat-decal-quad-pass.md), three head-parented region quads,
 world-space face projection, normalised ellipse/rounded-rect mask, clamped `[0,1]` sampling with
 discard, sRGB→linear camera colour, facing² and opacity. Shaded mode and matte remain T39/T40.
 T21 mechanism: [ADR-0031](adr/0031-surface-decal-shared-pass.md), shared live second draw for all
 three regions, immutable rest normals, reverse-Z bias, two-renderer CPU-reference goldens and
-measured 1080p GPU cost. Tracker/package integration remains T24/T29.
+measured 1080p GPU cost. Timestamp pairing is T24; live tracker/package integration remains
+T26/T29/T32.
 T22 mechanism: [ADR-0032](adr/0032-presentation-framing-and-mirroring.md), framework-free
 `view_from_model`, swept head sphere, model/head fit, 35° `KEEP_HEIGHT` distance formula, bounds
 overlay data, display-only preview flip and final-frame output mirror. The editor overlay and
 persisted presets remain T36/T42.
+T24 mechanism: [ADR-0034](adr/0034-timestamp-paired-camera-ring.md), four GPU-facing slots with
+exact timestamp selection, deferred format-change generation, a drop-before-inference gate,
+FaceRig newest-not-after buffering, NV12 R8/RG8 or BGRA/RGBA upload, and shader BT.601/709
+limited/full decode. Paired sliding is 0.66 px versus 6.45 px naive; colour bars are within
+0.007 sRGB. Live capture/tracker wiring and Forward+ upload/downscale budgets remain T26.

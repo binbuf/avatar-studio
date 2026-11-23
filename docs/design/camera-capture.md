@@ -1,9 +1,11 @@
 # Camera Capture
 
-**Status:** proposal; the Windows Media Foundation backend is implemented (T10) and the
-renderer-facing capture contract is audited (T15), macOS/Linux are planned · **Last updated:** 2026-11-21
+**Status:** proposal; the Windows Media Foundation backend is implemented (T10), the
+renderer-facing capture contract is audited (T15), and the timestamp-paired GPU texture ring is
+implemented (T24); macOS/Linux are planned · **Last updated:** 2026-11-22
 **Decision records:** [ADR-0002](adr/0002-native-camera-capture.md) (native capture),
-[ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) (state machine and backend seam)
+[ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) (state machine and backend seam),
+[ADR-0034](adr/0034-timestamp-paired-camera-ring.md) (timestamp-paired texture ring)
 
 Capture is deliberately not delegated to Godot's `CameraServer`, which is implemented only on
 Linux, Android, macOS and iOS. Even where it exists, it does not give us source timestamps, format
@@ -132,8 +134,10 @@ What is true today:
 - Device ids are the symbolic link. `--list-cameras` enumerates without opening; `--modes` also
   activates each device to list its native types.
 - Negotiation is format-first: every NV12 resolution in the policy order, then YUY2, then BGRA8.
-  MJPEG is listed in capabilities but is not selected until a decoder exists (T24): the ring owns
-  fixed-size CPU formats only. A rejected mode emits `CAP-003`; the chosen mode is reported.
+  MJPEG is listed in capabilities but is not selected until a decoder exists (a later task): the
+  ring owns fixed-size CPU formats only. A rejected mode emits `CAP-003`; the chosen mode is
+  reported. The T24 texture ring accepts NV12 and BGRA8/RGBA8; YUY2 and MJPEG are rejected by the
+  uploader until a packed-YUV shader or decoder lands.
 - A mode that delivers less than 80% of its negotiated rate for 3 s is demoted to the next
   preference and the change is emitted as `CAP-003`. This is the advertised-versus-delivered rule;
   an exposure-limited camera can trigger it too, which is visible and reversible.
@@ -236,9 +240,41 @@ publish sequence i                    upload/convert to camera texture
   counter exists so the debug HUD can prove it.
 - Camera frames live in **two** GPU textures: full resolution for decals, downscaled for tracking.
   The downscale is a blit, not a CPU resize.
-- YUV→RGB is a shader (`app/shaders/yuv_convert.gdshader`) with BT.601/709 and full/limited range as
-  uniforms, driven by `ColorSpace` from the frame. Getting this wrong produces the classic
-  green/magenta cast.
+- YUV→RGB is a shader include (`app/shaders/yuv_convert.gdshaderinc`) with BT.601/709 and
+  full/limited range as uniforms, driven by `ColorSpace` from the frame. Getting this wrong produces
+  the classic green/magenta cast.
+
+### Implemented camera texture ring (T24)
+
+`native/capture/include/avatar/capture/camera_texture_ring.h` implements the GPU-facing half of
+the ring. Four slots carry the source timestamp, arrival timestamp, sequence, width/height, pixel
+format, colour space and a generation counter. `publish(const VideoFrame&)` uploads through the
+`ICameraTextureUploader` seam; the Godot adapter in
+`native/gdextension/src/avatar_camera_ring.cpp` uploads NV12 as an R8 luma texture plus an RG8
+chroma texture, and BGRA8/RGBA8 unchanged as RGBA8 with a shader R/B swap. No CPU full-frame
+colour conversion occurs.
+
+The decal calls `select(result.source_timestamp_ns, render_time_ns)`. Only an exact timestamp match
+is accepted (not in the future, not older than 150 ms); a miss makes the decal blank rather than
+sampling different pixels. `select_for_tracking(render_time_ns)` returns the newest slot at or
+before the render clock for inference. `TrackingFrameGate` admits one inference at a time and
+drops every offer while it is busy, so frames never accumulate before inference.
+
+Ring policy:
+
+- the producer overwrites the oldest unpinned slot and counts the wrap;
+- if every slot is pinned (a slow consumer), the frame is dropped and counted;
+- a format or shape change bumps the generation and invalidates the old slots, but is deferred
+  while a slot is pinned so a texture being sampled is never torn;
+- `reset()` is only safe with no pins and no producer.
+
+The shared `yuv_convert.gdshaderinc` supports BT.601 and BT.709, limited and full range. The flat
+and surface decal shaders select the YUV or RGB path from `camera_is_yuv` and apply
+`camera_matrix`/`camera_range`. The colour-bar component test covers all four combinations to
+within 0.007 sRGB. Local Compatibility measurements (1280x720 NV12, RTX 4080) are upload p50
+95–325 us / p95 225–425 us and a 320x180 GPU blit + readback p50 0.43 ms / p95 1.7–2.0 ms across
+runs; the p95 includes driver scheduling and is not a Forward+ budget. The exact runs are recorded
+in the local `docs/progress/T24.md` workspace.
 
 ## GPU zero-copy: what is actually possible
 
@@ -312,7 +348,8 @@ The state machine does not clear the frame ring on `CAP-001` or `CAP-005`. `Fram
 only safe when no consumer holds a lease, and a source cannot know that. Consumers must treat
 `CameraSource::state()` as the authority and blank the output outside `streaming`; the last published
 frames remain readable, and the four-slot ring ages them out. A lease-safe reset (an epoch in
-`FrameRing`) is a follow-up for T24/T41.
+`FrameRing`) remains a follow-up for T41; the T24 texture ring has its own generation counter and
+does not reset the capture ring.
 
 A camera that advertises a mode it cannot sustain is demoted, but demotion cannot fix an
 exposure-limited low-light camera. That case is visible (`CAP-004`/`CAP-003`) rather than silent.

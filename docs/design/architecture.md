@@ -141,7 +141,7 @@ a camera, or a GPU.
 | M0 headless harness, soak, pose trace/chart/clip | `tests/m0/` | Implemented (T13); M0 Windows-scoped closure is T14/T15 ([ADR-0025](adr/0025-m0-windows-scope-and-deferred-platform-evidence.md)) |
 | Godot runtime: one avatar viewport, preview copy, 60 Hz pacing, C++ HUD | `native/gdextension/`, `native/core/`, `app/scenes/` | Implemented (T16) |
 | Runtime GLB import: rigid bind-pose scene, units/axes, model check, decal arrays | `native/gdextension/`, `app/tests/` | Implemented (T17) |
-| FaceRig estimator, filters, anchors and loss hold | `native/rig/` | Implemented (T18); engine integration remains T24 |
+| FaceRig estimator, filters, anchors, loss hold and newest-not-after result selection | `native/rig/` | Implemented (T18, T24); live engine integration remains T26/T32 |
 | Output pipeline, `OutputFrame`, `IVideoOutput`, Null/File/Window transports | `native/output/`, `native/gdextension/src/window_output.cpp` | Implemented (T23); async readback/queues are T46 |
 
 The T04 `ICameraSource` is the frame-producing subset of the sketch below: `start()`, `stop()`,
@@ -268,11 +268,14 @@ T21 adds immutable rest model normals in CUSTOM1 beside CUSTOM0 positions, and i
 planar surface shader on this shared geometry. One additional draw per selected mesh handles all
 three regions, rest-orientation rear rejection and posed facing; authored `face_submesh` narrows
 the draw. [ADR-0031](adr/0031-surface-decal-shared-pass.md) records the reverse-Z bias and local
-GPU measurement. Camera/pose timestamp pairing is still T24 work.
+GPU measurement. T24 adds the timestamp-paired camera texture ring and the shader YUV path
+([ADR-0034](adr/0034-timestamp-paired-camera-ring.md)): `FaceRig::submit` buffers results and
+`sample(render_time_ns)` applies the newest one at or before the render clock; the decal selects
+the ring slot whose timestamp exactly equals that result's source timestamp.
 T22 implements the fixed presentation transform, fit, distance, frustum and mirroring math in
 `native/rig/`; `AvatarRuntime` applies it and exposes the bounds overlay as data
 ([ADR-0032](adr/0032-presentation-framing-and-mirroring.md)). Avatar calibration and
-tracker-to-engine binding remain T32/T24. Exact FaceRig constants and transform conventions are
+tracker-to-engine binding remain T32/T26. Exact FaceRig constants and transform conventions are
 fixed in [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 The math is the heart of the product: [`face-compositing.md`](face-compositing.md).
@@ -311,17 +314,22 @@ One rendered frame, end to end:
 2. **Tracking** takes the newest frame, runs inference (CPU, ~8–12 ms), and publishes a
    `TrackingResult` carrying the *source frame's* timestamp. Results older than the last published
    one are discarded, not queued.
-3. **FaceRig** runs at render rate. It picks the tracking result whose `source_timestamp_ns` is
+3. **FaceRig** runs at render rate. `submit()` buffers at most four tracking results;
+   `sample(render_time_ns)` applies the newest result whose `source_timestamp_ns` is
    newest-but-not-after the render time, integrates the pose with a One Euro filter, and computes
-   the homography for *that* frame. A stale result is held for at most 150 ms to bridge a dropped
-   frame; beyond that the frame is marked invalid and the output blanks. It never decays to a neutral
-   pose, because a neutral pose is still a face.
+   the homography for *that* frame. A result from the future waits instead of being applied early.
+   A stale result is held for at most 150 ms to bridge a dropped frame; beyond that the frame is
+   marked invalid and the output blanks. It never decays to a neutral pose, because a neutral pose
+   is still a face. Implemented by T24.
 4. **Render** draws the avatar with the head rotation applied to the head region only, inside a fixed
    presentation transform (`view_from_model`, 180° yaw plus fit) that places the whole model. The body
-   stays still. Head translation is measured but not applied in 1.0. The decal pass then samples the
-   camera texture ring at the index matching the tracking result's timestamp, using
-   `canonical_to_image`, multiplied by the face matte. Pose and pixels therefore come from the same
-   instant — this is what stops the face from sliding across the model during fast motion.
+   stays still. Head translation is measured but not applied in 1.0. The decal pass then calls
+   `CameraTextureRing::select(result.source_timestamp_ns, render_time_ns)` and samples only the slot
+   whose timestamp matches, using `canonical_to_image`, multiplied by the face matte. A miss blanks
+   the decal rather than substituting different pixels. Pose and pixels therefore come from the same
+   instant — this is what stops the face from sliding across the model during fast motion. The ring
+   uploads NV12 as R8/RG8 planes or BGRA8/RGBA8 unchanged and decodes YUV in the shader with
+   BT.601/709 and limited/full uniforms. Implemented by T24.
 5. **Readback** is submitted asynchronously from the render thread
    (`RenderingDevice.texture_get_data_async`), with a completion callback keyed by instance ID so a
    freed viewport is safe.

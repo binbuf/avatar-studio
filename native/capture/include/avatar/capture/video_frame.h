@@ -29,6 +29,7 @@ enum class ColorSpace : std::uint8_t {
     bt709_limited,
     bt709_full,
     srgb,
+    bt601_full,
 };
 
 /// Where the pixels live.

@@ -168,7 +168,9 @@ same interfaces.
 
 Component tests: `avatar_capture_unit` (labels `fast;task_T04`) covers the ring, both synthetic
 sources, the scripted tracker, the replay fixture and the comparator library. `golden_compare_cli`
-runs the comparator's `--self-test` through the real command line.
+runs the comparator's `--self-test` through the real command line. `avatar_camera_ring_unit`
+(`fast;task_T24`) covers the timestamp-paired GPU ring, the drop-before-inference gate, FaceRig's
+newest-not-after selection and the synthetic sliding regression.
 
 ### Tracker contract harness (T09)
 
@@ -321,6 +323,41 @@ mouth 1,360), blank at the 150 ms deadline, blank submit ~0.2 ms. `tests/gates/T
 suite, both Godot phases, the design-link check and the pinned formatting check. The local evidence
 is `.tools/T23-output.json`, `.tools/T23-output-render.json` and `.tools/T23-*.log`; none of it is
 committed.
+
+## T24 timestamp pairing
+
+`avatar_camera_ring_unit` (`fast;task_T24`) owns the native contract:
+
+- exact timestamp selection, future/stale/missing-timestamp misses, and the rule that a miss never
+  falls back to different pixels;
+- wrap, a fully pinned slow consumer (drop counted, pinned slots untouched), and a format change
+  that is deferred while pinned and then invalidates the old generation;
+- `TrackingFrameGate` dropping every offer while one inference is in flight, with stale and
+  duplicate rejection (no inference queue);
+- `FaceRig::submit`/`sample` applying the newest result at or before the render clock, keeping a
+  future result buffered, and discarding superseded results;
+- the synthetic fast-motion sliding regression. The paired path samples the frame whose timestamp
+  equals `FaceRigOutput.source_timestamp_ns`; the naive path samples the newest frame with the same
+  pose. Paired error must be **< 1 px** and the naive path must be **> 5 px**. On this host:
+  paired **0.66 px**, naive **6.45 px**.
+
+`app/tests/camera_ring.gd` runs the GDExtension adapter headlessly (wrap, older-slot selection,
+slow-consumer drop, format change) and in a real Compatibility window. The rendered phase:
+
+- renders eight 75% colour bars twice each (so every bar owns a 4:2:0 chroma sample) through the
+  shared `yuv_convert.gdshaderinc` probe and checks BT.601 limited, BT.601 full, BT.709 limited and
+  BT.709 full to within 0.02 sRGB (measured max 0.007);
+- publishes a red NV12 frame and a newer blue NV12 frame, selects the **older** slot by timestamp,
+  binds it to the flat decal, and requires the decal to render red with zero blue pixels; selecting
+  the newer slot then renders blue with zero red;
+- measures the ring upload (1280x720 NV12) and a 320x180 GPU blit + readback. Local Compatibility
+  results across runs: upload p50 95–325 us / p95 225–425 us; downscale p50 0.43 ms / p95
+  1.7–2.0 ms. The downscale p95 includes driver scheduling and readback; it is not a Forward+
+  budget.
+
+`tests/gates/T24.ps1` runs the native suite and the sliding assertion, both Godot phases, the
+colour-bar and decal-slot evidence, the design markers and the pinned formatting/link checks. The
+exact measurements and gotchas are in the local `docs/progress/T24.md` workspace.
 
 ## Matte tests
 

@@ -9,6 +9,12 @@ var head: Node3D = null
 var face: Dictionary = {}
 var regions: Array[Dictionary] = []
 var camera_texture: Texture2D = null
+var camera_y_texture: Texture2D = null
+var camera_uv_texture: Texture2D = null
+var camera_is_yuv := false
+var camera_matrix := 0
+var camera_range := 0
+var camera_bgra := false
 var canonical_to_image := Basis.IDENTITY
 var material: ShaderMaterial = null
 var _enabled: Dictionary = {}
@@ -84,10 +90,66 @@ func get_region(id: String) -> Dictionary:
 			return region
 	return {}
 
-func set_camera_texture(texture: Texture2D) -> void:
+func set_camera_texture(texture: Texture2D, bgra := false) -> void:
 	camera_texture = texture
-	if material != null:
-		material.set_shader_parameter("camera_tex", texture)
+	camera_is_yuv = false
+	camera_bgra = bgra
+	_apply_camera_uniforms()
+
+func set_camera_planes(y_texture: Texture2D, uv_texture: Texture2D,
+		color_space := "bt601_limited") -> bool:
+	if y_texture == null or uv_texture == null:
+		return _fail("camera planes are required")
+	var encoding: Dictionary = Settings._camera_encoding(color_space)
+	if encoding.is_empty():
+		return _fail("unknown camera colour space: " + color_space)
+	camera_y_texture = y_texture
+	camera_uv_texture = uv_texture
+	camera_texture = null
+	camera_is_yuv = true
+	camera_bgra = false
+	camera_matrix = int(encoding.matrix)
+	camera_range = int(encoding.range)
+	_apply_camera_uniforms()
+	return true
+
+func set_camera_slot(slot: Dictionary) -> bool:
+	if not bool(slot.get("valid", false)):
+		return _fail("camera slot is not valid")
+	camera_matrix = int(slot.get("matrix", 0))
+	camera_range = int(slot.get("range", 0))
+	if bool(slot.get("is_yuv", false)):
+		var y_texture: Texture2D = slot.get("y_texture")
+		var uv_texture: Texture2D = slot.get("uv_texture")
+		if y_texture == null or uv_texture == null:
+			return _fail("camera slot has no NV12 textures")
+		camera_y_texture = y_texture
+		camera_uv_texture = uv_texture
+		camera_texture = null
+		camera_is_yuv = true
+		camera_bgra = false
+	else:
+		var texture: Texture2D = slot.get("rgb_texture")
+		if texture == null:
+			return _fail("camera slot has no RGB texture")
+		camera_texture = texture
+		camera_y_texture = null
+		camera_uv_texture = null
+		camera_is_yuv = false
+		camera_bgra = bool(slot.get("bgra", false))
+	_apply_camera_uniforms()
+	return true
+
+func _apply_camera_uniforms() -> void:
+	if material == null:
+		return
+	material.set_shader_parameter("camera_tex", camera_texture)
+	material.set_shader_parameter("camera_y_tex", camera_y_texture)
+	material.set_shader_parameter("camera_uv_tex", camera_uv_texture)
+	material.set_shader_parameter("camera_is_yuv", camera_is_yuv)
+	material.set_shader_parameter("camera_matrix", camera_matrix)
+	material.set_shader_parameter("camera_range", camera_range)
+	material.set_shader_parameter("camera_bgra", camera_bgra)
 
 func set_canonical_to_image(value: Basis) -> bool:
 	if not value.x.is_finite() or not value.y.is_finite() or not value.z.is_finite() \

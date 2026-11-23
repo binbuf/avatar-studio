@@ -209,7 +209,8 @@ CUSTOM0/1 are reserved for immutable rest model positions/normals (normals use i
 The T19 diagnostic can include `app/shaders/head_decal.gdshaderinc`,
 assign `head_rest_position = CUSTOM0.xyz` in vertex(), and project that varying in fragment().
 `get_decal_vertices()` remains rest space. The diagnostic target shader and independent render oracle
-are in `app/tests/`; camera face sampling is still T20/T21, tracker-to-engine wiring T24.
+are in `app/tests/`; camera face sampling is T20/T21, and the T24 ring/pairing seam is implemented
+below.
 
 The 20k-triangle cut fixture measures 0.463 ms median / 0.541 ms p95 for CPU deformation plus submission: the
 0.15 ms target is **not met**, explicitly retained as performance debt in ADR-0029. Indexed synthetic
@@ -348,8 +349,9 @@ dot(world_normal, view))`. The flat pass has no matte and no lighting
 integration: the matte is T40 and the shaded mode is T39. `region_anchor` is
 bound, but the quad is only as large as the region; an anchor that moves the
 mask beyond that rectangle clips until the region authoring/gizmo work (T35)
-sizes it. The quads do not follow the CPU cut deformation; T24 must apply the
-same head rotation to the decal anchor (node mode already follows its parent).
+sizes it. The quads do not follow the CPU cut deformation; applying the same head rotation to the
+decal anchor remains later work (T26/T39), while node mode already follows its parent. T24 pairs
+the camera pixels and pose; it does not change the flat-decal attachment.
 
 The known flat limitation is unchanged and deliberately not hidden: at yaw
 beyond roughly 25° the quad does not foreshorten like the model and cannot
@@ -378,7 +380,8 @@ the live mesh. Rest orientation rejects the back hemisphere; posed `N·V` suppli
 grazing fade. Rest projection uses the plane, not the deformed vertex. Mask SDFs, frame-edge and
 `w <= 0` discard, sRGB camera decoding and colour transform follow the realised T20 contract.
 Cylindrical calibration is still planned. Shading and matte remain T39/T40; package decoding and
-timestamp-paired live camera/pose wiring remain later tasks, including T24/T29.
+the remaining tracker-to-engine/package wiring remain T29/T32. The T24 ring, YUV shader path and
+timestamp pairing are implemented below.
 
 Godot's depth test is enabled by default. The specified LEQUAL policy maps to reversed-depth
 GEQUAL in **both pinned 4.7.2 renderers**. The shader adds `1e-6 * clip.w` to clip Z, moving the
@@ -507,6 +510,30 @@ absent from flat mode; they arrive with T40 and T39. The implemented surface sha
 same mask convention and clamp/colour contract with three fixed uniform slots in one draw.
 The sketch remains the target for shaded mode and matte.
 
+### T24 timestamp pairing
+
+The realised decal path binds the camera texture from
+`avatar::capture::CameraTextureRing::select(result.source_timestamp_ns, render_time_ns)`, not
+from the newest camera frame. The ring accepts only an exact timestamp match that is not in the
+future and no older than 150 ms. `FaceRig::sample(render_time_ns)` applies the newest buffered
+tracking result whose source timestamp is at or before the render clock; the applied result's
+`source_timestamp_ns` is what selects the slot. A result from the future waits in the bounded
+four-entry buffer instead of being applied early.
+
+The slot carries `camera_is_yuv`, `camera_matrix` (BT.601/709) and `camera_range`
+(limited/full). NV12 uploads an R8 luma texture and an RG8 chroma texture; the shared
+`app/shaders/yuv_convert.gdshaderinc` converts to sRGB-encoded RGB and the decal converts that to
+linear exactly once. BGRA8/RGBA8 uploads unchanged as RGBA8 and the shader swaps R/B. The CPU does
+no full-frame colour conversion. A selection miss (the paired slot was overwritten, the timestamp
+is stale, or a format change invalidated the generation) makes the decal invisible for that frame;
+it never samples different pixels.
+
+The synthetic fast-motion regression (`tests/unit/test_camera_texture_ring.cpp`) measures the
+paired sliding error at **0.66 px** against a newest-pose/newest-pixels path at **6.45 px**, and
+asserts the naive path fails the same sub-pixel test. The rendered `app/tests/camera_ring.gd` binds
+an older red slot and then the newest blue slot to the flat decal and requires the rendered pixels
+to follow the selected slot (2,012 changed pixels each way, zero bleed).
+
 ---
 
 ## Face matte
@@ -557,8 +584,9 @@ There is no passthrough, no last-frame freeze, and no fallback to the camera. A 
 bridges a dropped frame or a short missing-feature interval (including a single blink),
 and never for longer than 150 ms. T18 holds through exactly 150 ms from the last
 complete accepted sample and clears `features_valid` immediately after that deadline.
-Invalid results cannot extend it. T23 submits the actual blank frame and T24 wires the paired
-camera/pose path.
+Invalid results cannot extend it. T23 submits the actual blank frame; T24 supplies the paired
+camera/pose selection that the decal samples, and a selection miss blanks the decal rather than
+falling back to different pixels.
 
 This is deliberate. A stream that suddenly shows a frozen face, or the real camera, is worse than a
 stream that momentarily shows nothing, and the performer can see the state in the preview. The

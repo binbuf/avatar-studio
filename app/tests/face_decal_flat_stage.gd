@@ -55,6 +55,21 @@ func set_camera_image(image: Image) -> void:
 		decal.set_camera_texture(camera_texture)
 
 
+func set_camera_planes(y_texture: Texture2D, uv_texture: Texture2D,
+		color_space := "bt601_limited") -> bool:
+	if decal == null or not decal.is_built():
+		return false
+	camera_texture = null
+	return decal.set_camera_planes(y_texture, uv_texture, color_space)
+
+
+func set_camera_slot(slot: Dictionary) -> bool:
+	if decal == null or not decal.is_built():
+		return false
+	camera_texture = null
+	return decal.set_camera_slot(slot)
+
+
 func set_homography(value: Basis) -> void:
 	homography = value
 	if decal != null and decal.is_built():

@@ -120,6 +120,8 @@ add_library(avatar_capture STATIC
     native/capture/src/video_frame.cpp
     native/capture/src/face_ground_truth.cpp
     native/capture/src/frame_ring.cpp
+    native/capture/src/camera_texture_ring.cpp
+    native/capture/src/tracking_frame_gate.cpp
     native/capture/src/test_pattern_source.cpp
     native/capture/src/synthetic_face_source.cpp
     native/capture/src/y4m_reader.cpp
@@ -223,6 +225,20 @@ if(AVATAR_TESTS)
 endif()
 if(AVATAR_TESTS)
     enable_testing()
+    # T24: timestamp-paired camera texture ring, FaceRig result selection and
+    # the drop-before-inference gate. Links capture and rig because the sliding
+    # regression drives the real FaceRig with the synthetic face ground truth.
+    add_executable(avatar_camera_ring_tests
+        tests/unit/test_main.cpp
+        tests/unit/test_camera_texture_ring.cpp
+    )
+    target_include_directories(avatar_camera_ring_tests PRIVATE tests/unit)
+    target_link_libraries(avatar_camera_ring_tests PRIVATE avatar::capture avatar::rig)
+    avatar_enable_warnings(avatar_camera_ring_tests)
+    add_test(NAME avatar_camera_ring_unit COMMAND avatar_camera_ring_tests)
+    set_tests_properties(avatar_camera_ring_unit PROPERTIES
+        LABELS "fast;task_T24" TIMEOUT 120)
+
     add_executable(avatar_rig_tests tests/unit/test_main.cpp tests/unit/test_face_rig.cpp)
     target_include_directories(avatar_rig_tests PRIVATE tests/unit)
     target_link_libraries(avatar_rig_tests PRIVATE avatar::rig)

@@ -343,7 +343,9 @@ not a capability implied by this geometric check. Output continues to require `f
 ## Filtering and motion
 
 **Implemented in T18** in `native/rig`; T11 continues to return upstream pose and landmarks.
-The engine integration remains T24. See [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
+T24 adds the bounded result buffer and newest-not-after-render-time selection
+([ADR-0034](adr/0034-timestamp-paired-camera-ring.md)); live engine wiring remains T26/T32.
+See [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md).
 
 Raw landmarks and pose jitter at rest and lag under motion. The filter stack:
 
@@ -380,7 +382,7 @@ input interrupts that sequence. Render prediction uses velocity between filtered
 samples divided by the actual source interval, with a horizon clamped to **[0,50 ms]**.
 The filter dt cap must not amplify prediction velocity after a long gap. It does
 not predict H while H is solving successfully. The output pose is the inverse
-camera-from-head transform; T19/T24 must apply the intended rotation convention.
+camera-from-head transform; T19/T39 must apply the intended rotation convention.
 
 A successful pose/H/region sample starts the **150 ms** hold. Invalid face/features,
 rejected samples, failed solves, and repeated/older timestamps retain that deadline.
@@ -423,7 +425,7 @@ and backend errors; the app output gate, recovery blending and UI diagnostics re
 | Situation | Detection | Behaviour |
 |---|---|---|
 | No face in frame | Presence score below threshold | Tracker `valid = false`; rig bridges at most 150 ms from the last complete sample, then output blanks; UI shows a hint |
-| Face leaves and returns | Re-detection | T18 retains filter state and caps the reacquisition dt at 50 ms. A fixed 150 ms recovery blend remains T24 integration work; output is blank after the loss hold |
+| Face leaves and returns | Re-detection | T18 retains filter state and caps the reacquisition dt at 50 ms. A fixed 150 ms recovery blend remains later integration work (T26/T41); output is blank after the loss hold |
 | Missing eyes or mouth | Landmark subset incomplete | Tracker `features_valid = false`; rig bridges at most 150 ms, then its output validity clears. Sunglasses, a hand, or a profile view is the usual cause |
 | Tracking stalls | No result for > 150 ms | Mark invalid; output blanks; keep rendering the preview |
 | Tracker crashes | C-ABI call returns error | Disable tracking; output blanks (never a static face); surface a support code |

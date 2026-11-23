@@ -26,6 +26,9 @@ ColorSpace parse_color_space(const std::string& value) noexcept {
     if (value == "bt709_full") {
         return ColorSpace::bt709_full;
     }
+    if (value == "bt601_full") {
+        return ColorSpace::bt601_full;
+    }
     if (value == "srgb") {
         return ColorSpace::srgb;
     }

@@ -321,9 +321,14 @@ std::optional<Vec2> centroid(const tracking::LandmarkMap& map, const tracking::L
 } // namespace
 
 struct FaceRig::State {
+    static constexpr std::size_t kPendingCapacity = 4;
+
     tracking::LandmarkMap map;
     float aspect;
     tracking::ProfileLandmarks profile;
+    std::array<tracking::TrackingResult, kPendingCapacity> pending{};
+    std::size_t pending_count = 0;
+    std::uint64_t pending_dropped = 0;
     bool seen = false, pose_started = false, have_h = false, have_good = false;
     core::TimestampNs seen_ns = 0, pose_ns = 0, h_ns = 0, good_ns = 0;
     core::TimestampNs source_ns = 0;
@@ -361,12 +366,108 @@ void FaceRig::reset() {
     state_->profile = std::move(profile);
 }
 
+void FaceRig::submit(const tracking::TrackingResult& result) {
+    auto& s = *state_;
+    if (s.seen && result.source_timestamp_ns <= s.seen_ns) {
+        return;
+    }
+    for (std::size_t i = 0; i < s.pending_count; ++i) {
+        if (s.pending[i].source_timestamp_ns == result.source_timestamp_ns) {
+            return;
+        }
+    }
+    if (s.pending_count == State::kPendingCapacity) {
+        // Keep the newest results: evict the oldest buffered entry. This is a
+        // bounded buffer, not a queue.
+        std::size_t oldest = 0;
+        for (std::size_t i = 1; i < s.pending_count; ++i) {
+            if (s.pending[i].source_timestamp_ns < s.pending[oldest].source_timestamp_ns) {
+                oldest = i;
+            }
+        }
+        for (std::size_t i = oldest + 1; i < s.pending_count; ++i) {
+            s.pending[i - 1] = s.pending[i];
+        }
+        --s.pending_count;
+        ++s.pending_dropped;
+    }
+    s.pending[s.pending_count++] = result;
+}
+
+std::size_t FaceRig::pending_count() const noexcept {
+    return state_->pending_count;
+}
+
+std::uint64_t FaceRig::pending_dropped() const noexcept {
+    return state_->pending_dropped;
+}
+
+void FaceRig::apply_pending(core::TimestampNs render_time_ns) {
+    auto& s = *state_;
+    // Drop entries that can never be applied: they are older than the loss
+    // window and the render clock only moves forward.
+    std::size_t write = 0;
+    for (std::size_t i = 0; i < s.pending_count; ++i) {
+        const auto timestamp = s.pending[i].source_timestamp_ns;
+        if (render_time_ns > timestamp && render_time_ns - timestamp > kHoldNs) {
+            ++s.pending_dropped;
+            continue;
+        }
+        if (write != i) {
+            s.pending[write] = s.pending[i];
+        }
+        ++write;
+    }
+    s.pending_count = write;
+
+    std::size_t best = s.pending_count;
+    for (std::size_t i = 0; i < s.pending_count; ++i) {
+        const auto timestamp = s.pending[i].source_timestamp_ns;
+        if (timestamp > render_time_ns) {
+            continue;
+        }
+        if (best == s.pending_count || timestamp > s.pending[best].source_timestamp_ns) {
+            best = i;
+        }
+    }
+    if (best == s.pending_count) {
+        return;
+    }
+
+    const tracking::TrackingResult chosen = s.pending[best];
+    // Everything at or before the chosen timestamp is superseded. Future
+    // results stay buffered for a later render frame.
+    write = 0;
+    for (std::size_t i = 0; i < s.pending_count; ++i) {
+        if (s.pending[i].source_timestamp_ns <= chosen.source_timestamp_ns) {
+            continue;
+        }
+        if (write != i) {
+            s.pending[write] = s.pending[i];
+        }
+        ++write;
+    }
+    s.pending_count = write;
+    (void)apply_result(chosen, render_time_ns);
+}
+
 FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
                               core::TimestampNs render_time_ns) {
+    submit(result);
+    return sample(render_time_ns);
+}
+
+FaceRigOutput FaceRig::sample(core::TimestampNs render_time_ns) {
+    apply_pending(render_time_ns);
+    return sample_current(render_time_ns);
+}
+
+FaceRigOutput FaceRig::apply_result(const tracking::TrackingResult& result,
+                                    core::TimestampNs render_time_ns) {
     auto& s = *state_;
     const auto now = result.source_timestamp_ns;
     if (s.seen && now <= s.seen_ns) {
-        return sample(render_time_ns);
+        return sample_current(render_time_ns);
     }
     s.seen = true;
     s.seen_ns = now;
@@ -377,7 +478,7 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
         result.confidence <= 0 || !input.coeffs().allFinite() || input.norm() < 1e-8 ||
         !input_translation.allFinite()) {
         s.rejects = 0;
-        return sample(render_time_ns);
+        return sample_current(render_time_ns);
     }
     const Quat q = input.normalized();
     if (s.pose_started) {
@@ -392,7 +493,7 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
             }
             s.rejected = q;
             if (s.rejects < 3) {
-                return sample(render_time_ns);
+                return sample_current(render_time_ns);
             }
         }
     }
@@ -401,7 +502,7 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
         const auto frame =
             tracking::CanonicalFaceFrame::from_landmarks(result.landmarks, s.map, s.aspect);
         if (!frame) {
-            return sample(render_time_ns);
+            return sample_current(render_time_ns);
         }
         tracking::ProfileLandmarks profile;
         for (std::size_t i = 0; i < tracking::kLandmarkNameCount; ++i) {
@@ -412,7 +513,7 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
             }
         }
         if (profile.landmarks.size() < kMinimumInliers) {
-            return sample(render_time_ns);
+            return sample_current(render_time_ns);
         }
         s.profile = std::move(profile);
     }
@@ -430,18 +531,18 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
     s.failed = !solve(pairs, h, count);
     if (s.failed) {
         s.confidence *= 0.5f;
-        return sample(render_time_ns);
+        return sample_current(render_time_ns);
     }
     std::array<Vec2, 3> anchors;
     const Mat3 inverse = h.inverse();
     for (int i = 0; i < 3; ++i) {
         const auto point = centroid(s.map, result.landmarks, i);
         if (!point) {
-            return sample(render_time_ns);
+            return sample_current(render_time_ns);
         }
         anchors[static_cast<std::size_t>(i)] = project(inverse, *point);
         if (!anchors[static_cast<std::size_t>(i)].allFinite()) {
-            return sample(render_time_ns);
+            return sample_current(render_time_ns);
         }
     }
     // Long gaps use the same bounded filter step as normal updates. Reacquisition
@@ -494,10 +595,10 @@ FaceRigOutput FaceRig::update(const tracking::TrackingResult& result,
     s.inlier_count = count;
     s.confidence = std::clamp(result.confidence, 0.0f, 1.0f) * static_cast<float>(count) /
                    static_cast<float>(pairs.size());
-    return sample(render_time_ns);
+    return sample_current(render_time_ns);
 }
 
-FaceRigOutput FaceRig::sample(core::TimestampNs render_time_ns) const {
+FaceRigOutput FaceRig::sample_current(core::TimestampNs render_time_ns) const {
     const auto& s = *state_;
     FaceRigOutput output;
     output.source_timestamp_ns = s.source_ns;

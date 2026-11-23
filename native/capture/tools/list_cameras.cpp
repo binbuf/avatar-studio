@@ -84,6 +84,8 @@ std::string_view color_space_name(ColorSpace space) {
             return "bt709_full";
         case ColorSpace::srgb:
             return "srgb";
+        case ColorSpace::bt601_full:
+            return "bt601_full";
     }
     return "unknown";
 }
