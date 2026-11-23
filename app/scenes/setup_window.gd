@@ -41,6 +41,13 @@ var final_frame: Control = null
 var final_background: ColorRect = null
 var final_avatar: TextureRect = null
 var final_note: Label = null
+var status_panel: PanelContainer = null
+var controls_panel: PanelContainer = null
+var pane_footers: Array = []
+var pane_titles: Array = []
+var status_extra_labels: Array = []
+var control_section_labels: Array = []
+var compact := false
 var labels: Dictionary = {}
 var mapping_text: Label = null
 var action_status: Label = null
@@ -83,11 +90,16 @@ func open() -> void:
 	opened = true
 	visible = true
 	set_process(true)
-	if hud != null and hud.has_method("use_default_still"):
-		hud.call("use_default_still")
 	if controller != null:
 		controller.set_preview_enabled(true)
 		base = controller.get_calibration()
+		# Keep the launch source: the human review opens the real camera, while
+		# an unattended session launched with --live-source still keeps the file.
+		var config: Dictionary = controller.get_config()
+		if String(config.get("source", "")) == "still" \
+				and String(config.get("still_image", "")) == "" \
+				and hud != null and hud.has_method("use_default_still"):
+			hud.call("use_default_still")
 	_reset_params_from_base()
 	if viewport != null and final_avatar != null:
 		final_avatar.texture = viewport.get_texture()
@@ -113,6 +125,7 @@ func is_open() -> bool:
 func _process(delta: float) -> void:
 	if not opened:
 		return
+	_apply_compact_layout()
 	_overlay_timer += delta
 	_status_timer += delta
 	if _overlay_timer >= 1.0 / 20.0:
@@ -121,6 +134,40 @@ func _process(delta: float) -> void:
 	if _status_timer >= 0.25:
 		_status_timer = 0.0
 		_refresh_status()
+
+
+## At 150-200% UI scale the effective window is 640x360 or smaller. Keep the
+## three panes usable by hiding the secondary pane notes and shrinking the
+## control strip; the controls still scroll inside their panel.
+func _apply_compact_layout() -> void:
+	var window := get_window()
+	if window == null:
+		return
+	var want := window.content_scale_factor >= 1.5
+	if want == compact:
+		return
+	compact = want
+	for footer in pane_footers:
+		if footer is Control:
+			footer.visible = not compact
+	for title in pane_titles:
+		if title is Label:
+			title.add_theme_font_size_override("font_size", 11 if compact else 14)
+			title.autowrap_mode = TextServer.AUTOWRAP_OFF if compact \
+					else TextServer.AUTOWRAP_WORD_SMART
+			title.clip_text = compact
+	for label in status_extra_labels:
+		if label is Label:
+			label.visible = not compact
+	for label in control_section_labels:
+		if label is Control:
+			label.visible = not compact
+	if background_option != null:
+		background_option.add_theme_font_size_override("font_size", 11 if compact else 14)
+	if action_status != null:
+		action_status.visible = not compact
+	if controls_panel != null:
+		controls_panel.custom_minimum_size = Vector2(0, 64 if compact else 84)
 
 
 func _refresh(force: bool) -> void:
@@ -172,13 +219,26 @@ func _refresh_status() -> void:
 
 	var features := bool(state.get("features_valid", false))
 	var have_output := bool(state.get("have_output", false))
+	var is_frozen := bool(state.get("frozen", false)) or bool(controller.is_frozen())
+	var source_label := "camera"
+	var source_path := ""
+	if controller != null:
+		source_label = String(controller.get_source_label())
+		source_path = String(controller.get_source_path())
+	if source_label == "still (file)" and source_path != "":
+		source_label += " " + source_path
+	_set_label("source", "source " + source_label)
 	_set_label("features", "features %s" % str(features))
 	_set_label("have_output", "output %s" % str(have_output))
 	var hold := features and have_output and tracker_ready \
 			and (face == "not_visible" or face == "features_hidden")
 	var hold_label: Label = labels["hold"]
-	hold_label.text = "HOLD (150 ms loss window)" if hold else ""
-	hold_label.add_theme_color_override("font_color", WARN_COLOUR if hold else MUTED)
+	if is_frozen:
+		hold_label.text = "FROZEN (still dev)"
+		hold_label.add_theme_color_override("font_color", WARN_COLOUR)
+	else:
+		hold_label.text = "HOLD (150 ms loss window)" if hold else ""
+		hold_label.add_theme_color_override("font_color", WARN_COLOUR if hold else MUTED)
 
 	var code := String(status.get("code", ""))
 	var sentence := String(status.get("sentence", ""))
@@ -187,14 +247,20 @@ func _refresh_status() -> void:
 	reason_label.add_theme_color_override("font_color",
 			WARN_COLOUR if code != "" and code != "OK" else MUTED)
 	var hint_label: Label = labels["hint"]
-	if code == "TRK-004":
+	if is_frozen:
+		reason_label.text = "FROZEN still (dev): Setup holds the last frame and pose; the OBS output is blank."
+		reason_label.add_theme_color_override("font_color", WARN_COLOUR)
+		hint_label.visible = false
+	elif code == "TRK-004":
 		hint_label.text = "Low light hint: " + String(status.get("action", ""))
 		hint_label.visible = true
 	else:
 		hint_label.visible = false
 
 	var final_note_text := "No overlays. OBS output is separate."
-	if not features:
+	if is_frozen:
+		final_note_text = "Frozen diagnostic: this pane holds the avatar; the OBS output is blank."
+	elif not features:
 		final_note_text = "Decal blank: features_valid is false (the OBS gate blanks too)."
 	elif not have_output:
 		final_note_text = "Decal blank: no FaceRig output yet."
@@ -266,6 +332,7 @@ func _build_status(parent: Control) -> void:
 	panel.name = "SetupStatus"
 	panel.add_theme_stylebox_override("panel", _panel_style(0.90))
 	parent.add_child(panel)
+	status_panel = panel
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	panel.add_child(box)
@@ -282,7 +349,7 @@ func _build_status(parent: Control) -> void:
 	var row_two := HBoxContainer.new()
 	row_two.add_theme_constant_override("separation", 8)
 	box.add_child(row_two)
-	for key in ["features", "have_output", "hold"]:
+	for key in ["features", "have_output", "hold", "source"]:
 		labels[key] = _label("", 10, MUTED)
 		labels[key].size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		labels[key].clip_text = true
@@ -296,6 +363,8 @@ func _build_status(parent: Control) -> void:
 	labels["hint"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	labels["hint"].visible = false
 	row_two.add_child(labels["hint"])
+	status_extra_labels.append(labels["reason"])
+	status_extra_labels.append(labels["hint"])
 
 
 func _build_panes(parent: Control) -> void:
@@ -387,11 +456,13 @@ func _pane(title: String, ratio: float) -> PanelContainer:
 	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title_label.custom_minimum_size = Vector2(0, 0)
 	header.add_child(title_label)
+	pane_titles.append(title_label)
 	var content := Control.new()
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(content)
 	var footer := VBoxContainer.new()
 	box.add_child(footer)
+	pane_footers.append(footer)
 	panel.set_meta("header", header)
 	panel.set_meta("content", content)
 	panel.set_meta("footer", footer)
@@ -404,6 +475,7 @@ func _build_controls(parent: Control) -> void:
 	panel.add_theme_stylebox_override("panel", _panel_style(0.90))
 	panel.custom_minimum_size = Vector2(0, 84)
 	parent.add_child(panel)
+	controls_panel = panel
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	panel.add_child(box)
@@ -417,7 +489,9 @@ func _build_controls(parent: Control) -> void:
 	controls.add_theme_constant_override("separation", 3)
 	scroll.add_child(controls)
 
-	controls.add_child(_label("Eye L / Eye R / Mouth", 11, MUTED))
+	var region_label := _label("Eye L / Eye R / Mouth", 11, MUTED)
+	controls.add_child(region_label)
+	control_section_labels.append(region_label)
 	var region_grid := _grid()
 	controls.add_child(region_grid)
 	for id in REGION_IDS:
@@ -427,7 +501,9 @@ func _build_controls(parent: Control) -> void:
 		_add_slider(region_grid, "size_%s_x" % id, prefix + " w", 0.05, 1.5, 0.01, 0.1)
 		_add_slider(region_grid, "size_%s_y" % id, prefix + " h", 0.05, 1.5, 0.01, 0.1)
 
-	controls.add_child(_label("Face and head cut", 11, MUTED))
+	var face_label := _label("Face and head cut", 11, MUTED)
+	controls.add_child(face_label)
+	control_section_labels.append(face_label)
 	var face_grid := _grid()
 	controls.add_child(face_grid)
 	_add_slider(face_grid, "face_scale", "face scale", 0.5, 2.0, 0.01, 1.0)
@@ -436,7 +512,9 @@ func _build_controls(parent: Control) -> void:
 	_add_slider(face_grid, "head_distance", "head cut", 0.2, 3.0, 0.01, 1.5)
 	_add_slider(face_grid, "head_falloff", "falloff", 0.1, 2.0, 0.01, 1.0)
 
-	controls.add_child(_label("Capture and tracker input", 11, MUTED))
+	var inputs_label := _label("Capture and tracker input", 11, MUTED)
+	controls.add_child(inputs_label)
+	control_section_labels.append(inputs_label)
 	var inputs := HFlowContainer.new()
 	inputs.add_theme_constant_override("h_separation", 8)
 	inputs.add_theme_constant_override("v_separation", 2)
@@ -473,6 +551,9 @@ func _build_controls(parent: Control) -> void:
 	var reset_button := _button("Reset", _on_reset_pressed)
 	reset_button.name = "ResetCalibration"
 	actions.add_child(reset_button)
+	var snapshot_button := _button("Snapshot", _on_snapshot_pressed)
+	snapshot_button.name = "Snapshot"
+	actions.add_child(snapshot_button)
 	var load_button := _button("Load still...", _on_load_still_pressed)
 	load_button.name = "LoadStill"
 	actions.add_child(load_button)
@@ -748,6 +829,27 @@ func _on_load_still_pressed() -> void:
 		file_dialog.popup_centered_ratio(0.7)
 
 
+func _on_snapshot_pressed() -> void:
+	if controller == null:
+		return
+	var user_path := ProjectSettings.globalize_path("user://T25c-snapshot.png")
+	var result: Dictionary = controller.snapshot(user_path)
+	if not bool(result.get("ok", false)):
+		if action_status != null:
+			action_status.text = "Snapshot failed: " + String(result.get("error", ""))
+			action_status.add_theme_color_override("font_color", WARN_COLOUR)
+		return
+	# Keep a local copy next to the other verification artifacts. The user://
+	# file is the one the operator can reload with --live-source still.
+	var tools_path := ProjectSettings.globalize_path("res://../.tools/T25c-snapshot.png")
+	DirAccess.make_dir_recursive_absolute(tools_path.get_base_dir())
+	DirAccess.copy_absolute(user_path, tools_path)
+	if action_status != null:
+		action_status.text = "Frozen on snapshot: %s (reload with --live-source still --still)" % user_path
+		action_status.add_theme_color_override("font_color", OK_COLOUR)
+	_refresh(true)
+
+
 func _on_still_selected(path: String) -> void:
 	if hud == null or not hud.has_method("use_still"):
 		return
@@ -761,9 +863,17 @@ func _on_still_selected(path: String) -> void:
 
 func _on_use_camera_pressed() -> void:
 	if hud != null and hud.has_method("use_camera"):
-		hud.call("use_camera")
-	if action_status != null:
-		action_status.text = "Camera source"
+		if bool(hud.call("use_camera")):
+			if action_status != null:
+				action_status.text = "Camera source resumed"
+				action_status.add_theme_color_override("font_color", OK_COLOUR)
+		else:
+			if action_status != null:
+				action_status.text = "Camera source failed; check the device"
+				action_status.add_theme_color_override("font_color", WARN_COLOUR)
+	elif action_status != null:
+		action_status.text = "Camera source unavailable"
+	_refresh(true)
 
 
 func _on_close_pressed() -> void:
@@ -814,6 +924,35 @@ func get_camera_overlay() -> Dictionary:
 
 func get_action_status() -> String:
 	return action_status.text if action_status != null else ""
+
+
+func is_frozen() -> bool:
+	return controller.is_frozen() if controller != null else false
+
+
+func snapshot(path: String = "") -> Dictionary:
+	if controller == null:
+		return {"ok": false, "error": "no controller"}
+	var target := path
+	if target == "":
+		target = ProjectSettings.globalize_path("user://T25c-snapshot.png")
+	return controller.snapshot(target)
+
+
+func use_camera() -> bool:
+	if hud != null and hud.has_method("use_camera"):
+		var ok: bool = bool(hud.call("use_camera"))
+		_refresh(true)
+		return ok
+	return false
+
+
+func get_source_label() -> String:
+	return controller.get_source_label() if controller != null else "unavailable"
+
+
+func get_source_path() -> String:
+	return controller.get_source_path() if controller != null else ""
 
 
 func set_region_center(id: String, centre: Vector2) -> void:

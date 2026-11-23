@@ -216,3 +216,52 @@ TEST_CASE(pipeline_records_capture_to_submit_latency) {
     h.pipeline.record_transport_submit(49'000'000);
     CHECK_EQ(h.pipeline.app_latency().samples(), 2u);
 }
+
+TEST_CASE(pipeline_freezes_on_the_last_pose_and_ignores_both_timeouts) {
+    Harness h;
+    avatar::live::PipelineTick tick;
+    for (int i = 0; i < 12; ++i) {
+        tick = h.step();
+    }
+    CHECK(tick.output.features_valid);
+    CHECK(tick.have_output);
+    const auto held_timestamp = tick.output.source_timestamp_ns;
+    const float held_confidence = h.pipeline.confidence();
+    CHECK(held_confidence > 0.9F);
+
+    h.pipeline.set_frozen(true);
+    CHECK(h.pipeline.frozen());
+    // The tracker stops producing and the wall clock advances well past both
+    // the 500 ms result timeout and the 150 ms feature-loss hold. A frozen
+    // pipeline must not age the held pose into no-face.
+    h.tracker.set_drop_all(true);
+    for (int i = 0; i < 120; ++i) {
+        tick = h.step();
+        CHECK(!tick.submitted);
+        CHECK(!tick.consumed);
+        CHECK(tick.have_output);
+        CHECK(tick.output.features_valid);
+        CHECK_EQ(tick.output.source_timestamp_ns, held_timestamp);
+    }
+    CHECK(h.pipeline.face_state(h.now) == FaceState::tracked);
+    CHECK_EQ(h.pipeline.confidence(), held_confidence);
+
+    // Unfreezing resumes production; the stale result then times out normally.
+    h.pipeline.set_frozen(false);
+    CHECK(!h.pipeline.frozen());
+    for (int i = 0; i < 40; ++i) {
+        tick = h.step();
+    }
+    CHECK(h.pipeline.face_state(h.now) == FaceState::not_visible);
+}
+
+TEST_CASE(pipeline_freeze_does_not_invent_a_face_without_a_result) {
+    Harness h;
+    h.pipeline.set_frozen(true);
+    for (int i = 0; i < 10; ++i) {
+        (void)h.step();
+    }
+    CHECK(h.pipeline.frozen());
+    CHECK(h.pipeline.face_state(h.now) == FaceState::not_visible);
+    CHECK_EQ(h.pipeline.confidence(), 0.0F);
+}

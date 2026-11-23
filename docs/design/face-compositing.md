@@ -1,6 +1,6 @@
 # Face Compositing
 
-**Status:** core math, flat and planar surface decals, presentation/framing, the output gate and the T25 panic blank implemented (T18/T20/T21/T22/T23/T25); cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
+**Status:** core math, flat and planar surface decals, presentation/framing, the output gate and the T25 panic blank implemented (T18/T20/T21/T22/T23/T25); the T25c Setup diagnostic freeze and still source implemented; cylindrical calibration, shaded mode and editor planned · **Last updated:** 2026-11-22
 **Decision record:** [ADR-0004](adr/0004-face-decal-projection.md), [ADR-0010](adr/0010-output-is-avatar-or-nothing.md), [ADR-0033](adr/0033-output-gate-and-window-transport.md)
 
 This document specifies how real webcam eyes and mouth are attached to a rigid model. It is the
@@ -777,3 +777,25 @@ final composed frame is read back for output, once, regardless of how many desti
 | Can the decal pass reuse the model's depth without a second draw (e.g. stencil tag in pass A)? | 0.7 ms at 1080p on low-end GPUs | Profile in M3; only pursue if the budget is tight |
 | Does lens distortion visibly stretch the face at typical webcam distance? | Determines whether optional calibration is worth the setup step | M2 quality tests with a barrel-distorted synthetic source |
 | Is `fit = "model"` sufficient, or do users need per-avatar framing presets? | Full-body models may need `fit = "head"` plus offsets | M2 usability run with three model archetypes |
+
+## T25c diagnostic freeze
+
+The Setup window adds a development-only freeze on top of the T26 live pipeline. `Snapshot`
+captures the newest source frame into an RGB image, sets `LivePipeline::frozen`, and pins the last
+T24 ring slot, the last tracker result and the last FaceRig output. While frozen:
+
+- `LivePipeline::tick` does not call `produce()`, does not submit to the tracker and does not poll a
+  result; it returns the stored `FaceRigOutput` verbatim.
+- `face_state()` maps the held tracker result instead of applying the 500 ms result timeout, and the
+  rig's 150 ms feature-loss hold cannot age the pose because `sample()` is not called.
+- The camera pane keeps the pinned preview slot; the decal keeps the paired slot. `Use camera`
+  clears the flag and the next tick resumes production and normal timeout behaviour.
+- The HUD feeds the Live session `face not_visible` while frozen, so the separate OBS gate blanks.
+  The Setup final pane still samples the avatar viewport directly, so the operator can map on the
+  held pose. Neither the frozen camera frame nor the held avatar pose is routed to the OBS output.
+
+The freeze is a diagnostic aid, not a production fallback. The still-file source
+(`--live-source still --still <path>`) is a separate development input: it publishes a decoded image
+as camera frames at the pipeline fps and runs the same tracker/rig/decal path. Both are excluded
+from the OBS output and from M1 gate evidence; the human review uses the real camera.
+

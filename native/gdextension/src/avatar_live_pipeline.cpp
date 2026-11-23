@@ -1,20 +1,20 @@
 #include "avatar_live_pipeline.h"
 
 #include "avatar/capture/synthetic_face_source.h"
+#include "avatar/capture/video_frame.h"
 #include "avatar/tracking/scripted_tracker.h"
-
-#include <godot_cpp/classes/image.hpp>
-#include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/array.hpp>
-#include <godot_cpp/variant/packed_byte_array.hpp>
-#include <godot_cpp/variant/packed_float32_array.hpp>
-#include <godot_cpp/variant/vector2.hpp>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 #include <string>
 
 // clang-format off
@@ -87,6 +87,92 @@ godot::String face_name(avatar::live::FaceState state) {
 
 double ns_to_ms(std::uint64_t ns) {
     return static_cast<double>(ns) / 1'000'000.0;
+}
+
+std::uint8_t clamp_byte(float value) {
+    const int rounded = static_cast<int>(value + 0.5F);
+    return static_cast<std::uint8_t>(std::clamp(rounded, 0, 255));
+}
+
+/// Converts one ring frame to an RGB8 Godot image for the development snapshot.
+/// This runs only when the operator presses Snapshot, never on the frame path.
+godot::Ref<godot::Image> frame_to_image(const avatar::capture::VideoFrame& frame) {
+    const int width = static_cast<int>(frame.width);
+    const int height = static_cast<int>(frame.height);
+    if (width <= 0 || height <= 0) {
+        return {};
+    }
+    const auto* plane0 = frame.plane(0);
+    if (plane0 == nullptr) {
+        return {};
+    }
+    godot::PackedByteArray bytes;
+    bytes.resize(static_cast<int64_t>(width) * static_cast<int64_t>(height) * 3);
+    auto* out = bytes.ptrw();
+    const auto put = [&](int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+        const std::size_t index = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                                   static_cast<std::size_t>(x)) *
+                                  3u;
+        out[index] = r;
+        out[index + 1] = g;
+        out[index + 2] = b;
+    };
+
+    if (frame.format == avatar::capture::PixelFormat::bgra8 ||
+        frame.format == avatar::capture::PixelFormat::rgba8) {
+        const bool bgra = frame.format == avatar::capture::PixelFormat::bgra8;
+        const std::size_t stride = frame.stride(0);
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* row = plane0 + static_cast<std::size_t>(y) * stride;
+            for (int x = 0; x < width; ++x) {
+                const std::uint8_t* pixel = row + static_cast<std::size_t>(x) * 4u;
+                put(x, y, bgra ? pixel[2] : pixel[0], pixel[1], bgra ? pixel[0] : pixel[2]);
+            }
+        }
+        return godot::Image::create_from_data(width, height, false, godot::Image::FORMAT_RGB8,
+                                              bytes);
+    }
+
+    if (frame.format == avatar::capture::PixelFormat::nv12) {
+        const auto* uv_plane = frame.plane(1);
+        if (uv_plane == nullptr) {
+            return {};
+        }
+        const auto space = frame.color_space;
+        const bool full = space == avatar::capture::ColorSpace::bt601_full ||
+                          space == avatar::capture::ColorSpace::bt709_full;
+        const bool bt709 = space == avatar::capture::ColorSpace::bt709_full ||
+                           space == avatar::capture::ColorSpace::bt709_limited;
+        const std::size_t y_stride = frame.stride(0);
+        const std::size_t uv_stride = frame.stride(1);
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* y_row = plane0 + static_cast<std::size_t>(y) * y_stride;
+            const std::uint8_t* uv_row = uv_plane + static_cast<std::size_t>(y / 2) * uv_stride;
+            for (int x = 0; x < width; ++x) {
+                const float luma = full ? static_cast<float>(y_row[x])
+                                        : (static_cast<float>(y_row[x]) - 16.0F) * 1.164F;
+                const std::uint8_t* uv = uv_row + static_cast<std::size_t>(x / 2) * 2u;
+                const float u = static_cast<float>(uv[0]) - 128.0F;
+                const float v = static_cast<float>(uv[1]) - 128.0F;
+                float r = 0.0F;
+                float g = 0.0F;
+                float b = 0.0F;
+                if (bt709) {
+                    r = luma + 1.793F * v;
+                    g = luma - 0.213F * u - 0.533F * v;
+                    b = luma + 2.112F * u;
+                } else {
+                    r = luma + 1.596F * v;
+                    g = luma - 0.391F * u - 0.813F * v;
+                    b = luma + 2.018F * u;
+                }
+                put(x, y, clamp_byte(r), clamp_byte(g), clamp_byte(b));
+            }
+        }
+        return godot::Image::create_from_data(width, height, false, godot::Image::FORMAT_RGB8,
+                                              bytes);
+    }
+    return {};
 }
 
 godot::Dictionary histogram_ms(const avatar::live::AppLatencyHistogram& histogram) {
@@ -295,6 +381,8 @@ void AvatarLivePipeline::shutdown() {
     cabi_tracker_ = nullptr;
     initialized_ = false;
     tracker_available_ = false;
+    frozen_ = false;
+    frozen_image_ = godot::Ref<godot::Image>();
     selected_slot_ = -1;
     preview_slot_ = -1;
     preview_pinned_ = false;
@@ -359,6 +447,66 @@ bool AvatarLivePipeline::is_preview_enabled() const {
     return preview_enabled_;
 }
 
+void AvatarLivePipeline::set_frozen(bool frozen) {
+    if (frozen_ == frozen) {
+        return;
+    }
+    frozen_ = frozen;
+    if (pipeline_ != nullptr) {
+        pipeline_->set_frozen(frozen);
+    }
+    if (frozen) {
+        frozen_image_ = godot::Ref<godot::Image>();
+        if (source_ != nullptr) {
+            // Capture exactly the frame the operator was looking at. The source
+            // ring keeps producing after this; the copy is independent, so the
+            // held image cannot drift.
+            const auto lease = source_->ring().try_acquire_latest();
+            if (lease) {
+                frozen_image_ = frame_to_image(lease->frame());
+            }
+        }
+        // If the camera pane was disabled when the freeze started, take one
+        // pin now so the Setup pane can still show the still frame.
+        if (preview_enabled_ && preview_slot_ < 0 && ring_.is_valid()) {
+            const godot::Dictionary newest =
+                ring_->select_for_tracking(static_cast<int64_t>(time_.now_ns()));
+            if (static_cast<bool>(newest.get("valid", false))) {
+                preview_slot_ = static_cast<std::int64_t>(newest.get("slot", -1));
+                preview_pinned_ = preview_slot_ >= 0;
+            }
+        }
+    } else {
+        frozen_image_ = godot::Ref<godot::Image>();
+    }
+}
+
+bool AvatarLivePipeline::is_frozen() const {
+    return frozen_;
+}
+
+godot::Ref<godot::Image> AvatarLivePipeline::get_snapshot_image() const {
+    if (frozen_ && frozen_image_.is_valid()) {
+        return frozen_image_;
+    }
+    if (source_ == nullptr) {
+        return {};
+    }
+    const auto lease = source_->ring().try_acquire_latest();
+    if (!lease) {
+        return {};
+    }
+    return frame_to_image(lease->frame());
+}
+
+bool AvatarLivePipeline::save_snapshot(const godot::String& path) const {
+    const godot::Ref<godot::Image> image = get_snapshot_image();
+    if (!image.is_valid() || image->is_empty()) {
+        return false;
+    }
+    return image->save_png(path) == godot::OK;
+}
+
 godot::PackedVector2Array AvatarLivePipeline::get_landmarks() const {
     return landmarks_;
 }
@@ -381,20 +529,24 @@ godot::Dictionary AvatarLivePipeline::tick() {
     const TimestampNs now = time_.now_ns();
     // Release last tick's preview pin before the decal selects its paired slot.
     // Releasing after selection could unpin a slot the decal just selected when
-    // the newest frame and the pose frame are the same.
-    if (preview_pinned_ && ring_.is_valid()) {
-        ring_->release(preview_slot_);
+    // the newest frame and the pose frame are the same. A frozen diagnostic
+    // keeps both pins so the held frame stays visible.
+    if (!frozen_) {
+        if (preview_pinned_ && ring_.is_valid()) {
+            ring_->release(preview_slot_);
+        }
+        preview_pinned_ = false;
+        preview_slot_ = -1;
     }
-    preview_pinned_ = false;
-    preview_slot_ = -1;
     const avatar::live::PipelineTick tick = pipeline_->tick(
         now, map_camera(camera_source_ != nullptr ? camera_source_->state()
                                                   : avatar::capture::CameraState::streaming));
 
     // Publish the newest camera frame into the T24 ring. The decal samples the
-    // slot whose timestamp matches the pose, not the newest pixels.
+    // slot whose timestamp matches the pose, not the newest pixels. A frozen
+    // pipeline publishes nothing; the ring keeps the last frame it held.
     bool new_frame = false;
-    if (ring_.is_valid()) {
+    if (!frozen_ && ring_.is_valid()) {
         const auto lease = source_->ring().try_acquire_latest();
         if (lease &&
             static_cast<std::int64_t>(lease->frame().timestamp_ns) != published_timestamp_) {
@@ -421,6 +573,9 @@ godot::Dictionary AvatarLivePipeline::tick() {
     out["new_frame"] = new_frame;
     out["have_output"] = tick.have_output;
     out["output_fresh"] = tick.output_fresh;
+    out["frozen"] = frozen_;
+    out["source"] = source_kind_;
+    out["still_image"] = still_path_;
     out["source_timestamp_ns"] = static_cast<int64_t>(tick.output_timestamp_ns);
 
     godot::PackedFloat32Array head;
@@ -457,7 +612,14 @@ godot::Dictionary AvatarLivePipeline::tick() {
 
     godot::Dictionary slot;
     bool paired = false;
-    if (ring_.is_valid() && tick.output_timestamp_ns != 0 && tick.output.features_valid) {
+    if (frozen_) {
+        // Keep the slot pinned at freeze time so the camera pane and the decal
+        // keep sampling the same still frame.
+        if (ring_.is_valid() && selected_slot_ >= 0) {
+            slot = ring_->get_slot_info(selected_slot_);
+        }
+        paired = static_cast<bool>(slot.get("valid", false));
+    } else if (ring_.is_valid() && tick.output_timestamp_ns != 0 && tick.output.features_valid) {
         // Release last frame's pin before selecting this frame's slot. Holding
         // one slot forever would block a capture format change and starve the
         // ring; the decal samples the slot during this frame only.
@@ -473,7 +635,7 @@ godot::Dictionary AvatarLivePipeline::tick() {
     } else {
         release_selection();
     }
-    if (!paired && latest_arrival_ != 0) {
+    if (!frozen_ && !paired && latest_arrival_ != 0) {
         // A blank frame is still a transport submit. Measure its age from the
         // newest camera callback so the latency gate is never vacuous.
         pipeline_->note_paired_frame(latest_timestamp_, latest_arrival_);
@@ -482,19 +644,26 @@ godot::Dictionary AvatarLivePipeline::tick() {
 
     godot::Dictionary preview;
     if (preview_enabled_ && ring_.is_valid()) {
-        if (paired) {
-            // The decal already pinned the newest pose frame; share it instead
-            // of taking a second pin on the same slot.
-            preview_slot_ = selected_slot_;
-        } else {
-            const godot::Dictionary newest = ring_->select_for_tracking(static_cast<int64_t>(now));
-            if (static_cast<bool>(newest.get("valid", false))) {
-                preview_slot_ = static_cast<std::int64_t>(newest.get("slot", -1));
-                preview_pinned_ = preview_slot_ >= 0;
+        if (frozen_) {
+            if (preview_slot_ >= 0) {
+                preview = ring_->get_slot_info(preview_slot_);
             }
-        }
-        if (preview_slot_ >= 0) {
-            preview = ring_->get_slot_info(preview_slot_);
+        } else {
+            if (paired) {
+                // The decal already pinned the newest pose frame; share it
+                // instead of taking a second pin on the same slot.
+                preview_slot_ = selected_slot_;
+            } else {
+                const godot::Dictionary newest =
+                    ring_->select_for_tracking(static_cast<int64_t>(now));
+                if (static_cast<bool>(newest.get("valid", false))) {
+                    preview_slot_ = static_cast<std::int64_t>(newest.get("slot", -1));
+                    preview_pinned_ = preview_slot_ >= 0;
+                }
+            }
+            if (preview_slot_ >= 0) {
+                preview = ring_->get_slot_info(preview_slot_);
+            }
         }
     }
     out["preview_slot"] = preview;
@@ -540,6 +709,9 @@ godot::Dictionary AvatarLivePipeline::get_state() const {
     out["confidence"] = pipeline_ != nullptr ? static_cast<double>(pipeline_->confidence()) : 0.0;
     out["running"] = running_;
     out["initialized"] = initialized_;
+    out["frozen"] = frozen_;
+    out["source"] = source_kind_;
+    out["still_image"] = still_path_;
     return out;
 }
 
@@ -605,6 +777,7 @@ godot::Dictionary AvatarLivePipeline::get_config() const {
     out["capture_request"] = capture_request_;
     out["camera"] = camera_device_;
     out["still_image"] = still_path_;
+    out["frozen"] = frozen_;
     if (camera_source_ != nullptr) {
         const auto mode = camera_source_->negotiated_mode();
         out["width"] = static_cast<int64_t>(mode.width);
@@ -759,6 +932,13 @@ void AvatarLivePipeline::_bind_methods() {
                                 &AvatarLivePipeline::set_preview_enabled);
     godot::ClassDB::bind_method(godot::D_METHOD("is_preview_enabled"),
                                 &AvatarLivePipeline::is_preview_enabled);
+    godot::ClassDB::bind_method(godot::D_METHOD("set_frozen", "frozen"),
+                                &AvatarLivePipeline::set_frozen);
+    godot::ClassDB::bind_method(godot::D_METHOD("is_frozen"), &AvatarLivePipeline::is_frozen);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_snapshot_image"),
+                                &AvatarLivePipeline::get_snapshot_image);
+    godot::ClassDB::bind_method(godot::D_METHOD("save_snapshot", "path"),
+                                &AvatarLivePipeline::save_snapshot);
     godot::ClassDB::bind_method(godot::D_METHOD("get_landmarks"),
                                 &AvatarLivePipeline::get_landmarks);
     godot::ClassDB::bind_method(godot::D_METHOD("get_face_box"), &AvatarLivePipeline::get_face_box);

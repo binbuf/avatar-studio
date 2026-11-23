@@ -1,6 +1,6 @@
 # Editor and UX
 
-**Status:** proposal; minimal Live surface, panic blank, live edit guard and four degraded states implemented (T25); full editor shell, all error surfaces and i18n planned · **Last updated:** 2026-11-22
+**Status:** proposal; minimal Live surface, panic blank, live edit guard and four degraded states implemented (T25); the diagnostic three-pane Setup window with manual mapping, freeze and still sources implemented (T25c); full editor shell, all error surfaces and i18n planned · **Last updated:** 2026-11-22
 
 The editor edits *avatar configuration*, not geometry. It has one job: get a user from "I have a
 `.glb`" to "I am live and it looks right" in minutes, without explaining how the renderer works.
@@ -381,3 +381,35 @@ Accessibility commitments for 1.0:
 - Recording or streaming.
 
 Each of these exists in a better tool. The editor's value is the calibration and the preview.
+
+## Setup window (T25c)
+
+The diagnostic Setup window is one opaque surface with three live panes and a control strip. It
+opens over the Live surface (`Setup` button or F2) and is deliberately not the OBS output: the
+transparent output window remains a separate surface with its own gate.
+
+- **Camera** renders the raw T24 ring slot with the same NV12/BT.601/709 decode the decal uses, then
+  overlays the dense tracker landmarks, the face box, the canonical-to-image homography quad and the
+  three eye/mouth region anchors. The camera pixels never enter the avatar SubViewport or the OBS
+  output.
+- **Mapping** draws the canonical-face values the decal actually consumes: the authored region rects,
+  the live centroid plus rest-delta anchor, the head cut plane and falloff, the pivot at the face
+  origin and the homography rows. Moving a slider changes these values; it is not a decorative
+  diagram.
+- **Final output** samples the avatar SubViewport with no overlays and a white/black background
+  toggle. The later OBS window is not this pane.
+
+The bottom strip moves the eye L/R and mouth centres and sizes, face scale/origin, and head cut
+origin/falloff; `Apply to model` writes `user://live_calibration.json`, and `Reset` restores the
+provisional AABB mapping without saving. Capture-mode and tracker-input selectors restart the native
+pipeline with the requested values.
+
+Two development-only sources support unattended setup work. `Snapshot` captures the current frame,
+freezes the native pipeline on it (holding the last ring slot, tracker result and FaceRig pose
+without the 500 ms timeout or 150 ms loss hold), saves it to `user://T25c-snapshot.png`, and labels
+the source `still (dev)`; `Use camera` unfreezes. `--live-source still --still <path>` (or `Load
+still...`) publishes a PNG/JPEG as camera frames at the pipeline fps, runs the tracker/FaceRig/decal
+and labels the source `still (file)` with its path. The OBS output is blanked while the diagnostic
+freeze is active, so neither the frozen frame nor a held avatar pose reaches the output. The human
+review always uses the real camera; the still source is not M1 gate evidence.
+

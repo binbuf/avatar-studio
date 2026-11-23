@@ -29,6 +29,7 @@ var running := false
 var using_surface := true
 var decal_visible := true
 var preview_enabled := false
+var frozen := false
 var options: Dictionary = {}
 var base_options: Dictionary = {}
 var region_rest: Array = []
@@ -175,6 +176,61 @@ func set_preview_enabled(enabled: bool) -> void:
 		pipeline.call("set_preview_enabled", enabled)
 
 
+## Development-only diagnostic freeze (T25c). The native pipeline stops
+## producing, submitting and polling; the last ring slot, tracker result and
+## FaceRig pose are held so the 500 ms timeout and 150 ms loss hold cannot turn
+## the still pose into no-face. The OBS output is blanked by the HUD while the
+## diagnostic surface is frozen.
+func set_frozen(value: bool) -> Dictionary:
+	if pipeline == null:
+		return {"ok": false, "error": "pipeline is not initialized", "frozen": frozen}
+	if frozen == value:
+		return {"ok": true, "error": "", "frozen": frozen}
+	frozen = value
+	pipeline.call("set_frozen", value)
+	last_state = {}
+	return {"ok": true, "error": "", "frozen": frozen}
+
+
+func is_frozen() -> bool:
+	return frozen
+
+
+## Captures the current camera frame, freezes the pipeline on it and saves it as
+## a PNG. The saved frame can be reloaded with `--live-source still --still`.
+func snapshot(path: String) -> Dictionary:
+	if pipeline == null:
+		return {"ok": false, "error": "pipeline is not initialized", "path": path}
+	var frozen_result: Dictionary = set_frozen(true)
+	if not bool(frozen_result.get("ok", false)):
+		return {"ok": false, "error": String(frozen_result.get("error", "")), "path": path}
+	if not bool(pipeline.call("save_snapshot", path)):
+		return {"ok": false, "error": "no camera frame to save", "path": path,
+				"frozen": true}
+	return {"ok": true, "error": "", "path": path, "frozen": true}
+
+
+## `still (dev)` while frozen, `still (file)` for the reloaded still source, and
+## `camera`/`synthetic (dev)` otherwise. The Setup status shows this label.
+func get_source_label() -> String:
+	if frozen:
+		return "still (dev)"
+	if pipeline == null:
+		return "unavailable"
+	var source := String(get_config().get("source", "camera"))
+	if source == "still":
+		return "still (file)"
+	if source == "synthetic":
+		return "synthetic (dev)"
+	return "camera"
+
+
+func get_source_path() -> String:
+	if pipeline == null:
+		return ""
+	return String(get_config().get("still_image", ""))
+
+
 ## Restarts the native pipeline with new capture/tracker options. The decal and
 ## calibration stay; only the camera source, tracker and ring binding restart.
 ## Used by the Setup window's capture-mode and tracker-input selectors.
@@ -189,6 +245,8 @@ func restart(new_options: Dictionary) -> Dictionary:
 		return {"ok": false, "error": last_error}
 	pipeline.call("set_camera_ring", ring)
 	pipeline.call("set_preview_enabled", preview_enabled)
+	frozen = false
+	pipeline.call("set_frozen", false)
 	if not start():
 		return {"ok": false, "error": last_error}
 	last_error = ""
@@ -214,6 +272,8 @@ func reinitialize(next_options: Dictionary) -> bool:
 		last_error = String(pipeline.call("get_last_error"))
 		return false
 	pipeline.call("set_preview_enabled", preview_enabled)
+	frozen = false
+	pipeline.call("set_frozen", false)
 	if not bool(pipeline.call("start")):
 		last_error = String(pipeline.call("get_last_error"))
 		return false
@@ -227,10 +287,16 @@ func use_still(path: String) -> bool:
 	var next := base_options.duplicate(true)
 	next["source"] = "still"
 	next["still_image"] = path
+	frozen = false
 	return reinitialize(next)
 
 
 func use_camera() -> bool:
+	if pipeline == null:
+		return false
+	# Unfreezing a frozen camera is enough; do not reopen the device.
+	if frozen and String(get_config().get("source", "camera")) != "still":
+		return bool(set_frozen(false).get("ok", false))
 	var next := base_options.duplicate(true)
 	next["source"] = "camera"
 	next["still_image"] = ""

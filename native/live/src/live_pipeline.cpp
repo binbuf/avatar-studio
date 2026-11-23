@@ -26,6 +26,7 @@ LivePipeline::LivePipeline(capture::ICameraSource& source, tracking::ITrackingBa
 
 void LivePipeline::reset() {
     in_flight_ = false;
+    frozen_ = false;
     have_result_ = false;
     last_valid_ = false;
     last_features_valid_ = false;
@@ -44,6 +45,16 @@ void LivePipeline::reset() {
 PipelineTick LivePipeline::tick(TimestampNs render_time_ns, CameraState camera) {
     PipelineTick tick;
     camera_ = camera;
+
+    if (frozen_) {
+        // Diagnostic freeze: no produce, no submit, no poll and no rig sample.
+        // Returning the last output verbatim is what keeps the pose from
+        // ageing into the 150 ms hold expiry or the 500 ms result timeout.
+        tick.have_output = have_result_ && output_.source_timestamp_ns != 0;
+        tick.output = output_;
+        tick.output_timestamp_ns = output_.source_timestamp_ns;
+        return tick;
+    }
 
     (void)source_.produce();
 
@@ -105,6 +116,13 @@ FaceState LivePipeline::face_state(TimestampNs now_ns) const noexcept {
     }
     if (!have_result_) {
         return FaceState::not_visible;
+    }
+    if (frozen_) {
+        // The frozen diagnostic surface keeps the face state it had when the
+        // operator pressed Snapshot; the OBS gate is blanked separately by the
+        // app, so this never leaks the frozen frame into the output.
+        return map_result(last_valid_, last_features_valid_, last_confidence_, output_.solve_failed,
+                          config_.degraded_confidence);
     }
     if (last_result_ns_ != 0 && now_ns > last_result_ns_ &&
         now_ns - last_result_ns_ > config_.tracker_timeout_ns) {

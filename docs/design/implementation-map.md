@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T26 (M1 golden matrix, live capture→tracker→FaceRig→decal wiring and the measured 10-minute app soak implemented with 28 Forward+ goldens, an SSIM + decal-bbox guard and the T05-shaped soak JSON; single instance, local activation and `--new-instance` isolation implemented with native and headless Godot evidence; Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T26 (M1 golden matrix, live capture→tracker→FaceRig→decal wiring and the measured 10-minute app soak implemented with 28 Forward+ goldens, an SSIM + decal-bbox guard and the T05-shaped soak JSON; single instance, local activation and `--new-instance` isolation implemented with native and headless Godot evidence; Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP; T25c Setup window, diagnostic freeze and still source implemented) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -573,4 +573,21 @@ reports stale reclamation after a crash, and a `--new-instance` identity with di
 activation and shared-memory names and virtual-camera/output-registration flags off. The camera is
 not special-cased, so contention is the existing `CAP-002` state. Cross-session (RDP) locking and the
 full platform matrix remain T58.
+
+## T25c Setup window
+
+The diagnostic Setup window is `app/scenes/setup_window.gd` with `setup_camera_view.gd`,
+`setup_camera_overlay.gd` and `setup_mapping_view.gd`. It reads the T26 live pipeline through
+`live_pipeline_controller.gd` (the same controller the Live HUD owns) and writes the operator mapping
+to `user://live_calibration.json` through `live_calibration.gd`; the decal setters on
+`face_decal_surface.gd`/`face_decal_flat.gd` are the live apply path. The camera pane samples the
+T24 ring slot; it never copies camera pixels into the avatar viewport or the output.
+
+The development sources are `native/capture/src/still_image_source.cpp` and the freeze path in
+`native/live/src/live_pipeline.cpp` plus `native/gdextension/src/avatar_live_pipeline.cpp`
+(`set_frozen`, `get_snapshot_image`, `save_snapshot`). The HUD blanks the separate OBS gate while the
+diagnostic freeze is active. Tests: `app/tests/setup_window.gd` (synthetic, still and rendered),
+`tests/unit/test_still_image_source.cpp`, the freeze cases in `tests/unit/test_live_pipeline.cpp` and
+`tests/gates/T25.ps1`; [ADR-0038](adr/0038-setup-freeze-and-still-source.md) records the decision.
+
 

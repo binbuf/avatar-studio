@@ -30,6 +30,8 @@ var result := {
 	"background": {},
 	"selectors": {},
 	"layout": {},
+	"source": {},
+	"freeze": {},
 }
 var rendering := false
 var scene: Node = null
@@ -37,10 +39,15 @@ var hud: CanvasLayer = null
 var setup = null
 var controller = null
 var test_path := "user://T25c-setup-test.json"
+var source_kind := ""
+var result_tag := ""
 
 
 func _initialize() -> void:
 	rendering = "--render" in OS.get_cmdline_user_args()
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--result-tag="):
+			result_tag = argument.substr("--result-tag=".length())
 	_run.call_deferred()
 
 
@@ -76,6 +83,7 @@ func _run() -> void:
 	if setup == null or controller == null:
 		_finish()
 		return
+	source_kind = String(controller.get_config().get("source", ""))
 
 	# A deterministic calibration file for this test; never touch the operator's.
 	controller.set_calibration_path(test_path)
@@ -87,12 +95,14 @@ func _run() -> void:
 	for _i in range(24):
 		await process_frame
 
+	_check_source()
 	_check_panes()
 	_check_overlay()
 	_check_mapping()
 	await _check_final_output()
 	await _check_edit_and_apply()
 	_check_hold()
+	await _check_freeze()
 	if rendering:
 		await _check_rendered()
 	await _check_selectors()
@@ -100,6 +110,27 @@ func _run() -> void:
 	_remove(test_path)
 	result["live"] = bool(hud.call("is_live"))
 	_finish()
+
+
+func _check_source() -> void:
+	var config: Dictionary = controller.get_config()
+	var source := String(config.get("source", ""))
+	var label := String(setup.call("get_source_label"))
+	if source == "still":
+		check(label == "still (file)", "the setup status labels the still file source")
+		var still_path := String(config.get("still_image", ""))
+		check(still_path != "", "the still source reports its path")
+		check(still_path.ends_with(".png") or still_path.ends_with(".jpg")
+				or still_path.ends_with(".jpeg"), "the still source path is an image")
+		check(bool(controller.last_state.get("have_output", false))
+				or String(controller.last_state.get("face", "")) == "tracked"
+				or String(controller.last_state.get("face", "")) == "degraded",
+				"the still source runs the tracker/FaceRig path")
+		result["source"] = {"kind": source, "label": label, "still_image": still_path}
+	else:
+		check(label == "synthetic (dev)" or label == "camera",
+				"the setup status labels the live source")
+		result["source"] = {"kind": source, "label": label, "still_image": ""}
 
 
 func _check_panes() -> void:
@@ -120,6 +151,8 @@ func _check_panes() -> void:
 			"camera": _rect_text(camera.get_global_rect()),
 			"mapping": _rect_text(mapping.get_global_rect()),
 			"final": _rect_text(final.get_global_rect()),
+			"status": _rect_text((panes.get("status") as Control).get_global_rect()),
+			"controls": _rect_text((panes.get("controls") as Control).get_global_rect()),
 		}
 	check(setup.get("camera_view") != null, "the camera pane has a camera view")
 	check(setup.get("mapping_view") != null, "the mapping pane has a mapping view")
@@ -289,6 +322,87 @@ func _check_hold() -> void:
 	}
 
 
+func _wait_seconds(seconds: float) -> void:
+	var start := Time.get_ticks_usec()
+	var deadline := int(seconds * 1_000_000.0)
+	while Time.get_ticks_usec() - start < deadline:
+		await process_frame
+
+
+func _check_freeze() -> void:
+	await process_frame
+	var before: Dictionary = controller.last_state.duplicate()
+	var face_before := String(before.get("face", ""))
+	var confidence_before := float(before.get("confidence", 0.0))
+	var timestamp_before := int(before.get("source_timestamp_ns", 0))
+	check(face_before == "tracked" or face_before == "degraded",
+			"a face is tracked before the snapshot")
+	check(confidence_before > 0.0, "tracking confidence is nonzero before the snapshot")
+	var snapshot_path := ProjectSettings.globalize_path("user://T25c-snapshot.png")
+	var tools_path := ProjectSettings.globalize_path("res://../.tools/T25c-snapshot.png")
+	_remove("user://T25c-snapshot.png")
+	if FileAccess.file_exists(tools_path):
+		DirAccess.remove_absolute(tools_path)
+	setup.call("_on_snapshot_pressed")
+	check(FileAccess.file_exists(snapshot_path), "Snapshot writes a PNG to user://")
+	check(FileAccess.file_exists(tools_path), "Snapshot copies the PNG to .tools")
+	check(bool(setup.call("is_frozen")), "the Setup window reports frozen")
+	check(String(setup.call("get_source_label")) == "still (dev)",
+			"the frozen source is labelled still (dev)")
+
+	# Longer than both the 500 ms result timeout and the 150 ms loss hold.
+	await _wait_seconds(1.2)
+	var held: Dictionary = controller.last_state
+	check(bool(held.get("frozen", false)), "the pipeline state reports frozen")
+	check(String(held.get("face", "")) == face_before,
+			"the frozen face state does not time out")
+	check(absf(float(held.get("confidence", 0.0)) - confidence_before) < 0.02,
+			"the frozen confidence is held")
+	check(int(held.get("source_timestamp_ns", 0)) == timestamp_before,
+			"the frozen pose timestamp is held")
+	var overlay: Dictionary = setup.call("get_camera_overlay")
+	check(bool(overlay.get("has_frame", false)), "the camera pane holds the frozen frame")
+
+	var image := Image.create(64, 36, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0.2, 0.6, 0.9, 1.0))
+	var frozen_decision: Dictionary = hud.call("submit_output_image", image,
+			_now_ns() + 250_000_000)
+	check(String(frozen_decision.get("state", "")) == "blank",
+			"the OBS output blanks while the diagnostic surface is frozen")
+
+	# Use camera (or a direct unfreeze for a still run, which must not need a
+	# camera) resumes the live feed.
+	var resumed := false
+	if source_kind == "still":
+		resumed = bool(controller.set_frozen(false).get("ok", false))
+	else:
+		resumed = bool(setup.call("use_camera"))
+	check(resumed, "Use camera unfreezes the pipeline")
+	check(not bool(setup.call("is_frozen")), "the Setup window reports live again")
+	await _wait_seconds(0.5)
+	var live_state: Dictionary = controller.last_state
+	check(not bool(live_state.get("frozen", true)), "the pipeline resumes after unfreeze")
+	check(String(live_state.get("face", "")) == "tracked"
+			or String(live_state.get("face", "")) == "degraded",
+			"the resumed pipeline tracks again")
+	var live_decision: Dictionary = hud.call("submit_output_image", image, _now_ns())
+	check(String(live_decision.get("state", "")) == "avatar",
+			"the OBS output resumes after unfreeze")
+	_remove("user://T25c-freeze-test.png")
+	result["freeze"] = {
+		"snapshot": tools_path,
+		"face": face_before,
+		"confidence": confidence_before,
+		"timestamp": timestamp_before,
+		"held_face": String(held.get("face", "")),
+		"held_confidence": float(held.get("confidence", 0.0)),
+		"held_timestamp": int(held.get("source_timestamp_ns", 0)),
+		"held_features": bool(held.get("features_valid", false)),
+		"obs_frozen": String(frozen_decision.get("state", "")),
+		"obs_resumed": String(live_decision.get("state", "")),
+	}
+
+
 func _check_selectors() -> void:
 	var capture: OptionButton = setup.find_child("CaptureMode", true, false)
 	var tracker: OptionButton = setup.find_child("TrackerInput", true, false)
@@ -378,6 +492,12 @@ func _check_rendered() -> void:
 			"the mapping pane is inside the window at 200%")
 	check(_rect_inside(final.get_global_rect(), scaled_rect),
 			"the final pane is inside the window at 200%")
+	check(camera.get_global_rect().size.y >= 120.0,
+			"the camera pane is readable at 200%")
+	check(mapping.get_global_rect().size.y >= 120.0,
+			"the mapping pane is readable at 200%")
+	check(final.get_global_rect().size.y >= 120.0,
+			"the final pane is readable at 200%")
 	var scaled := root.get_texture().get_image()
 	_save("T25c-setup-200", scaled)
 	check(scaled != null and not scaled.is_empty(), "the Setup window is drawable at 200%")
@@ -443,6 +563,10 @@ func _finish() -> void:
 	result["failures"] = failures
 	result["passed"] = failures.is_empty()
 	var suffix := "-render" if rendering else ""
+	if not rendering and result_tag != "":
+		suffix = "-" + result_tag
+	elif not rendering and source_kind == "still":
+		suffix = "-still"
 	var path := ProjectSettings.globalize_path("res://../.tools/T25c-setup%s.json" % suffix)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)

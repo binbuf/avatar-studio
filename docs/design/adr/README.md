@@ -42,6 +42,7 @@ tell the difference between "we chose this" and "this happened".
 | [0035](0035-live-hud-panic-and-edit-guard.md) | Live HUD, deliberate panic blank and the live edit guard | Accepted |
 | [0036](0036-single-instance-and-activation.md) | Single instance, local activation and the `--new-instance` escape hatch | Accepted |
 | [0037](0037-m1-golden-matrix-and-live-soak.md) | M1 golden matrix, decal-bbox guard and the live soak | Accepted |
+| [0038](0038-setup-freeze-and-still-source.md) | Setup diagnostic freeze and still-image source | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

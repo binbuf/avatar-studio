@@ -8,7 +8,8 @@ audit (T14/T15), the one-viewport runtime with 60 Hz pacing (T16), the runtime G
 its fixture set (T17), FaceRig numerical/CPU gates (T18), head-region cut/node geometry and goldens
 (T19), the flat decal pass with its analytic-reference goldens (T20), the shared-surface decal with
 two-renderer goldens (T21), the M1 golden matrix, the live capture→tracker→rig→decal wiring and the
-measured 10-minute app soak (T26) are implemented. The matte tests, real-model corpus and
+measured 10-minute app soak (T26) are implemented, and the T25c Setup window, freeze and still
+source have headless/rendered coverage. The matte tests, real-model corpus and
 cross-vendor golden runners remain `Planned`. ·
 **Last updated:** 2026-11-22
 **Decision record:** [ADR-0014](adr/0014-deterministic-sources-and-golden-comparator.md),
@@ -1052,9 +1053,33 @@ regression baselines; the independent oracle is what proves the framing math. Re
 intentionally with `--script res://tests/framing.gd -- --render --update-goldens`, inspect the
 images, then commit; the gate never rewrites them.
 
-The gate asserts containment for model fit at zoom 0.5/1.0 and margins 0–0.5, records
+The gate asserts containment for model fit at zoom 0.5/1.0 and margins 0-0.5, records
 `model-zoom-in` as the documented crop, and checks that positive x offset moves the silhouette
 right. Head fit deliberately crops the body. `zoom > 1` is not a fit failure; see
 [ADR-0032](adr/0032-presentation-framing-and-mirroring.md).
+
+## T25c Setup window
+
+`app/tests/setup_window.gd` drives the real main scene, native live pipeline, decal and output gate
+in two headless modes plus one rendered mode:
+
+- synthetic source + scripted tracker: three-pane layout, overlay data (landmarks, face box,
+  homography quad, anchors), mapping values, eye/mouth edit, Apply/persist/reload, background
+  toggle, feature-loss hold, capture/tracker selectors, Snapshot freeze/unfreeze and the OBS blank.
+- still source (`--live-source still --still tests/fixtures/images/still_setup.png`) + scripted
+  tracker: the same contract with no camera or person, plus the `still (file)` label and path.
+- rendered (`--render`): panes inside the window at 100% and 200% UI scale, opaque background, and
+  white/black final-pane readability samples.
+
+`tests/unit/test_still_image_source.cpp` (in `avatar_capture_unit`, `fast;task_T25c`) owns the
+native `StillImageSource`: RGB fixture -> BGRA/NV12 ring frames, the configured fps interval, the
+mismatched-size rejection and the NV12 luma path. `tests/unit/test_live_pipeline.cpp` adds the
+freeze cases: no produce/submit/poll while frozen, the held pose survives both the 500 ms result
+timeout and the 150 ms loss hold, and unfreezing resumes the normal timeout. `tests/gates/T25.ps1`
+runs both unit suites, both headless Setup modes, the rendered Setup phase, the design markers and
+[ADR-0038](adr/0038-setup-freeze-and-still-source.md). Evidence is written to
+`.tools/T25c-setup.json`, `.tools/T25c-setup-still.json`, `.tools/T25c-setup-render.json` and the
+`.tools/T25c-setup-*.png` captures; none of it is committed.
+
 
 

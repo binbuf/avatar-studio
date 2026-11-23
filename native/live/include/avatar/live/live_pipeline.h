@@ -92,6 +92,15 @@ public:
     void set_tracker_available(bool available) noexcept { tracker_available_ = available; }
     [[nodiscard]] bool tracker_available() const noexcept { return tracker_available_; }
 
+    /// Development-only diagnostic freeze (T25c). While frozen the pipeline
+    /// produces no frames, submits nothing to the tracker and returns the last
+    /// sampled FaceRig output unchanged. The 500 ms result timeout and the
+    /// 150 ms feature-loss hold are both suspended so the operator can map the
+    /// eye/mouth regions on a still pose. The OBS gate is not affected by this
+    /// flag; the app blanks it while the diagnostic surface is frozen.
+    void set_frozen(bool frozen) noexcept { frozen_ = frozen; }
+    [[nodiscard]] bool frozen() const noexcept { return frozen_; }
+
     [[nodiscard]] CameraState camera() const noexcept { return camera_; }
     [[nodiscard]] FaceState face_state(TimestampNs now_ns) const noexcept;
     [[nodiscard]] float confidence() const noexcept;
@@ -116,6 +125,7 @@ private:
     Config config_{};
 
     bool tracker_available_ = true;
+    bool frozen_ = false;
     bool in_flight_ = false;
     bool have_result_ = false;
     bool last_valid_ = false;

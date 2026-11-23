@@ -11,6 +11,7 @@
 #include "avatar/tracking/itracking_backend.h"
 #include "avatar_camera_ring.h"
 
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
@@ -54,6 +55,18 @@ public:
     /// released and re-selected every tick; it never shares the decal's pin.
     void set_preview_enabled(bool enabled);
     bool is_preview_enabled() const;
+    /// Development-only diagnostic freeze (T25c). `set_frozen(true)` stops
+    /// publishing new camera frames and holds the last ring slot, tracker result
+    /// and FaceRig pose; the 500 ms result timeout and 150 ms loss hold are
+    /// suspended. `get_snapshot_image()` returns the frame captured at freeze
+    /// time so the operator can reload it with `--live-source still`.
+    void set_frozen(bool frozen);
+    bool is_frozen() const;
+    /// The captured frozen frame, or the newest source frame when not frozen.
+    /// Returns null when no frame is available. The Setup window saves this as
+    /// a PNG; it is never submitted to the OBS output.
+    godot::Ref<godot::Image> get_snapshot_image() const;
+    bool save_snapshot(const godot::String& path) const;
     /// Dense tracker landmarks in normalised image coordinates (T25c overlay).
     /// Cached once per tracker result, not rebuilt per render frame.
     godot::PackedVector2Array get_landmarks() const;
@@ -95,6 +108,8 @@ private:
     bool running_ = false;
     bool tracker_available_ = false;
     bool preview_enabled_ = false;
+    bool frozen_ = false;
+    godot::Ref<godot::Image> frozen_image_{};
     std::int64_t selected_slot_ = -1;
     std::int64_t preview_slot_ = -1;
     bool preview_pinned_ = false;

@@ -49,7 +49,7 @@ bool StillImageSource::produce() {
     }
     const TimestampNs now = clock_.now_ns();
     const TimestampNs interval = config_.fps > 0 ? 1'000'000'000ull / config_.fps : 16'666'667ull;
-    if (last_ns_ != 0 && now - last_ns_ < interval) {
+    if (published_ > 0 && now - last_ns_ < interval) {
         return false;
     }
     auto write = ring_.begin_write();

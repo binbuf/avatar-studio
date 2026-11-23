@@ -419,6 +419,7 @@ if(AVATAR_TESTS)
         tests/unit/test_scripted_tracker.cpp
         tests/unit/test_replay_source.cpp
         tests/unit/test_golden_compare.cpp
+        tests/unit/test_still_image_source.cpp
         tests/tools/golden_compare/golden_compare.cpp
     )
     target_include_directories(avatar_capture_tests PRIVATE
@@ -439,7 +440,7 @@ if(AVATAR_TESTS)
 
     add_test(NAME avatar_capture_unit COMMAND avatar_capture_tests)
     set_tests_properties(avatar_capture_unit PROPERTIES
-        LABELS "fast;task_T04"
+        LABELS "fast;task_T04;task_T25c"
         TIMEOUT 180
     )
 

@@ -2,7 +2,7 @@
 
 **Status:** proposal; the Windows Media Foundation backend is implemented (T10), the
 renderer-facing capture contract is audited (T15), and the timestamp-paired GPU texture ring is
-implemented (T24); macOS/Linux are planned · **Last updated:** 2026-11-22
+implemented (T24); the T25c development still-image and snapshot sources are implemented; macOS/Linux are planned · **Last updated:** 2026-11-22
 **Decision records:** [ADR-0002](adr/0002-native-camera-capture.md) (native capture),
 [ADR-0020](adr/0020-capture-state-machine-and-mf-backend.md) (state machine and backend seam),
 [ADR-0034](adr/0034-timestamp-paired-camera-ring.md) (timestamp-paired texture ring)
@@ -386,3 +386,22 @@ that as a gap rather than borrowing an unrelated task id.
 | Does the D3D12 Godot backend interoperate cleanly with Media Foundation's D3D manager? | M1 prototype, Windows only |
 | Is the PipeWire camera portal stable enough to be the default on Wayland, or is V4L2 still required? | M1 on GNOME 46+ and KDE 6 |
 | Can exposure/WB lock be exposed reliably across UVC devices? | Driver survey; feature-detect per device |
+
+## T25c development sources
+
+The Setup window adds two development-only inputs that share the `ICameraSource` contract but never
+open a device:
+
+- `StillImageSource` (`native/capture/src/still_image_source.cpp`) takes tightly packed RGB8, converts
+  once per frame into the configured BGRA8 or NV12 ring slot and publishes at the configured fps.
+  The app loads the image through Godot (`--live-source still --still <path>` or `Load still...`),
+  converts to RGB8 and hands it to the native source. It is labelled `still (file)` with its path.
+- `Snapshot` copies the newest source frame to an RGB image, freezes the native live pipeline and
+  saves the image as PNG (`user://T25c-snapshot.png`, with a `.tools/` copy). The source is labelled
+  `still (dev)` until `Use camera` unfreezes.
+
+Both are diagnostic aids for UI/mapping work and automated tests with no camera or person. They are
+excluded from the OBS output and are not M1 gate evidence; the C920 capture measurements and the
+human review still use the real device. The capture probe (`app/tests/live_capture_probe.gd`) is the
+recorded mode/tracker-input measurement path.
+

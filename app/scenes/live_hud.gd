@@ -56,6 +56,7 @@ var notice: Dictionary = {}
 var notice_until_usec := 0
 var current_edit_kind := "avatar"
 var debug_states_visible := false
+var debug_state_active := false
 var single_instance: Object = null
 var single_instance_state: Dictionary = {}
 var single_instance_ready := false
@@ -450,7 +451,7 @@ func use_still(path: String) -> bool:
 	if path.begins_with("res://") or path.begins_with("user://"):
 		absolute = ProjectSettings.globalize_path(path)
 	if not bool(pipeline_controller.use_still(absolute)):
-		push_warning("T25c: still source failed: " + String(pipeline_controller.last_error))
+		push_warning("CAP-001: still source failed: " + String(pipeline_controller.last_error))
 		return false
 	pipeline_state = {}
 	_show_notice("Still image: " + absolute.get_file(),
@@ -470,7 +471,7 @@ func use_camera() -> bool:
 	if pipeline_controller == null:
 		return false
 	if not bool(pipeline_controller.use_camera()):
-		push_warning("T25c: camera source failed: " + String(pipeline_controller.last_error))
+		push_warning("CAP-001: camera source failed: " + String(pipeline_controller.last_error))
 		return false
 	pipeline_state = {}
 	_show_notice("Camera source resumed.", "", "", false, 2.0)
@@ -523,6 +524,7 @@ func _start_live() -> void:
 	var now := _now_ns()
 	live_session.call("start_live", now)
 	live_session.call("clear_debug_state")
+	debug_state_active = false
 	if pipeline_controller != null:
 		if not pipeline_controller.start():
 			push_warning("CAP-001: live pipeline did not start: "
@@ -598,7 +600,18 @@ func _pipeline_options() -> Dictionary:
 func _feed_pipeline(state: Dictionary) -> void:
 	if live_session == null or state.is_empty():
 		return
+	if debug_state_active:
+		# The debug-state menu is a review aid; a live pipeline tick must not
+		# overwrite the state the reviewer selected.
+		return
 	live_session.call("set_camera_status", String(state.get("camera", "none")))
+	# The frozen diagnostic frame is a development aid. It may drive the Setup
+	# panes, but the OBS output gate must blank while it is held so the still
+	# frame (or its held avatar pose) never reaches the output.
+	if bool(state.get("frozen", false)):
+		live_session.call("set_face_status", "not_visible", 0.0)
+		live_session.call("set_tracker_available", bool(state.get("tracker_available", false)))
+		return
 	live_session.call("set_face_status", String(state.get("face", "unavailable")),
 			float(state.get("confidence", 0.0)))
 	live_session.call("set_tracker_available", bool(state.get("tracker_available", false)))
@@ -711,6 +724,7 @@ func stop_and_switch(kind: String) -> void:
 func set_debug_state(name: String) -> void:
 	if live_session == null:
 		return
+	debug_state_active = name != "healthy" and name != "default"
 	live_session.call("set_debug_state", name)
 	notice = {}
 	_update_hud(_now_ns())
