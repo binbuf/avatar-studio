@@ -91,6 +91,9 @@ public:
     int start_calls = 0;
     int stop_calls = 0;
     int open_calls = 0;
+    // Optional shared exclusivity flag. Two CameraSource instances using two
+    // fakes with the same pointer model one camera held by another process.
+    bool* exclusive = nullptr;
 
     core::Status enumerate(std::vector<CameraDevice>& out) override {
         out = devices;
@@ -107,6 +110,13 @@ public:
         (void)device_id;
         ++open_calls;
         open_requests.push_back(requested);
+        if (exclusive != nullptr && *exclusive) {
+            CameraFailure failure;
+            failure.reason = CameraFailureReason::busy;
+            failure.code = core::StatusCode::internal_error;
+            failure.message = "fake device is held by another instance";
+            return failure;
+        }
         if (open_failure != CameraFailureReason::none) {
             CameraFailure failure;
             failure.reason = open_failure;
@@ -127,6 +137,9 @@ public:
             return failure;
         }
         mode = requested;
+        if (exclusive != nullptr) {
+            *exclusive = true;
+        }
         return CameraFailure{};
     }
 
@@ -140,6 +153,9 @@ public:
     void stop() noexcept override {
         is_running = false;
         ++stop_calls;
+        if (exclusive != nullptr) {
+            *exclusive = false;
+        }
     }
 
     void close() noexcept override { stop(); }
@@ -694,6 +710,39 @@ TEST_CASE(camera_hresult_classification_matches_the_documented_states) {
                                        make_mode(1280, 720, 30, PixelFormat::nv12)));
     CHECK(!capture::camera_mode_matches(make_mode(1280, 720, 30, PixelFormat::nv12),
                                         make_mode(1280, 720, 60, PixelFormat::nv12)));
+}
+
+TEST_CASE(a_second_instance_opening_a_held_camera_reports_cap_002) {
+    // T25a: --new-instance does not special-case the camera. It opens normally,
+    // and when the primary already streams that device the existing CAP-002
+    // busy state is the result.
+    bool device_open = false;
+    FakeCameraBackend primary_backend;
+    FakeCameraBackend test_backend;
+    primary_backend.exclusive = &device_open;
+    test_backend.exclusive = &device_open;
+    const CameraMode mode = make_mode(1280, 720, 30, PixelFormat::nv12);
+    primary_backend.advertised.modes = {mode};
+    test_backend.advertised.modes = {mode};
+
+    core::ManualTimeSource primary_time{kStartNs};
+    core::ManualTimeSource test_time{kStartNs};
+    core::FrameClock primary_clock{primary_time};
+    core::FrameClock test_clock{test_time};
+    CameraConfig config{};
+    CameraSource primary(primary_backend, primary_clock, config);
+    CameraSource test_instance(test_backend, test_clock, config);
+
+    CHECK(primary.start().ok());
+    CHECK(device_open);
+    const core::Status busy = test_instance.start();
+    CHECK(!busy.ok());
+    CHECK(test_instance.state() == CameraState::busy);
+    CHECK(Fixture::has_event(test_instance.take_events(), CameraEventKind::device_busy,
+                             core::DiagnosticCode::cap_002));
+
+    primary.stop();
+    CHECK(!device_open);
 }
 
 } // namespace

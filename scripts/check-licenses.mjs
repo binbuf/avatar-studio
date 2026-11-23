@@ -68,7 +68,7 @@ const SYSTEM_PREFIXES = [
     'shlobj.h', 'knownfolders.h', 'sddl.h', 'accctrl.h', 'aclapi.h',
     'wincrypt.h', 'bcrypt.h', 'ncrypt.h', 'setupapi.h', 'cfgmgr32.h', 'devpkey.h',
     'initguid.h', 'roapi.h', 'psapi.h', 'pdh.h', 'pdhmsg.h', 'timeapi.h',
-    'tlhelp32.h', 'dirent.h',
+    'tlhelp32.h', 'dirent.h', 'fcntl.h', 'poll.h',
     'mmsystem.h', 'avrt.h', 'd3d11.h', 'd3d12.h', 'dxgi.h', 'dxgi1_6.h',
     'wil/', 'wrl/', 'CoreFoundation/', 'CoreMedia/', 'CoreVideo/', 'CoreAudio/',
     'IOSurface/', 'VideoToolbox/', 'Foundation/', 'AppKit/', 'AVFoundation/',

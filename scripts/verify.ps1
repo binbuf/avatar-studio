@@ -46,17 +46,21 @@ if ($Fast -and $Full) {
 if (-not $Fast -and -not $Full) {
     $Fast = $true
 }
+$taskNumber = 0
 if ($Task -ne '') {
-    $Task = $Task.ToUpperInvariant()
-    if ($Task -notmatch '^T[0-9]{2,3}$') {
-        Write-Error "Invalid -Task '$Task': expected a task id such as T01."
+    if ($Task -match '^(?i)T([0-9]{2,3})([A-Za-z]?)$') {
+        $taskDigits = $Matches[1]
+        $taskSuffix = $Matches[2].ToLowerInvariant()
+        $Task = "T$taskDigits$taskSuffix"
+        $taskNumber = [int]$taskDigits
+    } else {
+        Write-Error "Invalid -Task '$Task': expected a task id such as T01 or T25a."
         exit 2
     }
 }
 
 $root = Split-Path -Parent $PSScriptRoot
 $mode = if ($Full) { 'full' } else { 'fast' }
-$taskNumber = if ($Task -ne '') { [int]$Task.Substring(1) } else { 0 }
 $requiresGodot = ($Task -ne '' -and $taskNumber -ge 2)
 
 function Write-Command([string]$Text) {

@@ -49,9 +49,21 @@ var notice: Dictionary = {}
 var notice_until_usec := 0
 var current_edit_kind := "avatar"
 var debug_states_visible := false
+var single_instance: Object = null
+var single_instance_state: Dictionary = {}
+var single_instance_ready := false
+var activation_paths: Dictionary = {}
+var window_raised := false
+
+
+func _enter_tree() -> void:
+	# Claim before any sibling's _ready can open a camera or an output device.
+	single_instance_ready = _claim_single_instance()
 
 
 func _ready() -> void:
+	if not single_instance_ready:
+		return
 	runtime = get_parent().get_node_or_null("AvatarRuntime")
 	viewport = get_parent().get_node_or_null("SubViewport")
 	_build_ui()
@@ -65,17 +77,114 @@ func _ready() -> void:
 	if "--live-debug" in OS.get_cmdline_user_args():
 		set_debug_states_visible(true)
 	_start_live()
+	if bool(single_instance_state.get("new_instance", false)):
+		var copy: Dictionary = single_instance_state.get("copy", {})
+		_show_notice(String(copy.get("sentence", "")), String(copy.get("action", "")), "",
+				false, 0.0)
+		_update_hud(_now_ns())
 	set_process(true)
 
 
 func _exit_tree() -> void:
+	if single_instance != null:
+		single_instance.call("stop")
 	if live_session != null:
 		live_session.call("stop_global_hotkey")
 	if output_manager != null:
 		output_manager.call("shutdown")
 
 
+func _should_claim_single_instance() -> bool:
+	# Test scripts drive main.tscn in a fresh process; claiming the real lock
+	# would make an unrelated test exit because the developer has the app open.
+	# The dedicated single-instance test passes --single-instance to opt in.
+	if "--single-instance" in OS.get_cmdline_user_args():
+		return true
+	for argument in OS.get_cmdline_args():
+		if argument == "--script":
+			return false
+	return true
+
+
+func _claim_single_instance() -> bool:
+	if not _should_claim_single_instance():
+		return true
+	var user_args := OS.get_cmdline_user_args()
+	var new_instance := "--new-instance" in user_args
+	single_instance = ClassDB.instantiate("AvatarSingleInstance")
+	if single_instance == null:
+		push_error("CFG-007: AvatarSingleInstance is not registered")
+		return true
+	var app_id := _arg_value(user_args, "--instance-app-id")
+	if app_id == "":
+		app_id = "avatar-studio"
+	var config := {
+		"app_id": app_id,
+		"new_instance": new_instance,
+		"avatar": _arg_value(user_args, "--avatar"),
+		"show": _arg_value(user_args, "--show"),
+	}
+	single_instance_state = single_instance.call("start", config)
+	var copy: Dictionary = single_instance_state.get("copy", {})
+	var sentence := String(copy.get("sentence", "Avatar Studio is already running"))
+	var action := String(copy.get("action", "Activate the existing window"))
+	if bool(single_instance_state.get("secondary", false)):
+		if bool(single_instance_state.get("delivered", false)):
+			print("CFG-007: " + sentence + " - " + action)
+			get_tree().quit(0)
+		else:
+			printerr("CFG-007: " + sentence + " - " + action)
+			if DisplayServer.get_name() != "headless":
+				OS.alert(sentence + "\n" + action, "Avatar Studio")
+			get_tree().quit(1)
+		return false
+	if String(single_instance_state.get("state", "")) == "error":
+		push_warning("CFG-007: single-instance lock failed: "
+				+ String(single_instance_state.get("error", "")))
+		return true
+	return true
+
+
+func _arg_value(args: PackedStringArray, name: String) -> String:
+	var index := args.find(name)
+	if index >= 0 and index + 1 < args.size():
+		return args[index + 1]
+	return ""
+
+
+func _on_activation(activation: Dictionary) -> void:
+	activation_paths = {
+		"avatar": String(activation.get("avatar", "")),
+		"show": String(activation.get("show", "")),
+	}
+	window_raised = true
+	var window := get_window()
+	if window != null:
+		# Godot 4.7 deprecates move_to_foreground in favour of grab_focus.
+		window.grab_focus()
+	var state: Dictionary = single_instance.call("get_state")
+	var copy: Dictionary = state.get("copy", {})
+	_show_notice(String(copy.get("sentence", "Avatar Studio is already running")),
+			String(copy.get("action", "Brought the existing window forward")),
+			String(copy.get("code", "CFG-007")), false, 4.0)
+	_update_hud(_now_ns())
+
+
+func get_single_instance_state() -> Dictionary:
+	if single_instance == null:
+		return {}
+	var state: Dictionary = single_instance.call("get_state")
+	state["window_raised"] = window_raised
+	state["activation_paths"] = activation_paths
+	state["notice"] = notice
+	return state
+
+
 func _process(delta: float) -> void:
+	if single_instance != null and bool(single_instance_state.get("primary", false)):
+		var activation: Dictionary = single_instance.call("poll")
+		if bool(activation.get("pending", false)):
+			_on_activation(activation)
 	if live_session == null:
 		return
 	var now := _now_ns()

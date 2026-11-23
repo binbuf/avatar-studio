@@ -42,8 +42,8 @@ void capture_sink(void* context, const LogRecord& record) noexcept {
 } // namespace
 
 TEST_CASE(diagnostic_registry_has_unique_codes_and_non_empty_keys) {
-    CHECK_EQ(avatar::core::kDiagnosticRegistry.size(), std::size_t{69});
-    CHECK_EQ(avatar::core::diagnostics().size(), std::size_t{69});
+    CHECK_EQ(avatar::core::kDiagnosticRegistry.size(), std::size_t{70});
+    CHECK_EQ(avatar::core::diagnostics().size(), std::size_t{70});
 
     std::set<std::uint32_t> codes;
     std::set<std::string_view> keys;

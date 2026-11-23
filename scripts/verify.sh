@@ -47,14 +47,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$mode" ]]; then mode="fast"; fi
-if [[ -n "$task" && ! "$task" =~ ^T[0-9]{2,3}$ ]]; then
-    echo "verify: invalid task id '$task': expected T01" >&2
-    exit 2
-fi
-
 task_number=0
 if [[ -n "$task" ]]; then
-    task_number=$((10#${task#T}))
+    if [[ "$task" =~ ^[Tt]([0-9]{2,3})([A-Za-z]?)$ ]]; then
+        suffix="$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')"
+        task="T${BASH_REMATCH[1]}${suffix}"
+        task_number=$((10#${BASH_REMATCH[1]}))
+    else
+        echo "verify: invalid task id '$task': expected T01 or T25a" >&2
+        exit 2
+    fi
 fi
 requires_godot=0
 if [[ -n "$task" && "$task_number" -ge 2 ]]; then

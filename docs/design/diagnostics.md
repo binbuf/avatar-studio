@@ -193,6 +193,11 @@ and the restore action. T25 surfaces the four degraded states as `CAP-001`, `TRK
 | `CFG-004` | Error | File version newer than the app | Refuse; name the app version |
 | `CFG-005` | Warning | FaceProfile corrupt or incomplete | Create provisional profile; prompt recalibration |
 | `CFG-006` | Warning | Migration failed | Restore from `backups/`; keep the original |
+| `CFG-007` | Info | Another Avatar Studio instance is running; activation was forwarded | Bring the existing window forward; do not start a second camera or output |
+
+`CFG-007` is T25a's second-instance state. It is informational: the second launch activates the
+first and exits, so the code appears with the reviewed sentence and action in `editor-ux.md`. A
+`--new-instance` test instance is not a failure and uses the same code only for its startup banner.
 
 ## SEC — Security
 

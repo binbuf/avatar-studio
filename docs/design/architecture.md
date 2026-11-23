@@ -87,6 +87,36 @@ a second instance uses a distinct shared-memory name and cannot register the sam
 it runs with the virtual camera disabled. Two instances competing for one camera produce the normal
 `CAP-002` busy state, not a crash.
 
+### Single instance (T25a)
+
+Implemented in `native/instance/` behind `InstanceLock`, `ActivationServer` and
+`send_activation()`, and exposed to the shell as `AvatarSingleInstance`. The shell claims the lock in
+`LiveHud._enter_tree`, before any node's `_ready` can open a camera or an output device.
+
+- **Lock.** Windows creates a named mutex in the session's `Local\` namespace with the per-user scope
+  key and application id in the name. macOS/Linux take an exclusive non-blocking `flock` on a
+  per-user runtime file (`$XDG_RUNTIME_DIR` when it is short enough, otherwise `/tmp`). Both are
+  released by the OS when the process dies, so a crash is reclaimed on the next launch without a
+  reboot or a cleanup step. A diagnostic pid marker (`state_path`) is written on acquire and removed
+  or truncated on clean release; a marker without a lock is reported as `reclaimed_stale`. The
+  marker is never authoritative — the OS object is.
+- **Activation.** The primary listens on a per-user named pipe (Windows) or Unix socket
+  (macOS/Linux) on a dedicated thread. A second launch acquires the lock, sees `secondary`, sends
+  `{"version":1,"command":"activate","avatar":...,"show":...}`, waits for the acknowledgement (1.5 s
+  default) and exits 0. The running instance drains the queue on its main thread, raises and focuses
+  its window, and shows `CFG-007` ("Avatar Studio is already running"). The channel is local IPC; no
+  network port is opened. If the running instance does not acknowledge, the second launch reports the
+  same sentence with *Activate the existing window* and exits non-zero.
+- **`--new-instance`.** Appends the process id to the lock, activation and shared-memory names and
+  clears `virtual_camera_enabled` and `output_registration_enabled`. It does not disable the camera:
+  opening a device the primary holds produces the normal `CAP-002` busy state. It is for testing, not
+  a user-facing way to run two live avatars.
+- **Tests.** `avatar_instance_unit` covers first launch, second launch, clean release, stale
+  reclamation after a killed owner, payload validation, crash reclamation and isolation;
+  `app/tests/single_instance.gd` drives the real main scene with a separate probe process;
+  `tests/gates/T25a.ps1` gates both. T58 exercises the cross-platform matrix, cross-session (RDP)
+  naming and the suspend/lock interactions.
+
 Synchronisation primitives:
 
 - **Latest-value slots** for pose and tracking results. Losing an intermediate pose is correct;

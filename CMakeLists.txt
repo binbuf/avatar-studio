@@ -216,6 +216,43 @@ target_link_libraries(avatar_output PUBLIC avatar::core)
 avatar_enable_warnings(avatar_output)
 
 # ---------------------------------------------------------------------------
+# Single instance and local activation (T25a)
+#
+# Per-user named lock and local activation channel. Windows uses a named mutex
+# and a named pipe; macOS/Linux use an advisory file lock and a Unix socket.
+# Framework-free: no Godot headers. The GDExtension adapter is thin.
+# ---------------------------------------------------------------------------
+find_package(Threads REQUIRED)
+add_library(avatar_instance STATIC
+native/instance/src/instance_identity.cpp
+native/instance/src/instance_lock.cpp
+native/instance/src/activation_channel.cpp
+)
+add_library(avatar::instance ALIAS avatar_instance)
+target_include_directories(avatar_instance
+PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/native/instance/include"
+)
+target_compile_features(avatar_instance PUBLIC cxx_std_20)
+target_link_libraries(avatar_instance PUBLIC avatar::core PRIVATE avatar_json Threads::Threads)
+avatar_enable_warnings(avatar_instance)
+if(AVATAR_TESTS)
+add_executable(avatar_instance_tests
+tests/unit/test_instance_main.cpp
+tests/unit/test_instance.cpp
+)
+target_include_directories(avatar_instance_tests PRIVATE tests/unit)
+target_link_libraries(avatar_instance_tests PRIVATE avatar::instance Threads::Threads)
+avatar_enable_warnings(avatar_instance_tests)
+add_test(NAME avatar_instance_unit COMMAND avatar_instance_tests)
+set_tests_properties(avatar_instance_unit PROPERTIES LABELS "fast;task_T25a" TIMEOUT 120)
+# Small command used by the Godot activation test and by manual checks. It
+# speaks the same library as the application, so the test crosses a real
+# process boundary without launching a second engine.
+add_executable(avatar_instance_probe native/instance/tools/instance_probe.cpp)
+target_link_libraries(avatar_instance_probe PRIVATE avatar::instance Threads::Threads)
+avatar_enable_warnings(avatar_instance_probe)
+endif()
+# ---------------------------------------------------------------------------
 # Live mode state and copy (T25)
 #
 # Framework-free like the core: the Live status machine, edit guard, metrics

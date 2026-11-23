@@ -316,6 +316,24 @@ Every one of these has designed copy, an icon, and a recovery action:
 
 Rule: no error is a bare code. Code + human sentence + one action.
 
+### Second instance (T25a)
+
+A second launch never opens a second camera or output path. It forwards `activate` to the running
+instance and exits. The running window is raised and focused, and its banner says:
+
+| Code | Sentence | Action |
+|---|---|---|
+| `CFG-007` | Avatar Studio is already running | Brought the existing window forward |
+
+If the running instance exists but does not acknowledge within 1.5 s, the second launch shows the
+same sentence with the action *Activate the existing window* and exits non-zero; it still does not
+open a camera. The activation may carry an avatar or show path; T42 owns opening it.
+
+`--new-instance` is a testing escape hatch, not a user-facing second-avatar mode. It gets distinct
+lock, activation and shared-memory names, disables the virtual camera and output registration, and
+shows "Test instance: virtual camera and output registration are off." If the primary already holds
+the camera, the test instance shows the normal `CAP-002` busy state.
+
 ---
 
 ## Keyboard and accessibility

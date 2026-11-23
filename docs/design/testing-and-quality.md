@@ -344,6 +344,29 @@ the design-link check and the pinned formatting check. The local evidence is
 `.tools/T25-live.json`, `.tools/T25-live-render.json` and `.tools/T25-live-*.png`; none of it is
 committed.
 
+## T25a single instance
+
+`avatar_instance_unit` (`fast;task_T25a`) owns the native contract:
+
+- first launch acquires the per-user lock and a second acquire returns `secondary`;
+- a clean release removes or truncates the diagnostic marker, and the next launch is not stale;
+- a marker left by a dead owner is reclaimed by the next launch;
+- a killed owner (real child process) is reclaimed without a reboot;
+- the activation channel round-trips the optional avatar and show paths, rejects malformed
+  payloads, and reports `not_running` when no server is listening;
+- `--new-instance` gets a distinct lock, activation and shared-memory name and is primary while the
+  normal instance runs.
+
+`app/tests/single_instance.gd` drives the real `main.tscn` headlessly. It claims the lock, spawns the
+`avatar_instance_probe` process (the same library as the application), asserts the probe exits 0 and
+the running window receives the activation and raises itself, then checks an in-process second
+adapter reports `secondary-activated` and that a `--new-instance` adapter is isolated and does not
+receive the normal activation. `tests/gates/T25a.ps1` runs the unit suite, the headless contract, the
+design markers, ADR-0036, the design-link check and the pinned formatting check. The camera
+contention case is `a_second_instance_opening_a_held_camera_reports_cap_002` in
+`test_camera_source.cpp`: the second source sees the existing `CAP-002` state. Local evidence is
+`.tools/T25a-single-instance.json` and `.tools/T25a-single-instance.log`; none of it is committed.
+
 ## T24 timestamp pairing
 
 `avatar_camera_ring_unit` (`fast;task_T24`) owns the native contract:

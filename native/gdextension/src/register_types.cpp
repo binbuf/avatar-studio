@@ -5,6 +5,7 @@
 #include "avatar_model.h"
 #include "avatar_output_manager.h"
 #include "avatar_runtime.h"
+#include "avatar_single_instance.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -23,6 +24,7 @@ void initialize_avatar_studio_module(ModuleInitializationLevel p_level) {
     GDREGISTER_CLASS(AvatarOutputManager);
     GDREGISTER_CLASS(AvatarLiveSession);
     GDREGISTER_CLASS(AvatarCameraRing);
+    GDREGISTER_CLASS(AvatarSingleInstance);
 }
 
 void uninitialize_avatar_studio_module(ModuleInitializationLevel p_level) {

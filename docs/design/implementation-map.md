@@ -1,6 +1,6 @@
 # Implementation map
 
-**Status:** current as of T25 (Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
+**Status:** current as of T25a (single instance, local activation and `--new-instance` isolation implemented with native and headless Godot evidence; Live HUD, panic blank, edit guard and four degraded-state surfaces implemented with headless and rendered evidence; timestamp-paired camera texture ring, shader NV12/BT.601/709 decode, drop-before-inference gate and FaceRig newest-not-after selection implemented with synthetic sliding and colour-bar evidence; output gate and Null/File/Window transports implemented with alpha/colour boundary and no-passthrough evidence; flat and planar surface decals implemented; shared live geometry, immutable rest position/normal, two-renderer surface goldens and measured second-pass GPU budget; head-region cut/node deformation implemented with CPU budget debt; FaceRig math, runtime GLB import, presentation/framing and one-viewport 60 Hz shell implemented; M0 closed for Windows MVP) · **Last updated:** 2026-11-22
 **Companion documents:** [README.md](README.md) (status vocabulary), [roadmap.md](roadmap.md)
 (milestones and phases), [adr/](adr/README.md) (decisions)
 
@@ -360,6 +360,7 @@ example set; T43a/T60 own the manifests and the `examples/` package, so the row 
 | Transport security (DACL, entitlement, nonce) | `platform/`, `native/output/` | T53, T61 | `Planned` |
 | Alpha policy and test cards | `native/output/`, `app/` | T48 | `Planned` |
 | Lifecycle (start, exit, suspend, lock, crash, repair) | `native/output/`, `platform/` | T46, T58 | `Planned` |
+| Single instance, activation and `--new-instance` isolation | `native/instance/`, `native/gdextension/`, `app/scenes/` | T25a | `Implemented` |
 | Output performance budgets | `tests/performance/`, `native/output/` | T46 | `Planned` |
 
 ## [avatar-package-format.md](avatar-package-format.md)
@@ -563,3 +564,10 @@ machine and copy module, a GDExtension adapter, a 4 Hz HUD over the existing pre
 panic cause in the output gate with an immediate blank, an in-app Ctrl/Cmd+Shift+H binding plus an
 optional Windows `RegisterHotKey` listener, and a live edit guard with *Stop and switch*. Live
 tracker/capture wiring remains T26/T32; the full error table remains T41.
+T25a mechanism: [ADR-0036](adr/0036-single-instance-and-activation.md), a per-user Windows named
+mutex or macOS/Linux `flock` file, a local named-pipe or Unix-socket activation channel with an
+acknowledgement, a second launch that forwards `activate` and exits, a diagnostic pid marker that
+reports stale reclamation after a crash, and a `--new-instance` identity with distinct lock,
+activation and shared-memory names and virtual-camera/output-registration flags off. The camera is
+not special-cased, so contention is the existing `CAP-002` state. Cross-session (RDP) locking and the
+full platform matrix remain T58.

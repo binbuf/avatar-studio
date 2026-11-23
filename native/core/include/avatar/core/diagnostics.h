@@ -128,6 +128,7 @@ enum class DiagnosticCode : std::uint32_t {
     cfg_004 = 8004,
     cfg_005 = 8005,
     cfg_006 = 8006,
+    cfg_007 = 8007,
 
     // SEC - security.
     sec_001 = 9001,
@@ -148,7 +149,7 @@ struct DiagnosticInfo {
 
 /// The complete registry. Order follows the enum for easy review; lookups use
 /// `find_diagnostic`, and a unit test asserts the values are unique.
-inline constexpr std::array<DiagnosticInfo, 69> kDiagnosticRegistry = {{
+inline constexpr std::array<DiagnosticInfo, 70> kDiagnosticRegistry = {{
     {DiagnosticCode::cap_001, DiagnosticArea::cap, Severity::error, "diag.cap.001.message",
      "diag.cap.001.action"},
     {DiagnosticCode::cap_002, DiagnosticArea::cap, Severity::error, "diag.cap.002.message",
@@ -286,6 +287,8 @@ inline constexpr std::array<DiagnosticInfo, 69> kDiagnosticRegistry = {{
      "diag.cfg.005.action"},
     {DiagnosticCode::cfg_006, DiagnosticArea::cfg, Severity::warning, "diag.cfg.006.message",
      "diag.cfg.006.action"},
+    {DiagnosticCode::cfg_007, DiagnosticArea::cfg, Severity::info, "diag.cfg.007.message",
+     "diag.cfg.007.action"},
 
     {DiagnosticCode::sec_001, DiagnosticArea::sec, Severity::fatal, "diag.sec.001.message",
      "diag.sec.001.action"},
