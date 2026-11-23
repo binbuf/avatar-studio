@@ -221,7 +221,8 @@ func _refresh_overlays() -> void:
 	if state.is_empty():
 		state = controller.get_state()
 	var values: Dictionary = controller.get_calibration()
-	var regions: Array = values.get("regions", [])
+	var target_regions: Array = values.get("regions", [])
+	var source_regions: Array = values.get("source_regions", [])
 	var homography: PackedFloat32Array = state.get("canonical_to_image",
 			PackedFloat32Array())
 	var centroids: Array = state.get("regions", [])
@@ -258,18 +259,12 @@ func _refresh_overlays() -> void:
 				anchors.append(Vector2.ZERO)
 			mapping_mode = "fallback"
 	_display_anchors = anchors.duplicate(true)
-	var effective_regions: Array = []
-	for index in range(regions.size()):
-		var entry: Dictionary = regions[index].duplicate(true)
-		var centre: Vector2 = regions[index].get("center", Vector2.ZERO)
-		if index < anchors.size():
-			centre += Vector2(anchors[index])
-		entry.center = centre
-		effective_regions.append(entry)
+	var effective_source := _effective_regions(source_regions, anchors)
+	var effective_target := _effective_regions(target_regions, anchors)
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
 		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
-				homography, centroids, effective_regions, selected_region, mapping_mode)
+				homography, centroids, effective_source, selected_region, mapping_mode)
 	var display_state := state.duplicate(true)
 	display_state["canonical_to_image"] = homography
 	display_state["regions"] = centroids
@@ -278,9 +273,22 @@ func _refresh_overlays() -> void:
 		mapping_view.set_data(values, display_state)
 		mapping_view.set_selected(selected_region)
 	if model_view != null:
-		model_view.set_data(values.get("face", {}), regions, anchors, controller.model,
+		model_view.set_data(values.get("face", {}), target_regions, anchors, controller.model,
 				_get_avatar_camera(), _get_viewport_size(), selected_region)
 	_update_mapping_text(display_state)
+
+
+## Applies the live FaceRig anchor delta to a copy of the authored regions.
+func _effective_regions(regions: Array, anchors: Array) -> Array:
+	var out: Array = []
+	for index in range(regions.size()):
+		var entry: Dictionary = regions[index].duplicate(true)
+		var centre: Vector2 = regions[index].get("center", Vector2.ZERO)
+		if index < anchors.size():
+			centre += Vector2(anchors[index])
+		entry.center = centre
+		out.append(entry)
+	return out
 
 
 ## Per-region FaceRig anchors: the live centroid minus its rest value. The decal
@@ -422,11 +430,17 @@ func _update_mapping_text(state: Dictionary) -> void:
 	for region in values.get("regions", []):
 		var centre: Vector2 = region.get("center", Vector2.ZERO)
 		var size: Vector2 = region.get("size", Vector2.ZERO)
-		region_text += "%s(%.2f,%.2f %.2fx%.2f) " % [String(region.get("id", "?")),
+		region_text += "model %s(%.2f,%.2f %.2fx%.2f) " % [String(region.get("id", "?")),
 				centre.x, centre.y, size.x, size.y]
-	mapping_text.text = "%s\nface scale %.3f  head cut %.2f  falloff %.2f\n%s" % [
+	var source_text := ""
+	for region in values.get("source_regions", []):
+		var centre: Vector2 = region.get("center", Vector2.ZERO)
+		var size: Vector2 = region.get("size", Vector2.ZERO)
+		source_text += "cam %s(%.2f,%.2f %.2fx%.2f) " % [String(region.get("id", "?")),
+				centre.x, centre.y, size.x, size.y]
+	mapping_text.text = "%s\nface scale %.3f  head cut %.2f  falloff %.2f\n%s\n%s" % [
 			h_text, float(values.face.scale), Calibration.head_distance(values),
-			Calibration.head_falloff(values), region_text]
+			Calibration.head_falloff(values), source_text, region_text]
 
 
 func _build_ui() -> void:
@@ -599,9 +613,9 @@ func _build_panes(parent: Control) -> void:
 	model_view.name = "ModelView"
 	model_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	model_view.region_selected.connect(_on_region_selected)
-	model_view.region_dragged.connect(_on_region_dragged)
-	model_view.region_drawn.connect(_on_region_drawn)
-	model_view.region_resized.connect(_on_region_resized)
+	model_view.region_dragged.connect(_on_model_region_dragged)
+	model_view.region_drawn.connect(_on_model_region_drawn)
+	model_view.region_resized.connect(_on_model_region_resized)
 	final_frame.add_child(model_view)
 	final_note = _label(
 			"Draw a box, drag a cutout, or drag the handle to scale. OBS output is separate.",
@@ -694,9 +708,21 @@ func _build_controls(parent: Control) -> void:
 	controls.add_theme_constant_override("separation", 3)
 	fine_tune_scroll.add_child(controls)
 
-	var region_label := _label("Fine tune: eye L / eye R / mouth", 11, MUTED)
+	var region_label := _label("Camera cutout (source: what the decal samples)", 11, MUTED)
 	controls.add_child(region_label)
 	control_section_labels.append(region_label)
+	var source_grid := _grid()
+	controls.add_child(source_grid)
+	for id in REGION_IDS:
+		var prefix := String(id).replace("_", " ").capitalize()
+		_add_slider(source_grid, "src_center_%s_x" % id, prefix + " u", -1.5, 1.5, 0.01, 0.0)
+		_add_slider(source_grid, "src_center_%s_y" % id, prefix + " v", -1.8, 1.5, 0.01, 0.0)
+		_add_slider(source_grid, "src_size_%s_x" % id, prefix + " w", 0.05, 1.5, 0.01, 0.1)
+		_add_slider(source_grid, "src_size_%s_y" % id, prefix + " h", 0.05, 1.5, 0.01, 0.1)
+
+	var target_label := _label("Model placement (target: where the decal is painted)", 11, MUTED)
+	controls.add_child(target_label)
+	control_section_labels.append(target_label)
 	var region_grid := _grid()
 	controls.add_child(region_grid)
 	for id in REGION_IDS:
@@ -830,6 +856,14 @@ func _reset_params_from_base() -> void:
 		params["center_%s_y" % id] = centre.y
 		params["size_%s_x" % id] = size.x
 		params["size_%s_y" % id] = size.y
+	for region in base.get("source_regions", []):
+		var id := String(region.id)
+		var centre: Vector2 = region.center
+		var size: Vector2 = region.size
+		params["src_center_%s_x" % id] = centre.x
+		params["src_center_%s_y" % id] = centre.y
+		params["src_size_%s_x" % id] = size.x
+		params["src_size_%s_y" % id] = size.y
 	_sync_sliders()
 	working = base.duplicate(true)
 	_sync_selected_buttons()
@@ -867,6 +901,14 @@ func _rebuild_values() -> Dictionary:
 				float(params.get("center_%s_y" % id, 0.0)))
 		region.size = Vector2(float(params.get("size_%s_x" % id, 0.1)),
 				float(params.get("size_%s_y" % id, 0.1)))
+	var sources: Array = next.get("source_regions", [])
+	for region in sources:
+		var id := String(region.id)
+		region.center = Vector2(float(params.get("src_center_%s_x" % id, 0.0)),
+				float(params.get("src_center_%s_y" % id, 0.0)))
+		region.size = Vector2(float(params.get("src_size_%s_x" % id, 0.1)),
+				float(params.get("src_size_%s_y" % id, 0.1)))
+	next["source_regions"] = sources
 	return next
 
 
@@ -921,37 +963,64 @@ func _on_region_selected(id: String) -> void:
 
 
 func _on_region_dragged(id: String, center: Vector2) -> void:
+	# Camera and mapping panes emit this: they move the camera-side selection.
 	# `center` is the effective canonical point (authored + FaceRig anchor);
-	# the persisted region is the authored point.
+	# the persisted source region is the authored point.
 	_apply_region_values(id, _authored_center(id, center), Vector2.ZERO,
-			"Moved " + _region_name(id), false)
+			"Moved camera " + _region_name(id), false, true)
 
 
 func _on_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
 	selected_region = id
 	_apply_region_values(id, _authored_center(id, center), size,
-			"Drew " + _region_name(id))
+			"Drew camera " + _region_name(id), true, true)
 
 
 func _on_region_resized(id: String, size: Vector2) -> void:
+	if controller == null:
+		return
+	var region: Dictionary = Calibration.source_region(controller.get_calibration(), id)
+	if region.is_empty():
+		return
+	_apply_region_values(id, Vector2(region.center), size,
+			"Scaled camera " + _region_name(id), true, true)
+
+
+func _on_model_region_dragged(id: String, center: Vector2) -> void:
+	# The model pane moves the model placement, independent of the camera
+	# selection.
+	_apply_region_values(id, _authored_center(id, center), Vector2.ZERO,
+			"Moved model " + _region_name(id), false, false)
+
+
+func _on_model_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
+	selected_region = id
+	_apply_region_values(id, _authored_center(id, center), size,
+			"Drew model " + _region_name(id), true, false)
+
+
+func _on_model_region_resized(id: String, size: Vector2) -> void:
 	if controller == null:
 		return
 	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
 	if region.is_empty():
 		return
 	_apply_region_values(id, Vector2(region.center), size,
-			"Scaled " + _region_name(id))
+			"Scaled model " + _region_name(id), true, false)
 
 
+## `source` selects the camera-side selection (camera/mapping panes); otherwise
+## the model placement is written. Both sets share the live FaceRig anchor.
 func _apply_region_values(id: String, center: Vector2, size: Vector2, message: String,
-		resize := true) -> Dictionary:
+		resize := true, source := false) -> Dictionary:
 	if controller == null or base.is_empty():
 		return {"ok": false, "error": "no calibration"}
-	params["center_%s_x" % id] = center.x
-	params["center_%s_y" % id] = center.y
+	var prefix := "src_" if source else ""
+	params["%scenter_%s_x" % [prefix, id]] = center.x
+	params["%scenter_%s_y" % [prefix, id]] = center.y
 	if resize:
-		params["size_%s_x" % id] = maxf(size.x, 0.02)
-		params["size_%s_y" % id] = maxf(size.y, 0.02)
+		params["%ssize_%s_x" % [prefix, id]] = maxf(size.x, 0.02)
+		params["%ssize_%s_y" % [prefix, id]] = maxf(size.y, 0.02)
 	_sync_sliders()
 	working = _rebuild_values()
 	var result: Dictionary = controller.apply_calibration(working, false)
@@ -1287,6 +1356,28 @@ func set_region_size(id: String, size: Vector2) -> void:
 	_refresh_overlays()
 
 
+## Test hook: set the camera-side selection centre without the mouse.
+func set_source_region_center(id: String, centre: Vector2) -> void:
+	params["src_center_%s_x" % id] = centre.x
+	params["src_center_%s_y" % id] = centre.y
+	_sync_sliders()
+	working = _rebuild_values()
+	if controller != null:
+		controller.apply_calibration(working, false)
+	_refresh_overlays()
+
+
+## Test hook: set the camera-side selection size without the mouse.
+func set_source_region_size(id: String, size: Vector2) -> void:
+	params["src_size_%s_x" % id] = size.x
+	params["src_size_%s_y" % id] = size.y
+	_sync_sliders()
+	working = _rebuild_values()
+	if controller != null:
+		controller.apply_calibration(working, false)
+	_refresh_overlays()
+
+
 func set_face_scale(multiplier: float) -> void:
 	params["face_scale"] = multiplier
 	_sync_sliders()
@@ -1337,7 +1428,7 @@ func draw_region_from_image_rect(id: String, image_rect_norm: Rect2) -> Dictiona
 		return {"ok": false, "error": "no tracking homography"}
 	var authored := _authored_center(id, Vector2(result.center))
 	var applied := _apply_region_values(id, authored, Vector2(result.size),
-			"Drew " + _region_name(id))
+			"Drew camera " + _region_name(id), true, true)
 	if bool(applied.get("ok", false)):
 		applied["center"] = authored
 		applied["size"] = Vector2(result.size)
@@ -1355,7 +1446,7 @@ func draw_region_from_screen_rect(id: String, screen_rect: Rect2) -> Dictionary:
 		return {"ok": false, "error": "no tracking homography"}
 	var authored := _authored_center(id, Vector2(result.center))
 	var applied := _apply_region_values(id, authored, Vector2(result.size),
-			"Drew " + _region_name(id))
+			"Drew camera " + _region_name(id), true, true)
 	if bool(applied.get("ok", false)):
 		applied["center"] = authored
 		applied["size"] = Vector2(result.size)
@@ -1427,7 +1518,7 @@ func drag_region_on_camera(id: String, pane_point: Vector2) -> Dictionary:
 		return {"ok": false, "error": "point is not on the camera image"}
 	var authored := _authored_center(id, Vector2(canonical))
 	var applied := _apply_region_values(id, authored, Vector2.ZERO,
-			"Moved " + _region_name(id), false)
+			"Moved camera " + _region_name(id), false, true)
 	if bool(applied.get("ok", false)):
 		applied["center"] = authored
 	return applied
@@ -1437,11 +1528,11 @@ func drag_region_on_camera(id: String, pane_point: Vector2) -> Dictionary:
 func resize_region_on_camera(id: String, size: Vector2) -> Dictionary:
 	if controller == null:
 		return {"ok": false, "error": "no controller"}
-	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	var region: Dictionary = Calibration.source_region(controller.get_calibration(), id)
 	if region.is_empty():
 		return {"ok": false, "error": "no region " + id}
 	return _apply_region_values(id, Vector2(region.center), size,
-			"Scaled " + _region_name(id))
+			"Scaled camera " + _region_name(id), true, true)
 
 
 ## Test hook: move a region to the canonical point under a mapping-pane point.
@@ -1453,7 +1544,7 @@ func drag_region_on_mapping(id: String, pane_point: Vector2) -> Dictionary:
 		return {"ok": false, "error": "point is not in the mapping view"}
 	var authored := _authored_center(id, Vector2(canonical))
 	var applied := _apply_region_values(id, authored, Vector2.ZERO,
-			"Moved " + _region_name(id), false)
+			"Moved camera " + _region_name(id), false, true)
 	if bool(applied.get("ok", false)):
 		applied["center"] = authored
 	return applied
@@ -1469,7 +1560,7 @@ func draw_region_on_mapping(id: String, pane_rect: Rect2) -> Dictionary:
 		return {"ok": false, "error": "box is not in the mapping view"}
 	var authored := _authored_center(id, Vector2(result.center))
 	var applied := _apply_region_values(id, authored, Vector2(result.size),
-			"Drew " + _region_name(id))
+			"Drew camera " + _region_name(id), true, true)
 	if bool(applied.get("ok", false)):
 		applied["center"] = authored
 		applied["size"] = Vector2(result.size)
@@ -1480,11 +1571,11 @@ func draw_region_on_mapping(id: String, pane_rect: Rect2) -> Dictionary:
 func resize_region_on_mapping(id: String, size: Vector2) -> Dictionary:
 	if controller == null:
 		return {"ok": false, "error": "no controller"}
-	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	var region: Dictionary = Calibration.source_region(controller.get_calibration(), id)
 	if region.is_empty():
 		return {"ok": false, "error": "no region " + id}
 	return _apply_region_values(id, Vector2(region.center), size,
-			"Scaled " + _region_name(id))
+			"Scaled camera " + _region_name(id), true, true)
 
 
 func get_model_view():

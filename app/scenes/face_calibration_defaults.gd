@@ -75,3 +75,19 @@ static func make_regions() -> Array:
 			"lift": Vector3.ZERO,
 		},
 	]
+
+
+## Camera-side selection: which canonical face area to sample from the camera.
+## It starts equal to the model placement so an existing calibration is
+## unchanged; the Setup window lets the camera/mapping panes move it without
+## moving the model placement.
+static func make_source_regions() -> Array:
+	var out: Array = []
+	for region in make_regions():
+		out.append({
+			"id": String(region.id),
+			"center": Vector2(region.center),
+			"size": Vector2(region.size),
+			"rotation_deg": float(region.rotation_deg),
+		})
+	return out

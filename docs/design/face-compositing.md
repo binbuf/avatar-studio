@@ -142,6 +142,28 @@ remain later tasks.
 The slow filter is deliberate: it tracks gaze and lip shape without inheriting landmark jitter, and
 the clamp prevents a bad frame from throwing the patch across the face.
 
+### Source and target regions
+
+Each region has two independent rectangles in canonical face space:
+
+- the **source** rect selects which canonical area the decal samples from the camera. The camera and
+  mapping panes edit it; it is projected through `H` to show the actual camera cutout.
+- the **target** rect is where the cutout is painted on the avatar's face plane. The model pane edits
+  it. The mask is evaluated against this rect.
+
+For a fragment at target-local coordinate `d` (normalised to the target half-size), the shader maps
+it into the source rect and samples there:
+
+```
+source = source_centre + anchor + R(source_rot) * (d * source_half)
+```
+
+With `source == target` this reduces to sampling at the fragment's own canonical point, which is the
+single-region behaviour. The FaceRig anchor is added to both rects, so the cutout still follows gaze
+and lip motion. Separating the rects lets the operator pick the accurate camera cutout and place it
+on the model without the two moving each other. The persisted calibration stores both sets; a
+version 1 file is read with source = target.
+
 ---
 
 ## Head motion and placement

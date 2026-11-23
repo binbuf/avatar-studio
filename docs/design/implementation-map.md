@@ -96,7 +96,10 @@ changed pixel is inside a mask. `tests/gates/T20.ps1` gates both modes.
 T21 implements `FaceDecalSurface` and `face_decal_surface.gdshader`: one additional draw per
 selected mesh for all three masks, shared live deformation geometry, immutable CUSTOM0/1 rest
 position/normal, rest-orientation rear rejection, posed facing², linear colour, opacity and clamped
-sampling. Godot 4.7 reverse-Z bias is verified in Compatibility and Forward+. Forty-four committed
+sampling. Each region has an independent source rect (what the decal samples from the camera) and
+target rect (where it is painted on the face plane); the mask uses the target and the sample uses the
+source, and source = target reproduces the single-region behaviour. Godot 4.7 reverse-Z bias is
+verified in Compatibility and Forward+. Forty-four committed
 CPU-rasterizer reference goldens cover avocado and three generated archetypes, occlusion, yaw,
 cut/node attachment and sampling variants. `tests/gates/T21.ps1` also measures the 20k-triangle,
 1080p Forward+ GPU delta (verified local 0.012 ms, spread 0.021 ms, target 0.7 ms). Cylindrical
@@ -523,6 +526,8 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0035](adr/0035-live-hud-panic-and-edit-guard.md) | Live HUD, deliberate panic blank and the live edit guard | T25, T41, T49 | Accepted |
 | [ADR-0036](adr/0036-single-instance-and-activation.md) | Single instance, local activation and the `--new-instance` escape hatch | T25a, T58 | Accepted |
 | [ADR-0037](adr/0037-m1-golden-matrix-and-live-soak.md) | M1 golden matrix, decal-bbox guard and the live soak | T26, T27, T43, T46 | Accepted |
+| [ADR-0038](adr/0038-setup-freeze-and-still-source.md) | Setup diagnostic freeze and still-image source | T25c | Accepted |
+| [ADR-0039](adr/0039-independent-source-and-target-regions.md) | Independent camera source and model target regions | T25c, T34 | Accepted |
 
 ---
 

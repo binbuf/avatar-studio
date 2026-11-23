@@ -35,6 +35,9 @@ uniform mat3 canonical_to_image = mat3(
 
 // Region rectangle in canonical face space: centre (x, y) and full size (w, h).
 uniform vec4 region_uv = vec4(0.0, 0.0, 1.0, 1.0);
+// Camera-side selection: centre (x, y) and full size (w, h) in canonical space.
+uniform vec4 source_uv = vec4(0.0, 0.0, 1.0, 1.0);
+uniform float source_rot = 0.0;
 // Slow landmark anchor offset in canonical units, added to the mask centre.
 uniform vec2 region_anchor = vec2(0.0);
 uniform float region_rot = 0.0;
@@ -101,7 +104,15 @@ void fragment() {
         discard;
     }
 
-    vec3 h = canonical_to_image * vec3(canonical, 1.0);
+    // Map the model-space mask coordinate into the camera-side selection. With
+    // source == target this samples at the canonical point (version 1).
+    vec2 source_center = source_uv.xy + region_anchor;
+    vec2 source_half = source_uv.zw * 0.5;
+    float cs = cos(source_rot);
+    float ss = sin(source_rot);
+    vec2 source = source_center + mat2(vec2(cs, ss), vec2(-ss, cs)) * (d * source_half);
+
+    vec3 h = canonical_to_image * vec3(source, 1.0);
     if (h.z <= 0.0) {
         discard;
     }

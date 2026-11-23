@@ -24,6 +24,10 @@ uniform vec4 region_rect[3];
 uniform vec2 region_anchor[3];
 // rotation (radians), feather, shape (0 ellipse / 1 rounded rect), corner radius
 uniform vec4 region_style[3];
+// Camera-side selection: centre (x, y), full size (w, h) in canonical face space.
+uniform vec4 region_source[3];
+// x = source rotation (radians); the other components are reserved.
+uniform vec2 region_source_style[3];
 uniform vec3 colour_gain[3];
 uniform vec3 colour_lift[3];
 uniform float region_opacity[3];
@@ -64,14 +68,9 @@ void fragment() {
     if (dot(rest_normal, face_normal) <= 0.0) { discard; }
     vec2 canonical = vec2(dot(rest_pos - face_origin, face_right),
             dot(rest_pos - face_origin, face_up)) / face_scale;
-    vec3 h = canonical_to_image * vec3(canonical, 1.0);
-    if (h.z <= 0.0) { discard; }
-    vec2 uv = h.xy / h.z;
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { discard; }
     vec3 view = normalize(CAMERA_POSITION_WORLD - posed_pos);
     float facing = smoothstep(0.10, 0.35, dot(normalize(posed_normal), view));
     if (facing <= 0.0) { discard; }
-    vec3 rgb = srgb_to_linear(sample_camera(uv));
     vec3 premultiplied = vec3(0.0);
     float alpha = 0.0;
     for (int i = 0; i < 3; i++) {
@@ -87,6 +86,22 @@ void fragment() {
             sdf = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - style.w;
         }
         float mask = 1.0 - smoothstep(-max(style.y, 0.00001), 0.0, sdf);
+        if (mask <= 0.0) { continue; }
+        // Map the model-space mask coordinate into the camera-side selection.
+        // With source == target this reduces to sampling at the canonical point,
+        // which is the version 1 behaviour.
+        vec2 source_center = region_source[i].xy + region_anchor[i];
+        vec2 source_half = region_source[i].zw * 0.5;
+        float sr = region_source_style[i].x;
+        float cs = cos(sr);
+        float ss = sin(sr);
+        vec2 source = source_center
+                + mat2(vec2(cs, ss), vec2(-ss, cs)) * (d * source_half);
+        vec3 h = canonical_to_image * vec3(source, 1.0);
+        if (h.z <= 0.0) { continue; }
+        vec2 uv = h.xy / h.z;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) { continue; }
+        vec3 rgb = srgb_to_linear(sample_camera(uv));
         float opacity = region_opacity[i];
         float a = mask * facing * facing * opacity;
         premultiplied = (rgb * colour_gain[i] + colour_lift[i]) * a + premultiplied * (1.0 - a);

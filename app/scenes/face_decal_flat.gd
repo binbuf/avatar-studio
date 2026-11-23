@@ -163,6 +163,24 @@ func set_region_feather(id: String, feather: float) -> bool:
 	return true
 
 
+## Sets the camera-side selection for one region. The quad geometry stays at the
+## model placement; only the sampled area changes.
+func set_region_source(id: String, center: Vector2, size: Vector2) -> bool:
+	var region := get_region(id)
+	if region.is_empty():
+		return _fail("unknown region: " + id)
+	if not center.is_finite() or not size.is_finite():
+		return _fail("region source geometry must be finite")
+	if size.x <= 0.0 or size.y <= 0.0:
+		return _fail("region source size must be positive")
+	region.source_center = center
+	region.source_size = size
+	var material := get_material(id)
+	if material != null:
+		material.set_shader_parameter("source_uv", Vector4(center.x, center.y, size.x, size.y))
+	return true
+
+
 func _rebuild_quads() -> bool:
 	for id in _quads.keys():
 		var quad: Node = _quads[id]
@@ -354,6 +372,10 @@ func _create_quads() -> bool:
 				region.center.x, region.center.y, region.size.x, region.size.y))
 		material.set_shader_parameter("region_anchor", region.anchor)
 		material.set_shader_parameter("region_rot", rotation)
+		material.set_shader_parameter("source_uv", Vector4(
+				region.source_center.x, region.source_center.y,
+				region.source_size.x, region.source_size.y))
+		material.set_shader_parameter("source_rot", region.source_rotation)
 		material.set_shader_parameter("feather", region.feather)
 		material.set_shader_parameter("region_shape", region.shape)
 		material.set_shader_parameter("corner_radius", region.corner_radius)
@@ -500,6 +522,25 @@ func _normalise_region(raw: Variant) -> Dictionary:
 	if anchor == null or not (anchor as Vector2).is_finite():
 		_fail("region %s anchor must be finite" % id)
 		return {}
+	# Camera-side selection. Defaults to the model placement, so a calibration
+	# without an explicit source keeps the version 1 behaviour.
+	var source_centre: Variant = _as_vec2(source.get("source_center", centre))
+	var source_size: Variant = _as_vec2(source.get("source_size", size))
+	if source_centre == null or source_size == null:
+		_fail("region %s source centre and size must be vectors" % id)
+		return {}
+	if not (source_centre as Vector2).is_finite() or not (source_size as Vector2).is_finite():
+		_fail("region %s source geometry must be finite" % id)
+		return {}
+	if (source_size as Vector2).x <= 0.0 or (source_size as Vector2).y <= 0.0:
+		_fail("region %s source size must be positive" % id)
+		return {}
+	var source_rotation_deg := float(source.get("source_rotation_deg", rotation_deg))
+	var source_rotation := float(source.get("source_rotation",
+			deg_to_rad(source_rotation_deg)))
+	if not is_finite(source_rotation):
+		_fail("region %s source rotation must be finite" % id)
+		return {}
 	var gain: Variant = _as_vec3(source.get("gain", Vector3.ONE))
 	var lift: Variant = _as_vec3(source.get("lift", Vector3.ZERO))
 	if gain == null or lift == null:
@@ -518,6 +559,9 @@ func _normalise_region(raw: Variant) -> Dictionary:
 		"shape": shape,
 		"corner_radius": corner_radius,
 		"anchor": anchor,
+		"source_center": source_centre,
+		"source_size": source_size,
+		"source_rotation": source_rotation,
 		"gain": gain,
 		"lift": lift,
 	}

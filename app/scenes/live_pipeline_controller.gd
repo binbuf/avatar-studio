@@ -96,14 +96,29 @@ func _build_from_values(values: Dictionary) -> void:
 		decal = surface
 		using_surface = true
 		calibration = values
+		_apply_region_sources(values)
 		return
 	var flat = Flat.new()
 	if flat.build(model, face, values.regions):
 		decal = flat
 		using_surface = false
 		calibration = values
+		_apply_region_sources(values)
 		return
 	last_error = String(surface.get_last_error())
+
+
+## The decal is built from the model placement; the camera-side selection is a
+## separate uniform set, so apply it after every build.
+func _apply_region_sources(values: Dictionary) -> void:
+	if decal == null:
+		return
+	for entry in values.regions:
+		var id := str(entry.id)
+		var source: Dictionary = Calibration.source_region(values, id)
+		if source.is_empty():
+			continue
+		decal.set_region_source(id, Vector2(source.center), Vector2(source.size))
 
 
 ## Applies a complete calibration to the live model and decal. `configure_head`
@@ -128,6 +143,9 @@ func apply_calibration(values: Dictionary, configure_head := true) -> Dictionary
 			if not bool(decal.set_region_geometry(id, entry.center, entry.size)):
 				return {"ok": false, "error": String(decal.get_last_error())}
 			decal.set_region_feather(id, float(entry.feather))
+			var source: Dictionary = Calibration.source_region(resolved, id)
+			if not source.is_empty():
+				decal.set_region_source(id, Vector2(source.center), Vector2(source.size))
 	calibration = resolved
 	last_error = ""
 	return {"ok": true, "error": ""}

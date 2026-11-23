@@ -217,6 +217,20 @@ func set_region_anchor(id: String, anchor: Vector2) -> bool:
 	_upload_regions()
 	return true
 
+
+## Sets the camera-side selection for one region. The mask still uses the model
+## placement; only the sampled area changes.
+func set_region_source(id: String, center: Vector2, size: Vector2) -> bool:
+	var region := get_region(id)
+	if region.is_empty() or not center.is_finite() or not size.is_finite():
+		return _fail("known region and finite source geometry required")
+	if size.x <= 0.0 or size.y <= 0.0:
+		return _fail("region source size must be positive")
+	region.source_center = center
+	region.source_size = size
+	_upload_regions()
+	return true
+
 func set_region_opacity(id: String, opacity: float) -> bool:
 	var region := get_region(id)
 	if region.is_empty() or not is_finite(opacity) or opacity < 0.0 or opacity > 1.0:
@@ -238,6 +252,8 @@ func _upload_regions() -> void:
 	var rects: Array[Vector4] = []
 	var anchors: Array[Vector2] = []
 	var styles: Array[Vector4] = []
+	var sources: Array[Vector4] = []
+	var source_styles: Array[Vector2] = []
 	var gains: Array[Vector3] = []
 	var lifts: Array[Vector3] = []
 	var opacities: Array[float] = []
@@ -245,6 +261,9 @@ func _upload_regions() -> void:
 		rects.append(Vector4(region.center.x, region.center.y, region.size.x, region.size.y))
 		anchors.append(region.anchor)
 		styles.append(Vector4(region.rotation, region.feather, region.shape, region.corner_radius))
+		sources.append(Vector4(region.source_center.x, region.source_center.y,
+				region.source_size.x, region.source_size.y))
+		source_styles.append(Vector2(region.source_rotation, 0.0))
 		gains.append(region.gain)
 		lifts.append(region.lift)
 		opacities.append(region.opacity if _enabled[region.id] else 0.0)
@@ -254,12 +273,16 @@ func _upload_regions() -> void:
 		rects.append(Vector4(0, 0, 1, 1))
 		anchors.append(Vector2.ZERO)
 		styles.append(Vector4.ZERO)
+		sources.append(Vector4(0, 0, 1, 1))
+		source_styles.append(Vector2.ZERO)
 		gains.append(Vector3.ONE)
 		lifts.append(Vector3.ZERO)
 		opacities.append(0.0)
 	material.set_shader_parameter("region_rect", rects)
 	material.set_shader_parameter("region_anchor", anchors)
 	material.set_shader_parameter("region_style", styles)
+	material.set_shader_parameter("region_source", sources)
+	material.set_shader_parameter("region_source_style", source_styles)
 	material.set_shader_parameter("colour_gain", gains)
 	material.set_shader_parameter("colour_lift", lifts)
 	material.set_shader_parameter("region_opacity", opacities)

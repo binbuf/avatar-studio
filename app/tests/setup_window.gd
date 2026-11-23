@@ -225,16 +225,16 @@ func _check_direct_manipulation() -> void:
 					(box.position.x + box.size.x * 0.52) * image.size.x,
 					(box.position.y + box.size.y * 0.20) * image.size.y),
 			Vector2(box.size.x * 0.22, box.size.y * 0.14) * image.size)
-	var before: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+	var before: Dictionary = Calibration.source_region(setup.call("get_calibration"), "eye_r")
 	var drawn: Dictionary = setup.call("draw_region_from_screen_rect", "eye_r", draw_rect)
 	check(bool(drawn.get("ok", false)), "drawing a box on the camera applies a region")
-	var after: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+	var after: Dictionary = Calibration.source_region(setup.call("get_calibration"), "eye_r")
 	if not before.is_empty() and not after.is_empty():
 		check(Vector2(after.center).distance_to(Vector2(before.center)) > 0.001,
-				"the drawn box moves the eye R centre")
+				"the drawn box moves the eye R camera cutout")
 		check(absf(float(after.size.x) - float(before.size.x)) > 0.001
 				or absf(float(after.size.y) - float(before.size.y)) > 0.001,
-				"the drawn box resizes the eye R shape")
+				"the drawn box resizes the eye R camera cutout")
 
 	# The model view projects canonical face points onto the avatar pane and
 	# unprojects pointer positions back onto the same face plane.
@@ -303,12 +303,12 @@ func _check_direct_manipulation() -> void:
 		var face_centre := image.position + Vector2(
 				(box.position.x + box.size.x * 0.5) * image.size.x,
 				(box.position.y + box.size.y * 0.5) * image.size.y)
-		var before_cam: Vector2 = Vector2(Calibration.region(
+		var before_cam: Vector2 = Vector2(Calibration.source_region(
 				setup.call("get_calibration"), "eye_l").center)
 		var camera_drag: Dictionary = setup.call("drag_region_on_camera", "eye_l",
 				face_centre + Vector2(8, -6))
 		camera_drag_ok = bool(camera_drag.get("ok", false)) \
-				and Vector2(Calibration.region(setup.call("get_calibration"),
+				and Vector2(Calibration.source_region(setup.call("get_calibration"),
 						"eye_l").center).distance_to(before_cam) > 0.001
 		check(camera_drag_ok, "dragging on the camera moves a region")
 		var camera_resize: Dictionary = setup.call("resize_region_on_camera", "eye_l",
@@ -319,7 +319,7 @@ func _check_direct_manipulation() -> void:
 	# Mapping pane: draw, move and scale on the canonical grid.
 	check(mapping_view != null, "the mapping pane has a mapping view")
 	if mapping_view != null:
-		var mouth_centre: Vector2 = Vector2(Calibration.region(
+		var mouth_centre: Vector2 = Vector2(Calibration.source_region(
 				setup.call("get_calibration"), "mouth").center)
 		var mapping_screen: Vector2 = mapping_view.call("screen_from_canonical",
 				mouth_centre)
@@ -328,13 +328,13 @@ func _check_direct_manipulation() -> void:
 				mapping_box)
 		mapping_draw_ok = bool(mapping_drawn.get("ok", false))
 		check(mapping_draw_ok, "drawing a box on the mapping view applies a region")
-		var before_map: Vector2 = Vector2(Calibration.region(
+		var before_map: Vector2 = Vector2(Calibration.source_region(
 				setup.call("get_calibration"), "eye_r").center)
 		var eye_r_screen: Vector2 = mapping_view.call("screen_from_canonical", before_map)
 		var mapping_drag: Dictionary = setup.call("drag_region_on_mapping", "eye_r",
 				eye_r_screen + Vector2(10, -8))
 		mapping_drag_ok = bool(mapping_drag.get("ok", false)) \
-				and Vector2(Calibration.region(setup.call("get_calibration"),
+				and Vector2(Calibration.source_region(setup.call("get_calibration"),
 						"eye_r").center).distance_to(before_map) > 0.001
 		check(mapping_drag_ok, "dragging on the mapping view moves a region")
 		var mapping_resize: Dictionary = setup.call("resize_region_on_mapping", "eye_r",
@@ -348,13 +348,13 @@ func _check_direct_manipulation() -> void:
 	# press/motion/release path on all three panes.
 	var mapping_input_ok := false
 	if mapping_view != null:
-		var mouth_now: Vector2 = Vector2(Calibration.region(
+		var mouth_now: Vector2 = Vector2(Calibration.source_region(
 				setup.call("get_calibration"), "mouth").center)
 		var start: Vector2 = mapping_view.call("screen_from_canonical", mouth_now)
 		_press(mapping_view, start)
 		_motion(mapping_view, start + Vector2(14, -10))
 		_release(mapping_view, start + Vector2(14, -10))
-		var after_input: Dictionary = Calibration.region(
+		var after_input: Dictionary = Calibration.source_region(
 				setup.call("get_calibration"), "mouth")
 		mapping_input_ok = Vector2(after_input.center).distance_to(mouth_now) > 0.001
 		check(mapping_input_ok, "selecting then dragging on the mapping view moves the cutout")
@@ -377,19 +377,19 @@ func _check_direct_manipulation() -> void:
 	var camera_track_ok := false
 	if camera_view != null:
 		var values: Dictionary = setup.call("get_calibration")
-		var regions: Array = values.get("regions", [])
+		var regions: Array = values.get("source_regions", values.get("regions", []))
 		var h1 := PackedFloat32Array([0.12, 0.0, 0.5, 0.0, 0.12, 0.5, 0.0, 0.0, 1.0])
 		camera_view.call("set_overlay", PackedVector2Array(), Rect2(), h1, [], regions, "")
 		var first_poly: Dictionary = camera_view.call("get_region_polygons")
 		var first_centroid := _polygon_centroid(first_poly.get("eye_l",
 				PackedVector2Array()))
-		var eye_before: Vector2 = Vector2(Calibration.region(
+		var eye_before: Vector2 = Vector2(Calibration.source_region(
 				setup.call("get_calibration"), "eye_l").center)
 		if first_centroid != Vector2(-1, -1):
 			_press(camera_view, first_centroid)
 			_motion(camera_view, first_centroid + Vector2(12, -8))
 			_release(camera_view, first_centroid + Vector2(12, -8))
-			var after_camera: Dictionary = Calibration.region(
+			var after_camera: Dictionary = Calibration.source_region(
 					setup.call("get_calibration"), "eye_l")
 			camera_input_ok = Vector2(after_camera.center).distance_to(eye_before) > 0.001
 			check(camera_input_ok, "selecting then dragging on the camera moves the cutout")
@@ -488,8 +488,6 @@ func _check_edit_and_apply() -> void:
 		return
 	var before_region: Dictionary = Calibration.region(before, "eye_l")
 	var before_center: Vector2 = before_region.center
-	var before_mapping: Dictionary = setup.call("get_mapping_values")
-	var before_effective: Array = before_mapping.get("effective", [])
 
 	setup.call("set_region_center", "eye_l", Vector2(-0.78, 0.18))
 	setup.call("set_region_size", "eye_l", Vector2(0.62, 0.40))
@@ -498,17 +496,30 @@ func _check_edit_and_apply() -> void:
 	var after_region: Dictionary = Calibration.region(after, "eye_l")
 	var after_center: Vector2 = after_region.center
 	check(absf(after_center.x - -0.78) < 0.02 and absf(after_center.y - 0.18) < 0.02,
-			"moving the eye L region updates the live calibration")
+			"moving the eye L model placement updates the live calibration")
 	check(absf(float(after_region.size.x) - 0.62) < 0.02,
-			"resizing the eye L region updates the live calibration")
+			"resizing the eye L model placement updates the live calibration")
 	var decal_region: Dictionary = controller.decal.get_region("eye_l")
 	check(absf(float(decal_region.center.x) - -0.78) < 0.02,
-			"the decal pass receives the moved region")
-	var after_mapping: Dictionary = setup.call("get_mapping_values")
-	var after_effective: Array = after_mapping.get("effective", [])
-	check(after_effective.size() == 3 and before_effective.size() == 3 \
-			and Vector2(after_effective[0]) != Vector2(before_effective[0]),
-			"the mapping pane updates with the moved region")
+			"the decal pass receives the moved model placement")
+
+	# The mapping pane is bound to the camera view, so it follows the source
+	# selection, not the model placement.
+	var source_before: Array = setup.call("get_mapping_values").get("effective", [])
+	setup.call("set_source_region_center", "eye_l", Vector2(-0.62, 0.30))
+	setup.call("set_source_region_size", "eye_l", Vector2(0.50, 0.36))
+	var source_after: Array = setup.call("get_mapping_values").get("effective", [])
+	check(source_after.size() == 3 and source_before.size() == 3 \
+			and Vector2(source_after[0]).distance_to(Vector2(source_before[0])) > 0.001,
+			"the mapping pane updates with the camera selection")
+	var after_source: Dictionary = Calibration.source_region(
+			setup.call("get_calibration"), "eye_l")
+	check(absf(float(after_source.center.x) - -0.62) < 0.02,
+			"the camera selection is independent of the model placement")
+	var target_after_source: Dictionary = Calibration.region(
+			setup.call("get_calibration"), "eye_l")
+	check(absf(float(target_after_source.center.x) - -0.78) < 0.02,
+			"moving the camera selection leaves the model placement alone")
 
 	var applied: Dictionary = setup.call("apply_to_model")
 	check(bool(applied.get("ok", false)), "Apply to model reports success")
@@ -521,7 +532,12 @@ func _check_edit_and_apply() -> void:
 	if not saved_region.is_empty():
 		var saved_center: Array = saved_region.center
 		check(absf(float(saved_center[0]) - -0.78) < 0.02,
-				"the saved file carries the moved eye L centre")
+				"the saved file carries the moved eye L model centre")
+	var saved_source: Dictionary = Calibration.source_region(loaded_values, "eye_l")
+	if not saved_source.is_empty():
+		var saved_source_center: Array = saved_source.center
+		check(absf(float(saved_source_center[0]) - -0.62) < 0.02,
+				"the saved file carries the separate camera selection")
 
 	# Restart path: re-read the persisted file through the controller.
 	var reload: Dictionary = controller.reload_calibration()

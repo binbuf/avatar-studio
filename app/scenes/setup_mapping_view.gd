@@ -81,7 +81,9 @@ func _ready() -> void:
 ## canonical centroids and their rest values).
 func set_data(values: Dictionary, state: Dictionary) -> void:
 	calibration = values
-	authored = values.get("regions", [])
+	# The mapping grid is bound to the camera view: it edits the camera-side
+	# selection (what the decal samples), not the model placement.
+	authored = values.get("source_regions", values.get("regions", []))
 	live_centroids = state.get("regions", [])
 	rest_centroids = state.get("region_rest", [])
 	region_count = authored.size()

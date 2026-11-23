@@ -7,10 +7,16 @@ extends RefCounted
 ## restart keeps the eye/mouth placement without touching the `.avatar`
 ## package. The T34 gizmo replaces the editor that writes it.
 ##
-## Shape (version 1):
+## Shape (version 2):
 ##   face:   {origin: [x, y, z], normal: [x, y, z], up: [x, y, z], scale: float}
-##   regions: [{id, center: [u, v], size: [u, v], feather: float}, ...]
+##   regions: [{id, center: [u, v], size: [u, v], feather: float}, ...]  # model placement
+##   source_regions: [{id, center: [u, v], size: [u, v]}, ...]           # camera selection
 ##   head:   {mode: "cut", cut: {origin: [x, y, z], normal: [x, y, z], falloff: float}}
+##
+## `regions` is where the cutout is painted on the model; `source_regions` is
+## which canonical face area is sampled from the camera. They are independent so
+## the camera selection and the model placement can be tuned separately. A
+## version 1 file has one region set and is read with source = regions.
 ##
 ## The decoder rejects unknown versions and malformed values instead of
 ## silently applying a half-calibration. The caller falls back to the
@@ -18,7 +24,7 @@ extends RefCounted
 
 const Defaults = preload("res://scenes/face_calibration_defaults.gd")
 
-const VERSION := 1
+const VERSION := 2
 const PATH := "user://live_calibration.json"
 const REGION_IDS := ["eye_l", "eye_r", "mouth"]
 
@@ -29,6 +35,7 @@ static func defaults(aabb: AABB) -> Dictionary:
 		"version": VERSION,
 		"face": face.duplicate(true),
 		"regions": Defaults.make_regions(),
+		"source_regions": Defaults.make_source_regions(),
 		"head": Defaults.make_head_region(face),
 	}
 
@@ -39,13 +46,18 @@ static func normalise(raw: Dictionary, aabb: AABB) -> Dictionary:
 	var base := defaults(aabb)
 	if raw.is_empty():
 		return base
-	if int(raw.get("version", VERSION)) != VERSION:
+	var version := int(raw.get("version", VERSION))
+	if version < 1 or version > VERSION:
 		return {}
 	var face := _read_face(raw.get("face", {}), base.face)
 	if face.is_empty():
 		return {}
 	var regions := _read_regions(raw.get("regions", []), base.regions)
 	if regions.is_empty():
+		return {}
+	var source_fallback: Array = _source_from_regions(regions)
+	var source_regions := _read_source_regions(raw.get("source_regions", []), source_fallback)
+	if source_regions.is_empty():
 		return {}
 	var head := _read_head(raw.get("head", {}), base.head, face)
 	if head.is_empty():
@@ -54,6 +66,7 @@ static func normalise(raw: Dictionary, aabb: AABB) -> Dictionary:
 		"version": VERSION,
 		"face": face,
 		"regions": regions,
+		"source_regions": source_regions,
 		"head": head,
 	}
 
@@ -68,6 +81,7 @@ static func encode(values: Dictionary) -> Dictionary:
 			"scale": float(values.face.scale),
 		},
 		"regions": _encode_regions(values.regions),
+		"source_regions": _encode_source_regions(values.get("source_regions", values.regions)),
 		"head": {
 			"mode": "cut",
 			"cut": {
@@ -79,7 +93,7 @@ static func encode(values: Dictionary) -> Dictionary:
 	}
 
 
-## Saves `values` as version 1 JSON. Returns {ok, path, error}.
+## Saves `values` as version 2 JSON. Returns {ok, path, error}.
 static func save(values: Dictionary, path := PATH) -> Dictionary:
 	var directory := path.get_base_dir()
 	if directory != "":
@@ -109,7 +123,8 @@ static func load_file(path := PATH) -> Dictionary:
 		return {"ok": false, "path": path, "values": {}, "error": "invalid JSON",
 				"missing": false}
 	var raw: Dictionary = parsed
-	if int(raw.get("version", 0)) != VERSION:
+	var version := int(raw.get("version", 0))
+	if version < 1 or version > VERSION:
 		return {"ok": false, "path": path, "values": {}, "error": "unsupported version",
 				"missing": false}
 	return {"ok": true, "path": path, "values": raw, "error": "", "missing": false}
@@ -137,6 +152,29 @@ static func region(values: Dictionary, id: String) -> Dictionary:
 		if str(entry.get("id", "")) == id:
 			return entry
 	return {}
+
+
+## Camera-side selection for one region (what the decal samples).
+static func source_region(values: Dictionary, id: String) -> Dictionary:
+	var source: Array = values.get("source_regions", [])
+	for entry in source:
+		if str(entry.get("id", "")) == id:
+			return entry
+	# Version 1 files have no separate source; the model placement doubles as it.
+	return region(values, id)
+
+
+static func with_source_region(values: Dictionary, id: String, center: Vector2,
+		size: Vector2) -> Dictionary:
+	var next := values.duplicate(true)
+	var source: Array = next.get("source_regions", [])
+	for entry in source:
+		if str(entry.get("id", "")) == id:
+			entry.center = center
+			entry.size = Vector2(maxf(size.x, 0.01), maxf(size.y, 0.01))
+			break
+	next["source_regions"] = source
+	return next
 
 
 static func with_face_scale(values: Dictionary, multiplier: float) -> Dictionary:
@@ -274,6 +312,59 @@ static func _encode_regions(regions: Array) -> Array:
 			"center": _array2(entry.center),
 			"size": _array2(entry.size),
 			"feather": float(entry.feather),
+		})
+	return out
+
+
+static func _encode_source_regions(regions: Array) -> Array:
+	var out: Array = []
+	for entry in regions:
+		out.append({
+			"id": str(entry.id),
+			"center": _array2(entry.center),
+			"size": _array2(entry.size),
+		})
+	return out
+
+
+## Source selection implied by the model placement. Used for version 1 files and
+## for a missing source block, so an existing calibration keeps its look.
+static func _source_from_regions(regions: Array) -> Array:
+	var out: Array = []
+	for entry in regions:
+		out.append({
+			"id": str(entry.get("id", "")),
+			"center": Vector2(entry.get("center", Vector2.ZERO)),
+			"size": Vector2(entry.get("size", Vector2(0.1, 0.1))),
+		})
+	return out
+
+
+static func _read_source_regions(raw: Variant, fallback: Array) -> Array:
+	if not (raw is Array) or (raw as Array).is_empty():
+		return fallback.duplicate(true)
+	var incoming: Array = raw
+	var out: Array = []
+	for id in REGION_IDS:
+		var source: Dictionary = {}
+		for entry in incoming:
+			if entry is Dictionary and str(entry.get("id", "")) == id:
+				source = entry
+				break
+		if source.is_empty():
+			return fallback.duplicate(true)
+		var center: Variant = _vec2(source.get("center", Vector2.ZERO))
+		var size: Variant = _vec2(source.get("size", Vector2(0.1, 0.1)))
+		if center == null or size == null:
+			return []
+		if not (center as Vector2).is_finite() or not (size as Vector2).is_finite():
+			return []
+		if (size as Vector2).x <= 0.0 or (size as Vector2).y <= 0.0:
+			return []
+		out.append({
+			"id": id,
+			"center": center as Vector2,
+			"size": size as Vector2,
 		})
 	return out
 
