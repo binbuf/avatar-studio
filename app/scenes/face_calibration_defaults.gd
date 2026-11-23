@@ -14,9 +14,10 @@ const DEFAULT_CORNER_RADIUS := 0.35
 
 static func make_face(aabb: AABB) -> Dictionary:
 	var centre := aabb.get_center()
-	var scale := maxf(aabb.size.y * 0.32, 0.02)
+	var scale := maxf(aabb.size.y * 0.24, 0.02)
 	return {
-		"origin": Vector3(centre.x, centre.y, aabb.position.z - 0.001),
+		"origin": Vector3(centre.x, centre.y + aabb.size.y * 0.08,
+				aabb.position.z - 0.001),
 		"normal": Vector3(0.0, 0.0, -1.0),
 		"up": Vector3.UP,
 		"right": Vector3.RIGHT,
@@ -40,8 +41,8 @@ static func make_regions() -> Array:
 		{
 			"id": "eye_l",
 			"type": "eye",
-			"center": Vector2(-0.5, 0.0),
-			"size": Vector2(0.46, 0.34),
+			"center": Vector2(-0.5, 0.25),
+			"size": Vector2(0.42, 0.30),
 			"rotation_deg": 0.0,
 			"shape": "ellipse",
 			"feather": DEFAULT_FEATHER,
@@ -52,8 +53,8 @@ static func make_regions() -> Array:
 		{
 			"id": "eye_r",
 			"type": "eye",
-			"center": Vector2(0.5, 0.0),
-			"size": Vector2(0.46, 0.34),
+			"center": Vector2(0.5, 0.25),
+			"size": Vector2(0.42, 0.30),
 			"rotation_deg": 0.0,
 			"shape": "ellipse",
 			"feather": DEFAULT_FEATHER,
@@ -64,8 +65,8 @@ static func make_regions() -> Array:
 		{
 			"id": "mouth",
 			"type": "mouth",
-			"center": Vector2(0.0, -0.82),
-			"size": Vector2(0.62, 0.46),
+			"center": Vector2(0.0, -0.22),
+			"size": Vector2(0.54, 0.38),
 			"rotation_deg": 0.0,
 			"shape": "rounded_rect",
 			"feather": 0.22,

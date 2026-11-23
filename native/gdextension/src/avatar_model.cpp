@@ -1,6 +1,7 @@
 #include "avatar_model.h"
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/base_material3d.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/gltf_document.hpp>
 #include <godot_cpp/classes/gltf_mesh.hpp>
@@ -11,6 +12,7 @@
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -538,6 +540,22 @@ bool AvatarModel::build_scene(const String& path) {
             Ref<Material> material = importer_mesh->get_surface_material(surface_index);
             if (!material.is_valid() && surface < instance_materials.size()) {
                 material = instance_materials[surface_index];
+            }
+            // This model carries its colour in COLOR_0, not in textures or
+            // baseColorFactor. A separate mesh node (the avocado pit) can come
+            // back without a material from the GLTF state; without a vertex-
+            // colour fallback it renders white. Apply the same rule to every
+            // BaseMaterial3D surface so vertex colours are the albedo.
+            if (material.is_valid()) {
+                BaseMaterial3D* base = Object::cast_to<BaseMaterial3D>(material.ptr());
+                if (base != nullptr) {
+                    base->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+                }
+            } else {
+                Ref<StandardMaterial3D> fallback;
+                fallback.instantiate();
+                fallback->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+                material = fallback;
             }
 
             // A rigid avatar never skins. Removing bones and weights is what
