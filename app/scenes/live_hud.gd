@@ -584,7 +584,8 @@ func submit_output_image(image: Image, now_ns: int = -1) -> Dictionary:
 		now_ns = _now_ns()
 	var frame := image
 	if frame.get_width() != OUTPUT_SIZE.x or frame.get_height() != OUTPUT_SIZE.y:
-		frame = frame.duplicate()
+		# `image` is our own readback copy; resize it in place instead of
+		# duplicating an 8 MB 1080p buffer on every submit.
 		frame.resize(OUTPUT_SIZE.x, OUTPUT_SIZE.y, Image.INTERPOLATE_BILINEAR)
 	if frame.get_format() != Image.FORMAT_RGBA8:
 		frame.convert(Image.FORMAT_RGBA8)

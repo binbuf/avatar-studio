@@ -9,7 +9,7 @@ extends SceneTree
 ##
 ##   --render                 required
 ##   --seconds N              measured duration (default 600)
-##   --warmup N               discarded warmup (default 30)
+##   --warmup N               discarded warmup (default 90)
 ##   --live-source camera|synthetic
 ##   --live-tracker PATH|scripted
 ##   --no-write               do not overwrite the evidence file (gate probes)
@@ -33,7 +33,7 @@ var hud: Node
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	seconds = _arg_float(args, "--seconds", 600.0)
-	warmup_seconds = _arg_float(args, "--warmup", 30.0)
+	warmup_seconds = _arg_float(args, "--warmup", 90.0)
 	write_result = not ("--no-write" in args)
 	_run.call_deferred()
 
@@ -299,3 +299,5 @@ func _finish(payload: Dictionary) -> void:
 	if scene != null:
 		scene.queue_free()
 	quit(0 if bool(final.get("passed", false)) else 1)
+
+

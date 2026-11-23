@@ -405,7 +405,7 @@ frame-time/interval/jitter percentiles from the runtime histograms, app-side
 latency from the capture callback to the transport submit
 (`LivePipeline::record_transport_submit`, 100 µs buckets over 204.8 ms), RSS and
 CPU samples every 5 s, transport submit/drop counters, and the display mode.
-The 30 s warm-up is discarded and the metrics reset; the 10-minute run is the
+The 90 s warm-up is discarded and the metrics reset; the 10-minute run is the
 minimum. `tests/gates/T27.ps1` reads the JSON and re-applies the thresholds
 independently of the harness's own `passed` flag: frame-time p99 ≤ 16.6 ms,
 interval-jitter p99 ≤ 16.6 ms (the absolute deviation from the 16.667 ms cadence,
@@ -1056,4 +1056,5 @@ The gate asserts containment for model fit at zoom 0.5/1.0 and margins 0–0.5, 
 `model-zoom-in` as the documented crop, and checks that positive x offset moves the silhouette
 right. Head fit deliberately crops the body. `zoom > 1` is not a fit failure; see
 [ADR-0032](adr/0032-presentation-framing-and-mirroring.md).
+
 

@@ -90,6 +90,55 @@ func get_region(id: String) -> Dictionary:
 			return region
 	return {}
 
+
+## Replaces the calibrated face surface in place (T25c manual mapping). The
+## shader uniforms are the same ones [method build] uploads; no second pass.
+func set_face(face_surface: Dictionary) -> bool:
+	var settings := Settings.new()
+	var resolved: Dictionary = settings._normalise_face(face_surface)
+	if resolved.is_empty():
+		return _fail(settings.get_last_error())
+	face = resolved
+	if material != null:
+		material.set_shader_parameter("face_origin", face.origin)
+		material.set_shader_parameter("face_right", face.right)
+		material.set_shader_parameter("face_up", face.up)
+		material.set_shader_parameter("face_normal", face.normal)
+		material.set_shader_parameter("face_scale", face.scale)
+	_last_error = ""
+	return true
+
+
+## Moves/resizes one region in canonical face units. The shared
+## `_upload_regions` path is the only uploader, so the live panel and the
+## package path cannot diverge.
+func set_region_geometry(id: String, center: Vector2, size: Vector2) -> bool:
+	var region := get_region(id)
+	if region.is_empty():
+		return _fail("unknown region: " + id)
+	if not center.is_finite() or not size.is_finite():
+		return _fail("region geometry must be finite")
+	if size.x <= 0.0 or size.y <= 0.0:
+		return _fail("region size must be positive")
+	region.center = center
+	region.size = size
+	_upload_regions()
+	_last_error = ""
+	return true
+
+
+func set_region_feather(id: String, feather: float) -> bool:
+	var region := get_region(id)
+	if region.is_empty():
+		return _fail("unknown region: " + id)
+	if not is_finite(feather) or feather < 0.0 or feather > 1.0:
+		return _fail("region feather must be in [0, 1]")
+	region.feather = feather
+	_upload_regions()
+	_last_error = ""
+	return true
+
+
 func set_camera_texture(texture: Texture2D, bgra := false) -> void:
 	camera_texture = texture
 	camera_is_yuv = false

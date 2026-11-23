@@ -123,6 +123,56 @@ func get_face() -> Dictionary:
 	return face.duplicate(true)
 
 
+## Replaces the calibrated face surface (T25c manual mapping). The flat pass
+## parents one quad per region, so the quads are rebuilt from the same values.
+func set_face(face_surface: Dictionary) -> bool:
+	var resolved := _normalise_face(face_surface)
+	if resolved.is_empty():
+		return false
+	face = resolved
+	if head == null or not is_instance_valid(head):
+		return _fail("head node is required")
+	return _rebuild_quads()
+
+
+## Moves/resizes one region in canonical face units and rebuilds that region's
+## quad. Flat is the fallback pass; the surface pass updates uniforms only.
+func set_region_geometry(id: String, center: Vector2, size: Vector2) -> bool:
+	var region := get_region(id)
+	if region.is_empty():
+		return _fail("unknown region: " + id)
+	if not center.is_finite() or not size.is_finite():
+		return _fail("region geometry must be finite")
+	if size.x <= 0.0 or size.y <= 0.0:
+		return _fail("region size must be positive")
+	region.center = center
+	region.size = size
+	return _rebuild_quads()
+
+
+func set_region_feather(id: String, feather: float) -> bool:
+	var region := get_region(id)
+	if region.is_empty():
+		return _fail("unknown region: " + id)
+	if not is_finite(feather) or feather < 0.0 or feather > 1.0:
+		return _fail("region feather must be in [0, 1]")
+	region.feather = feather
+	var material := get_material(id)
+	if material != null:
+		material.set_shader_parameter("feather", feather)
+	return true
+
+
+func _rebuild_quads() -> bool:
+	for id in _quads.keys():
+		var quad: Node = _quads[id]
+		if is_instance_valid(quad):
+			quad.free()
+	_quads.clear()
+	_materials.clear()
+	return _create_quads()
+
+
 func set_camera_texture(texture: Texture2D, bgra := false) -> void:
 	camera_texture = texture
 	camera_is_yuv = false

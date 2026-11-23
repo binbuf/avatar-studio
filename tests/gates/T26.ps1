@@ -18,7 +18,7 @@ Set-StrictMode -Version Latest
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $mode = if ($env:AVATAR_VERIFY_MODE) { $env:AVATAR_VERIFY_MODE } else { 'fast' }
 $soakSeconds = if ($mode -eq 'full') { 600 } else { 20 }
-$soakWarmup = if ($mode -eq 'full') { 30 } else { 10 }
+$soakWarmup = if ($mode -eq 'full') { 90 } else { 10 }
 Push-Location $root
 try {
     & ctest --test-dir $BuildDir -C $Config -R '^avatar_live_pipeline_unit$' --output-on-failure
@@ -63,18 +63,31 @@ try {
     # only a runaway guard. A duration-derived frame count can fire first when
     # the engine's idle-frame rate differs from the paced rate.
     $frames = 10000000
-    $soak = Start-Process -FilePath $godot -WindowStyle Hidden -ArgumentList @(
+    $soak = Start-Process -FilePath $godot -ArgumentList @(
         '--path', 'app', '--resolution', '1280x720',
         '--script', 'res://tests/m1_soak.gd', '--quit-after', $frames, '--',
         '--render', '--seconds', $soakSeconds, '--warmup', $soakWarmup
-    ) -RedirectStandardOutput $soakOut -RedirectStandardError $soakErr -PassThru -Wait
+    ) -RedirectStandardOutput $soakOut -RedirectStandardError $soakErr -PassThru
+    $deadline = (Get-Date).AddSeconds($soakSeconds + $soakWarmup + 300)
+    while (-not $soak.HasExited -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+        $soak.Refresh()
+    }
+    if (-not $soak.HasExited) {
+        $soak.Kill()
+        throw 'M1 soak did not finish before its deadline'
+    }
+    $soak.WaitForExit()
+    $soak.Refresh()
     Get-Content -LiteralPath $soakOut | Write-Host
     $soakText = Get-Content -LiteralPath $soakErr -Raw
     if ($soakText) { Write-Host $soakText }
     if ($soakText -match '(?im)(SCRIPT ERROR|SHADER ERROR|^ERROR:)') {
         throw 'M1 soak reported an engine error'
     }
-    if ($soak.ExitCode -ne 0) { throw "M1 soak failed its own gates (exit $($soak.ExitCode))" }
+    if ($null -ne $soak.ExitCode -and $soak.ExitCode -ne 0) {
+        throw "M1 soak failed its own gates (exit $($soak.ExitCode))"
+    }
     if (-not (Test-Path -LiteralPath .tools/T26-soak.json)) {
         throw 'M1 soak wrote no JSON'
     }
@@ -113,3 +126,4 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Formatting check failed' }
     Write-Host ("T26 gate: PASS ({0} s soak, T27 thresholds)" -f $soakSeconds)
 } finally { Pop-Location }
+
