@@ -15,6 +15,7 @@ extends SceneTree
 # with a person is the task's HITL review, not this test.
 
 const Calibration = preload("res://scenes/live_calibration.gd")
+const SourceFit = preload("res://scenes/source_region_autofit.gd")
 
 var failures: Array[String] = []
 var result := {
@@ -113,6 +114,7 @@ func _run() -> void:
 	await _check_edit_and_apply()
 	_check_hold()
 	await _check_freeze()
+	await _check_auto_fit_and_eye_lock()
 	if rendering:
 		await _check_rendered()
 	await _check_selectors()
@@ -795,6 +797,162 @@ func _check_rendered() -> void:
 	}
 	hud.call("cycle_ui_scale")
 	setup.call("set_background", "black")
+
+
+## Auto-fit the camera cutouts from the tracker contours, and the eye symmetry
+## lock. The fit is exercised against fabricated 478-point landmarks so the
+## result is deterministic without a camera.
+func _check_auto_fit_and_eye_lock() -> void:
+	# H: canonical (u, v) -> normalised image. 0.2 image units per canonical
+	# unit, origin at the image centre, v pointing up.
+	var h := PackedFloat32Array([0.2, 0.0, 0.5, 0.0, -0.2, 0.5, 0.0, 0.0, 1.0])
+	var points: Array = []
+	points.resize(478)
+	for index in range(points.size()):
+		points[index] = Vector2(0.5, 0.5)
+	_fill_contour(points, SourceFit.EYE_R_CONTOUR, Vector2(-0.5, 0.25),
+			Vector2(0.30, 0.12), h)
+	_fill_contour(points, SourceFit.EYE_L_CONTOUR, Vector2(0.5, 0.25),
+			Vector2(0.30, 0.12), h)
+	_fill_contour(points, SourceFit.MOUTH_CONTOUR, Vector2(0.0, -0.22),
+			Vector2(0.50, 0.20), h)
+	var landmarks := PackedVector2Array(points)
+
+	var values: Dictionary = setup.call("get_calibration")
+	var targets: Array = values.get("regions", [])
+	var fitted: Array = SourceFit.fit(landmarks, h, targets)
+	check(fitted.size() == 3, "auto-fit returns one camera cutout per region")
+	var eye_r: Dictionary = _entry(fitted, "eye_r")
+	var mouth: Dictionary = _entry(fitted, "mouth")
+	var target_eye: Dictionary = _entry(targets, "eye_r")
+	check(not eye_r.is_empty()
+			and Vector2(eye_r.center).distance_to(Vector2(-0.5, 0.25)) < 0.01,
+			"auto-fit centres the eye on the tracked contour")
+	if not eye_r.is_empty() and not target_eye.is_empty():
+		var aspect := float(target_eye.size.x) / float(target_eye.size.y)
+		check(absf(float(eye_r.size.x) / float(eye_r.size.y) - aspect) < 0.02,
+				"auto-fit matches the painted aspect so the patch is not stretched")
+		check(absf(float(eye_r.size.x) - 0.30 * 1.12) < 0.02,
+				"auto-fit sizes the eye from the tracked contour width")
+	check(not mouth.is_empty() and Vector2(mouth.center).y < 0.0,
+			"auto-fit places the mouth below the eyes")
+	var fallback: Array = SourceFit.fit(PackedVector2Array(), h, targets)
+	check(fallback.is_empty(), "auto-fit declines without dense landmarks")
+	var degenerate: Array = SourceFit.fit(landmarks,
+			PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0]), targets)
+	check(degenerate.is_empty(), "a singular homography declines instead of failing")
+	check(absf(SourceFit.settled_width("eye_r", [0.40, 0.50]) - 0.45) < 0.001,
+			"the eye window averages the contour width")
+	check(absf(SourceFit.settled_width("mouth", [0.55, 1.18]) - 0.55) < 0.001,
+			"the mouth window ignores a smile when a resting width is seen")
+	check(absf(SourceFit.settled_width("mouth", [0.02, 0.60]) - 0.60) < 0.001,
+			"a glitch sample below the floor is ignored")
+
+	# A manual camera edit is the operator's decision: it turns the auto-fit off
+	# so the next tick cannot overwrite it.
+	setup.call("set_auto_fit", true)
+	check(bool(setup.call("get_auto_fit")), "auto-fit can be switched on")
+	# With the real tracker (still source) the live path must actually fit the
+	# cutouts, not just pass the pure-function check above.
+	if controller.get_landmarks().size() >= 468 \
+			and bool(controller.last_state.get("features_valid", false)):
+		for _i in range(16):
+			await process_frame
+		var live_state: Dictionary = setup.call("get_auto_fit_state")
+		check(live_state.size() == 3, "the live auto-fit applies to all three cutouts")
+		var fit_text: Array = []
+		for fit_id in ["eye_l", "eye_r", "mouth"]:
+			var fit_entry: Dictionary = live_state.get(fit_id, {})
+			if not fit_entry.is_empty():
+				fit_text.append("%s %s %s" % [fit_id,
+						_vector_text(Vector2(fit_entry.center)),
+						_vector_text(Vector2(fit_entry.size))])
+		result["direct"]["auto_fit_state"] = fit_text
+		var live_source: Dictionary = Calibration.source_region(
+				setup.call("get_calibration"), "eye_r")
+		var live_target: Dictionary = Calibration.region(
+				setup.call("get_calibration"), "eye_r")
+		if not live_source.is_empty() and not live_target.is_empty():
+			check(absf(float(live_source.size.x) / float(live_source.size.y)
+					- float(live_target.size.x) / float(live_target.size.y)) < 0.05,
+					"the live camera cutout matches the painted aspect")
+	setup.call("resize_region_on_camera", "eye_l", Vector2(0.40, 0.30))
+	check(not bool(setup.call("get_auto_fit")),
+			"a manual camera edit turns the auto-fit off")
+	var manual: Dictionary = Calibration.source_region(setup.call("get_calibration"), "eye_l")
+	check(absf(float(manual.size.x) - 0.40) < 0.02,
+			"the hand-placed camera size is kept")
+
+	# Eye lock: the model pane edits one eye, the partner mirrors it.
+	setup.call("set_lock_eyes", true)
+	check(bool(setup.call("get_lock_eyes")), "the eye lock can be switched on")
+	var model_view = setup.call("get_model_view")
+	var eye_l: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_l")
+	var screen: Variant = model_view.call("screen_from_canonical", Vector2(eye_l.center))
+	if screen != null:
+		var moved: Dictionary = setup.call("drag_region_on_model", "eye_l",
+				Vector2(screen) + Vector2(10, -6))
+		check(bool(moved.get("ok", false)), "a locked eye drag applies")
+		var left: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_l")
+		var right: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+		check(absf(float(left.center.x) + float(right.center.x)) < 0.02,
+				"locking the eyes mirrors their u position")
+		check(absf(float(left.center.y) - float(right.center.y)) < 0.02,
+				"locking the eyes keeps their v position equal")
+		var resized: Dictionary = setup.call("resize_region_on_model", "eye_l",
+				Vector2(0.50, 0.36))
+		check(bool(resized.get("ok", false)), "a locked eye resize applies")
+		left = Calibration.region(setup.call("get_calibration"), "eye_l")
+		right = Calibration.region(setup.call("get_calibration"), "eye_r")
+		check(Vector2(left.size).distance_to(Vector2(right.size)) < 0.02,
+				"locking the eyes gives both the same size")
+		var decal_right: Dictionary = controller.decal.get_region("eye_r")
+		check(not decal_right.is_empty()
+				and absf(float(decal_right.center.x) + float(left.center.x)) < 0.02,
+				"the decal receives the mirrored eye placement")
+
+	# Unlocking restores independent edits.
+	setup.call("set_lock_eyes", false)
+	var right_before: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_r")
+	var left_now: Dictionary = Calibration.region(setup.call("get_calibration"), "eye_l")
+	var left_screen: Variant = model_view.call("screen_from_canonical",
+			Vector2(left_now.center))
+	if left_screen != null:
+		setup.call("drag_region_on_model", "eye_l",
+				Vector2(left_screen) + Vector2(-9, 5))
+		var right_after: Dictionary = Calibration.region(
+				setup.call("get_calibration"), "eye_r")
+		check(Vector2(right_after.center).distance_to(Vector2(right_before.center)) < 0.005,
+				"unlocking the eyes leaves the partner alone")
+	setup.call("set_auto_fit", false)
+	result["direct"]["auto_fit"] = bool(setup.call("get_auto_fit"))
+	result["direct"]["lock_eyes"] = bool(setup.call("get_lock_eyes"))
+	# The manual-edit path persists the toggle; do not leave the developer's
+	# Setup window with the auto-fit switched off after a test run.
+	_remove("user://setup_prefs.json")
+
+
+func _fill_contour(points: Array, indices: Array, centre: Vector2, size: Vector2,
+		h: PackedFloat32Array) -> void:
+	var count := maxi(indices.size(), 3)
+	for step in range(count):
+		var angle := TAU * float(step) / float(count)
+		var canonical := centre + Vector2(cos(angle) * size.x * 0.5,
+				sin(angle) * size.y * 0.5)
+		points[int(indices[step % indices.size()])] = _apply_homography(h, canonical)
+
+
+func _apply_homography(h: PackedFloat32Array, point: Vector2) -> Vector2:
+	var w := h[6] * point.x + h[7] * point.y + h[8]
+	return Vector2((h[0] * point.x + h[1] * point.y + h[2]) / w,
+			(h[3] * point.x + h[4] * point.y + h[5]) / w)
+
+
+func _entry(entries: Array, id: String) -> Dictionary:
+	for entry in entries:
+		if entry is Dictionary and str(entry.get("id", "")) == id:
+			return entry
+	return {}
 
 
 func _remove(path: String) -> void:

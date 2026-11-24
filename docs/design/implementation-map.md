@@ -528,6 +528,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0037](adr/0037-m1-golden-matrix-and-live-soak.md) | M1 golden matrix, decal-bbox guard and the live soak | T26, T27, T43, T46 | Accepted |
 | [ADR-0038](adr/0038-setup-freeze-and-still-source.md) | Setup diagnostic freeze and still-image source | T25c | Accepted |
 | [ADR-0039](adr/0039-independent-source-and-target-regions.md) | Independent camera source and model target regions | T25c, T34 | Accepted |
+| [ADR-0040](adr/0040-automatic-camera-cutout-fit-and-eye-lock.md) | Automatic camera cutouts and the eye symmetry lock | T25c, T34 | Accepted |
 
 ---
 
@@ -590,6 +591,14 @@ samples the T24 ring slot; it never copies camera pixels into the avatar viewpor
 three panes support draw/move/scale: the camera pane inverts the live homography, the mapping pane
 converts directly to canonical coordinates, and the model pane unprojects pointer boxes onto the
 same face plane the decal shader uses.
+
+The camera-side cutouts are measured automatically from the dense tracker landmarks by
+`source_region_autofit.gd`: the centre is the region's rest centroid and the size is the eye/mouth
+contour width plus a margin, with the height taken from the target aspect and the width settled over
+about 1.5 s before it is held. A manual camera edit turns the auto-fit off. The model pane can mirror
+the two eyes and share one size (**Lock eyes**). Both toggles are editor preferences in
+`user://setup_prefs.json`, not calibration. [ADR-0039](adr/0039-independent-source-and-target-regions.md)
+and [ADR-0040](adr/0040-automatic-camera-cutout-fit-and-eye-lock.md) record the decisions.
 
 The development sources are `native/capture/src/still_image_source.cpp` and the freeze path in
 `native/live/src/live_pipeline.cpp` plus `native/gdextension/src/avatar_live_pipeline.cpp`

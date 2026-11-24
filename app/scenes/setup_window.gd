@@ -15,6 +15,8 @@ const Calibration = preload("res://scenes/live_calibration.gd")
 const CameraView = preload("res://scenes/setup_camera_view.gd")
 const MappingView = preload("res://scenes/setup_mapping_view.gd")
 const ModelView = preload("res://scenes/setup_model_view.gd")
+const SourceFit = preload("res://scenes/source_region_autofit.gd")
+const EditorPrefs = preload("res://scenes/setup_editor_prefs.gd")
 
 const BACKGROUND := Color(0.020, 0.030, 0.045, 1.0)
 const PANEL := Color(0.045, 0.060, 0.085, 1.0)
@@ -23,6 +25,12 @@ const MUTED := Color(0.62, 0.70, 0.82, 1.0)
 const OK_COLOUR := Color(0.55, 1.0, 0.65, 1.0)
 const WARN_COLOUR := Color(1.0, 0.78, 0.30, 1.0)
 const REGION_IDS := ["eye_l", "eye_r", "mouth"]
+## Overlay ticks (~30 Hz) the automatic cutout fit averages before it holds the
+## result. Long enough to average landmark noise, short enough to feel instant.
+const FIT_SETTLE_TICKS := 45
+## Overlay ticks without a live solve before a settled fit is allowed to refit.
+## A new subject or a re-plugged camera should not inherit the old cutouts.
+const FIT_LOST_TICKS := 90
 const CAPTURE_MODES := [
 	{"label": "Auto (preferred)", "width": 0, "height": 0, "fps": 0},
 	{"label": "1280x720@30", "width": 1280, "height": 720, "fps": 30},
@@ -61,10 +69,23 @@ var background_option: OptionButton = null
 var capture_option: OptionButton = null
 var tracker_option: OptionButton = null
 var preview_check: CheckButton = null
+var auto_fit_check: CheckButton = null
+var lock_eyes_check: CheckButton = null
 var file_dialog: FileDialog = null
 var sliders: Dictionary = {}
 var draw_buttons: Dictionary = {}
 var selected_region := "eye_l"
+
+## Editor toggles (not calibration): auto-fit the camera cutouts from the
+## tracker contours, and keep the two eyes mirrored with one size/shape.
+var auto_fit_sources := true
+var lock_eyes := false
+var _fit_state: Dictionary = {}
+var _fit_applied: Dictionary = {}
+var _fit_widths: Dictionary = {}
+var _fit_ticks := 0
+var _fit_locked := false
+var _fit_lost := 0
 
 var base: Dictionary = {}
 var working: Dictionary = {}
@@ -120,6 +141,7 @@ func open() -> void:
 			hud.call("use_default_still")
 	_reset_params_from_base()
 	_set_all_draw_modes("")
+	_reset_fit()
 	if viewport != null and final_avatar != null:
 		final_avatar.texture = viewport.get_texture()
 	_overlay_timer = 0.0
@@ -259,6 +281,20 @@ func _refresh_overlays() -> void:
 				anchors.append(Vector2.ZERO)
 			mapping_mode = "fallback"
 	_display_anchors = anchors.duplicate(true)
+	# Auto-fit the camera cutouts from the tracker contours while the mapping is
+	# live. A manual camera edit turns this off, so the two never fight.
+	if auto_fit_sources and mapping_mode == "live":
+		_fit_lost = 0
+		_auto_fit_sources(homography, target_regions)
+		source_regions = controller.get_calibration().get("source_regions", source_regions)
+	elif not auto_fit_sources:
+		_reset_fit()
+	else:
+		_fit_lost += 1
+		if _fit_lost >= FIT_LOST_TICKS:
+			# A long loss means a new subject or a reconnected camera: settle the
+			# cutouts again rather than keeping the previous person's face.
+			_reset_fit()
 	var effective_source := _effective_regions(source_regions, anchors)
 	var effective_target := _effective_regions(target_regions, anchors)
 	if camera_view != null:
@@ -276,6 +312,64 @@ func _refresh_overlays() -> void:
 		model_view.set_data(values.get("face", {}), target_regions, anchors, controller.model,
 				_get_avatar_camera(), _get_viewport_size(), selected_region)
 	_update_mapping_text(display_state)
+
+
+## Fits the camera-side cutouts to the tracked eye/mouth contours and applies the
+## smoothed result live. Only the source rects change; the model placement is
+## untouched, so the operator's target placement is never overwritten.
+##
+## The centre comes from the rig's *rest* centroids, not the instantaneous
+## contour centre: the decal adds the live anchor to the authored rect, so using
+## the moving centroid here would count the gaze/lip offset twice. The size is
+## the mean contour width over the settle window, then frozen. A fixed window is
+## what makes the decal expressive: the smile and gaze move inside the patch
+## instead of the patch resizing around them.
+func _auto_fit_sources(homography: PackedFloat32Array, targets: Array) -> void:
+	if controller == null or base.is_empty() or _fit_locked:
+		return
+	var current: Array = controller.get_calibration().get("source_regions", [])
+	var fitted := SourceFit.fit(controller.get_landmarks(), homography, targets)
+	if fitted.is_empty():
+		return
+	var rest: Array = controller.last_state.get("region_rest", [])
+	for entry in fitted:
+		var id := String(entry.get("id", ""))
+		var index := REGION_IDS.find(id)
+		if index >= 0 and index < rest.size():
+			entry["center"] = Vector2(rest[index])
+		var widths: Array = _fit_widths.get(id, [])
+		widths.append(float(entry.get("contour_width", 0.1)))
+		_fit_widths[id] = widths
+		var settled := SourceFit.settled_width(id, widths)
+		if settled > 0.0:
+			var width := clampf(settled * SourceFit.FEATURE_MARGIN, SourceFit.MIN_WIDTH,
+					SourceFit.MAX_WIDTH)
+			var scale := width / maxf(float(entry.size.x), 0.0001)
+			entry["size"] = Vector2(entry.size) * scale
+	# ~150 ms at 30 Hz. Landmarks jitter; a cutout that tracks every pixel is
+	# unusable for placing the decal.
+	SourceFit.smooth(_fit_state, fitted, 0.25)
+	_fit_ticks += 1
+	if not SourceFit.differs(_fit_state, _fit_applied):
+		if _fit_ticks >= FIT_SETTLE_TICKS:
+			_fit_locked = true
+		return
+	for entry in SourceFit.regions_from_state(_fit_state, current):
+		var id := String(entry.get("id", ""))
+		var centre: Vector2 = entry.get("center", Vector2.ZERO)
+		var size: Vector2 = entry.get("size", Vector2.ZERO)
+		params["src_center_%s_x" % id] = centre.x
+		params["src_center_%s_y" % id] = centre.y
+		params["src_size_%s_x" % id] = maxf(size.x, 0.02)
+		params["src_size_%s_y" % id] = maxf(size.y, 0.02)
+	_sync_sliders()
+	working = _rebuild_values()
+	var result: Dictionary = controller.apply_calibration(working, false)
+	if bool(result.get("ok", false)):
+		_fit_applied = _fit_state.duplicate(true)
+	if _fit_ticks >= FIT_SETTLE_TICKS:
+		_fit_locked = true
+		_set_action("Auto-fit settled: camera cutouts hold their tracked position and size")
 
 
 ## Applies the live FaceRig anchor delta to a copy of the authored regions.
@@ -667,6 +761,10 @@ func _build_controls(parent: Control) -> void:
 	box.add_theme_constant_override("separation", 4)
 	panel.add_child(box)
 
+	var prefs := EditorPrefs.load_values()
+	auto_fit_sources = bool(prefs.auto_fit)
+	lock_eyes = bool(prefs.lock_eyes)
+
 	# The primary actions stay visible even when the fine-tune area scrolls.
 	var actions := HFlowContainer.new()
 	actions.add_theme_constant_override("h_separation", 8)
@@ -711,6 +809,13 @@ func _build_controls(parent: Control) -> void:
 	var region_label := _label("Camera cutout (source: what the decal samples)", 11, MUTED)
 	controls.add_child(region_label)
 	control_section_labels.append(region_label)
+	auto_fit_check = CheckButton.new()
+	auto_fit_check.name = "AutoFitSources"
+	auto_fit_check.text = "Auto-fit from tracker contours"
+	auto_fit_check.add_theme_font_size_override("font_size", 11)
+	auto_fit_check.button_pressed = auto_fit_sources
+	auto_fit_check.toggled.connect(_on_auto_fit_toggled)
+	controls.add_child(auto_fit_check)
 	var source_grid := _grid()
 	controls.add_child(source_grid)
 	for id in REGION_IDS:
@@ -723,6 +828,13 @@ func _build_controls(parent: Control) -> void:
 	var target_label := _label("Model placement (target: where the decal is painted)", 11, MUTED)
 	controls.add_child(target_label)
 	control_section_labels.append(target_label)
+	lock_eyes_check = CheckButton.new()
+	lock_eyes_check.name = "LockEyes"
+	lock_eyes_check.text = "Lock eyes (mirror + equal size)"
+	lock_eyes_check.add_theme_font_size_override("font_size", 11)
+	lock_eyes_check.button_pressed = lock_eyes
+	lock_eyes_check.toggled.connect(_on_lock_eyes_toggled)
+	controls.add_child(lock_eyes_check)
 	var region_grid := _grid()
 	controls.add_child(region_grid)
 	for id in REGION_IDS:
@@ -918,6 +1030,8 @@ func _on_slider_changed(value: float, key: String) -> void:
 		var entry: Dictionary = sliders[key]
 		var readout: Label = entry.label
 		readout.text = "%.2f" % value
+	if lock_eyes:
+		_mirror_eye_slider(key, value)
 	working = _rebuild_values()
 	if working.is_empty():
 		return
@@ -932,6 +1046,91 @@ func _on_slider_changed(value: float, key: String) -> void:
 	action_status.text = "Live mapping updated (not saved)"
 	action_status.add_theme_color_override("font_color", MUTED)
 	_refresh_overlays()
+
+
+## Keeps the eye sliders symmetric while the lock is on: u flips sign for the
+## partner, v/size copy across. Only the partner widget is touched, so the slider
+## under the pointer is not reset mid-drag.
+func _mirror_eye_slider(key: String, value: float) -> void:
+	var other := ""
+	var negate := false
+	if key.begins_with("center_eye_l_"):
+		other = "center_eye_r_" + key.trim_prefix("center_eye_l_")
+		negate = key.ends_with("_x")
+	elif key.begins_with("center_eye_r_"):
+		other = "center_eye_l_" + key.trim_prefix("center_eye_r_")
+		negate = key.ends_with("_x")
+	elif key.begins_with("size_eye_l_"):
+		other = "size_eye_r_" + key.trim_prefix("size_eye_l_")
+	elif key.begins_with("size_eye_r_"):
+		other = "size_eye_l_" + key.trim_prefix("size_eye_r_")
+	if other == "":
+		return
+	params[other] = -value if negate else value
+	if sliders.has(other):
+		var entry: Dictionary = sliders[other]
+		(entry.slider as HSlider).set_value_no_signal(float(params[other]))
+		(entry.label as Label).text = "%.2f" % float(params[other])
+
+
+func _on_auto_fit_toggled(pressed: bool) -> void:
+	_set_auto_fit(pressed)
+	if pressed:
+		_set_action("Auto-fit on: camera cutouts follow the tracked eyes and mouth")
+		_refresh_overlays()
+	else:
+		_set_action("Auto-fit off: camera cutouts keep their current values")
+
+
+func _on_lock_eyes_toggled(pressed: bool) -> void:
+	_set_lock_eyes(pressed)
+	if pressed:
+		_mirror_eye_from("eye_l")
+		_set_action("Eyes locked: eye R mirrors eye L (move, size and shape)")
+	else:
+		_set_action("Eye lock off: eyes move independently")
+
+
+func _set_auto_fit(enabled: bool, persist := true) -> void:
+	auto_fit_sources = enabled
+	if auto_fit_check != null:
+		auto_fit_check.set_pressed_no_signal(enabled)
+	_reset_fit()
+	if persist:
+		_save_prefs()
+
+
+## Forgets the settled fit so the next live tick re-measures the subject.
+func _reset_fit() -> void:
+	_fit_state.clear()
+	_fit_applied.clear()
+	_fit_widths.clear()
+	_fit_ticks = 0
+	_fit_locked = false
+	_fit_lost = 0
+
+
+func _set_lock_eyes(enabled: bool, persist := true) -> void:
+	lock_eyes = enabled
+	if lock_eyes_check != null:
+		lock_eyes_check.set_pressed_no_signal(enabled)
+	if persist:
+		_save_prefs()
+
+
+func _save_prefs() -> void:
+	EditorPrefs.save_values({"auto_fit": auto_fit_sources, "lock_eyes": lock_eyes})
+
+
+## Makes eye R the mirror of `id` immediately when the lock is switched on.
+func _mirror_eye_from(id: String) -> Dictionary:
+	if controller == null:
+		return {"ok": false, "error": "no controller"}
+	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
+	if region.is_empty():
+		return {"ok": false, "error": "no region " + id}
+	return _apply_locked_eyes(id, Vector2(region.center), Vector2(region.size),
+			"Mirrored " + _region_name(id), true, true)
 
 
 func _on_draw_toggled(pressed: bool, id: String) -> void:
@@ -986,27 +1185,82 @@ func _on_region_resized(id: String, size: Vector2) -> void:
 			"Scaled camera " + _region_name(id), true, true)
 
 
-func _on_model_region_dragged(id: String, center: Vector2) -> void:
+func _on_model_region_dragged(id: String, center: Vector2) -> Dictionary:
 	# The model pane moves the model placement, independent of the camera
-	# selection.
-	_apply_region_values(id, _authored_center(id, center), Vector2.ZERO,
+	# selection. With the eye lock on, the other eye mirrors the placement.
+	var authored := _authored_center(id, center)
+	if lock_eyes and _is_eye(id):
+		return _apply_locked_eyes(id, authored, Vector2.ZERO,
+				"Moved model " + _region_name(id), false, true)
+	return _apply_region_values(id, authored, Vector2.ZERO,
 			"Moved model " + _region_name(id), false, false)
 
 
-func _on_model_region_drawn(id: String, center: Vector2, size: Vector2) -> void:
+func _on_model_region_drawn(id: String, center: Vector2, size: Vector2) -> Dictionary:
 	selected_region = id
-	_apply_region_values(id, _authored_center(id, center), size,
+	var authored := _authored_center(id, center)
+	if lock_eyes and _is_eye(id):
+		return _apply_locked_eyes(id, authored, size,
+				"Drew model " + _region_name(id), true, true)
+	return _apply_region_values(id, authored, size,
 			"Drew model " + _region_name(id), true, false)
 
 
-func _on_model_region_resized(id: String, size: Vector2) -> void:
+func _on_model_region_resized(id: String, size: Vector2) -> Dictionary:
 	if controller == null:
-		return
+		return {"ok": false, "error": "no controller"}
 	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
 	if region.is_empty():
-		return
-	_apply_region_values(id, Vector2(region.center), size,
+		return {"ok": false, "error": "no region " + id}
+	if lock_eyes and _is_eye(id):
+		# Scaling one eye resizes both about their own centres.
+		return _apply_locked_eyes(id, Vector2(region.center), size,
+				"Scaled model " + _region_name(id), true, false)
+	return _apply_region_values(id, Vector2(region.center), size,
 			"Scaled model " + _region_name(id), true, false)
+
+
+func _is_eye(id: String) -> bool:
+	return id == "eye_l" or id == "eye_r"
+
+
+func _other_eye(id: String) -> String:
+	return "eye_r" if id == "eye_l" else "eye_l"
+
+
+## Writes one eye and its partner in a single apply, so the pair never appears
+## half-updated. `mirror_centre` places the partner at (-u, v); otherwise the
+## partner keeps its centre and only shares the size.
+func _apply_locked_eyes(id: String, centre: Vector2, size: Vector2, message: String,
+		resize: bool, mirror_centre: bool) -> Dictionary:
+	if controller == null or base.is_empty():
+		return {"ok": false, "error": "no calibration"}
+	var other := _other_eye(id)
+	params["center_%s_x" % id] = centre.x
+	params["center_%s_y" % id] = centre.y
+	if resize:
+		params["size_%s_x" % id] = maxf(size.x, 0.02)
+		params["size_%s_y" % id] = maxf(size.y, 0.02)
+	if mirror_centre:
+		params["center_%s_x" % other] = -centre.x
+		params["center_%s_y" % other] = centre.y
+	else:
+		var partner: Dictionary = Calibration.region(controller.get_calibration(), other)
+		if not partner.is_empty():
+			params["center_%s_x" % other] = Vector2(partner.center).x
+			params["center_%s_y" % other] = Vector2(partner.center).y
+	if resize:
+		params["size_%s_x" % other] = maxf(size.x, 0.02)
+		params["size_%s_y" % other] = maxf(size.y, 0.02)
+	_sync_sliders()
+	working = _rebuild_values()
+	var result: Dictionary = controller.apply_calibration(working, false)
+	if not bool(result.get("ok", false)):
+		_set_action("Rejected: " + String(result.get("error", "")), true)
+		return result
+	_set_action(message + " (not saved)")
+	_refresh_overlays()
+	return {"ok": true, "error": "", "center": centre, "size": size}
 
 
 ## `source` selects the camera-side selection (camera/mapping panes); otherwise
@@ -1015,6 +1269,11 @@ func _apply_region_values(id: String, center: Vector2, size: Vector2, message: S
 		resize := true, source := false) -> Dictionary:
 	if controller == null or base.is_empty():
 		return {"ok": false, "error": "no calibration"}
+	if source and auto_fit_sources:
+		# A hand-placed camera cutout is the operator's decision; stop overwriting
+		# it on the next tick. The toggle can be switched back on at any time.
+		_set_auto_fit(false)
+		message += " - auto-fit off"
 	var prefix := "src_" if source else ""
 	params["%scenter_%s_x" % [prefix, id]] = center.x
 	params["%scenter_%s_y" % [prefix, id]] = center.y
@@ -1112,6 +1371,7 @@ func _on_apply_pressed() -> void:
 		return
 	base = controller.get_calibration()
 	_reset_params_from_base()
+	_reset_fit()
 	action_status.text = "Applied to model and saved to %s" % String(saved.get("path", ""))
 	action_status.add_theme_color_override("font_color", OK_COLOUR)
 	_refresh_overlays()
@@ -1128,6 +1388,7 @@ func _on_reset_pressed() -> void:
 		return
 	base = controller.get_calibration()
 	_reset_params_from_base()
+	_reset_fit()
 	action_status.text = "Reset to provisional defaults (press Apply to save)"
 	action_status.add_theme_color_override("font_color", WARN_COLOUR)
 	_refresh_overlays()
@@ -1356,8 +1617,10 @@ func set_region_size(id: String, size: Vector2) -> void:
 	_refresh_overlays()
 
 
-## Test hook: set the camera-side selection centre without the mouse.
+## Test hook: set the camera-side selection centre without the mouse. Treated as
+## a manual edit, so it turns the auto-fit off.
 func set_source_region_center(id: String, centre: Vector2) -> void:
+	_set_auto_fit(false, false)
 	params["src_center_%s_x" % id] = centre.x
 	params["src_center_%s_y" % id] = centre.y
 	_sync_sliders()
@@ -1367,8 +1630,10 @@ func set_source_region_center(id: String, centre: Vector2) -> void:
 	_refresh_overlays()
 
 
-## Test hook: set the camera-side selection size without the mouse.
+## Test hook: set the camera-side selection size without the mouse. Treated as a
+## manual edit, so it turns the auto-fit off.
 func set_source_region_size(id: String, size: Vector2) -> void:
+	_set_auto_fit(false, false)
 	params["src_size_%s_x" % id] = size.x
 	params["src_size_%s_y" % id] = size.y
 	_sync_sliders()
@@ -1376,6 +1641,29 @@ func set_source_region_size(id: String, size: Vector2) -> void:
 	if controller != null:
 		controller.apply_calibration(working, false)
 	_refresh_overlays()
+
+
+## Test hook: switch the tracker auto-fit without going through the checkbox.
+func set_auto_fit(enabled: bool) -> void:
+	_set_auto_fit(enabled, false)
+
+
+## Test hook: switch the eye symmetry lock without going through the checkbox.
+func set_lock_eyes(enabled: bool) -> void:
+	_set_lock_eyes(enabled, false)
+
+
+func get_auto_fit() -> bool:
+	return auto_fit_sources
+
+
+func get_lock_eyes() -> bool:
+	return lock_eyes
+
+
+## Test hook: the last smoothed camera cutout fit (id -> {center, size}).
+func get_auto_fit_state() -> Dictionary:
+	return _fit_applied.duplicate(true)
 
 
 func set_face_scale(multiplier: float) -> void:
@@ -1461,12 +1749,7 @@ func drag_region_on_model(id: String, pane_point: Vector2) -> Dictionary:
 	var canonical: Variant = model_view.call("canonical_from_screen", pane_point)
 	if canonical == null:
 		return {"ok": false, "error": "point is not on the face plane"}
-	var authored := _authored_center(id, Vector2(canonical))
-	var applied := _apply_region_values(id, authored, Vector2.ZERO,
-			"Moved " + _region_name(id), false)
-	if bool(applied.get("ok", false)):
-		applied["center"] = authored
-	return applied
+	return _on_model_region_dragged(id, Vector2(canonical))
 
 
 ## Test hook: draw a region from a pane-space box on the model. This is the same
@@ -1477,24 +1760,12 @@ func draw_region_on_model(id: String, pane_rect: Rect2) -> Dictionary:
 	var result: Dictionary = model_view.call("canonical_rect_from_screen_rect", pane_rect)
 	if result.is_empty():
 		return {"ok": false, "error": "box is not on the face plane"}
-	var authored := _authored_center(id, Vector2(result.center))
-	var applied := _apply_region_values(id, authored, Vector2(result.size),
-			"Drew " + _region_name(id) + " on the model")
-	if bool(applied.get("ok", false)):
-		applied["center"] = authored
-		applied["size"] = Vector2(result.size)
-	return applied
+	return _on_model_region_drawn(id, Vector2(result.center), Vector2(result.size))
 
 
 ## Test hook: scale a region about its centre, as the model handle does.
 func resize_region_on_model(id: String, size: Vector2) -> Dictionary:
-	if controller == null:
-		return {"ok": false, "error": "no controller"}
-	var region: Dictionary = Calibration.region(controller.get_calibration(), id)
-	if region.is_empty():
-		return {"ok": false, "error": "no region " + id}
-	return _apply_region_values(id, Vector2(region.center), size,
-			"Scaled " + _region_name(id))
+	return _on_model_region_resized(id, size)
 
 
 func get_mapping_view():

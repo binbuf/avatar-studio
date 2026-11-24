@@ -1070,7 +1070,11 @@ in two headless modes plus one rendered mode:
   cutout, moving a camera/mapping cutout must leave the model placement and the model cutout alone
   (and vice versa), both rect sets persist and reload, eye/mouth edit, Apply/persist/reload,
   background toggle, feature-loss hold, capture/tracker selectors, Snapshot freeze/unfreeze and the
-  OBS blank.
+  OBS blank. The automatic camera fit is checked against fabricated 478-point landmarks (centre,
+  target aspect, contour width, fallback on missing landmarks or a singular homography, and the
+  settled-width policy); a still-source run with the real tracker also asserts the live fit applies
+  to all three cutouts. The eye lock is checked through the model drag, draw and resize paths, and
+  unlocking is checked to leave the partner alone.
 - still source (`--live-source still --still tests/fixtures/images/still_setup.png`) + scripted
   tracker: the same contract with no camera or person, plus the `still (file)` label and path.
 - rendered (`--render`): panes inside the window at 100% and 200% UI scale, opaque background, and

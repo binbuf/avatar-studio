@@ -89,5 +89,6 @@ static func make_source_regions() -> Array:
 			"center": Vector2(region.center),
 			"size": Vector2(region.size),
 			"rotation_deg": float(region.rotation_deg),
+			"shape": String(region.shape),
 		})
 	return out

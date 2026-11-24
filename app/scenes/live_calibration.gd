@@ -323,6 +323,8 @@ static func _encode_source_regions(regions: Array) -> Array:
 			"id": str(entry.id),
 			"center": _array2(entry.center),
 			"size": _array2(entry.size),
+			"rotation_deg": float(entry.get("rotation_deg", 0.0)),
+			"shape": str(entry.get("shape", "ellipse")),
 		})
 	return out
 
@@ -336,6 +338,8 @@ static func _source_from_regions(regions: Array) -> Array:
 			"id": str(entry.get("id", "")),
 			"center": Vector2(entry.get("center", Vector2.ZERO)),
 			"size": Vector2(entry.get("size", Vector2(0.1, 0.1))),
+			"rotation_deg": float(entry.get("rotation_deg", 0.0)),
+			"shape": str(entry.get("shape", "ellipse")),
 		})
 	return out
 
@@ -353,6 +357,11 @@ static func _read_source_regions(raw: Variant, fallback: Array) -> Array:
 				break
 		if source.is_empty():
 			return fallback.duplicate(true)
+		var base: Dictionary = {}
+		for entry in fallback:
+			if str(entry.get("id", "")) == id:
+				base = entry
+				break
 		var center: Variant = _vec2(source.get("center", Vector2.ZERO))
 		var size: Variant = _vec2(source.get("size", Vector2(0.1, 0.1)))
 		if center == null or size == null:
@@ -361,10 +370,15 @@ static func _read_source_regions(raw: Variant, fallback: Array) -> Array:
 			return []
 		if (size as Vector2).x <= 0.0 or (size as Vector2).y <= 0.0:
 			return []
+		var rotation_deg := float(source.get("rotation_deg", base.get("rotation_deg", 0.0)))
+		if not is_finite(rotation_deg):
+			return []
 		out.append({
 			"id": id,
 			"center": center as Vector2,
 			"size": size as Vector2,
+			"rotation_deg": rotation_deg,
+			"shape": str(source.get("shape", base.get("shape", "ellipse"))),
 		})
 	return out
 

@@ -415,7 +415,26 @@ transparent output window remains a separate surface with its own gate.
 The source and target are independent: moving a camera/mapping cutout changes what the decal samples
 but not where it is painted, and moving a model cutout changes where it is painted but not what is
 sampled. Selecting a cutout in any pane selects the same region everywhere. Re-applying the current
-draw mode is a no-op, so the selection signal cannot cancel an in-progress drag. When the rig has no
+draw mode is a no-op, so the selection signal cannot cancel an in-progress drag.
+
+**Automatic camera cutouts.** With **Auto-fit from tracker contours** on (the default), the source
+rects are measured from the dense tracker landmarks instead of being authored by hand. The centre is
+the rig's rest centroid for that region (the neutral position, not the instantaneous gaze/lip point,
+because the decal adds the live anchor itself); the size is the eye/mouth contour width in canonical
+space with a small margin, and the height follows the *target* aspect so the sampled patch maps onto
+the model without anisotropic stretch. The width is settled over about 1.5 s and then held: eyes
+average the corner distance, the mouth takes the smallest plausible width so a smile during settling
+does not inflate the window, and a fixed window is what lets the smile and gaze move *inside* the
+cutout instead of resizing it. Moving or scaling a camera/mapping cutout by hand turns the auto-fit
+off, so the operator's placement is never overwritten; switching it back on re-measures. The model
+placement is never auto-fitted.
+
+**Eye lock.** **Lock eyes (mirror + equal size)** applies to the model placement. Dragging one eye
+mirrors the partner about canonical `u = 0` (the midline through the face origin), and drawing or
+scaling one eye gives both the same width and height. Enabling the lock mirrors eye R from eye L
+immediately. The lock only constrains the two eyes; the mouth stays independent.
+
+When the rig has no
 live solve the window holds the last good homography and anchors, draws the cutouts dashed in amber
 and labels the pane **Mapping held - no live face**; before the first solve (a development still, or
 the first frames) the tracker face box stands in for the mapping and the pane says **No live mapping

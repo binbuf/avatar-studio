@@ -164,6 +164,14 @@ and lip motion. Separating the rects lets the operator pick the accurate camera 
 on the model without the two moving each other. The persisted calibration stores both sets; a
 version 1 file is read with source = target.
 
+The Setup window measures the source rects automatically from the dense landmarks: the centre is the
+region's rest centroid and the size is the contour width plus a margin, with the height taken from the
+target aspect so the patch is not stretched. The width is averaged over a settle window (smallest
+plausible width for the mouth, since a smile is much wider than a resting mouth) and then held. The
+source is therefore a *fixed sampling window*: expressions move inside it rather than resizing it,
+which is what makes the painted mouth open and smile. Manual edits replace the automatic values and
+turn the auto-fit off.
+
 ---
 
 ## Head motion and placement
