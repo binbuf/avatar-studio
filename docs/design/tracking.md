@@ -27,7 +27,7 @@ The rest of the system depends on exactly this:
 struct TrackingResult {
     uint64_t   source_timestamp_ns;   // timestamp of the frame that produced this result
     bool       valid;
-    bool       features_valid;        // eyes and mouth both tracked; gates the output
+    bool       features_valid;        // mouth + at least one visible eye; gates the output
     float      confidence;            // 0..1, monotonic with trustworthiness
     HeadPose   pose;                  // rotation (quaternion) + translation, camera space
     LandmarkSet landmarks;            // 478 points, normalised image coords + relative depth
@@ -45,9 +45,10 @@ public:
 };
 ```
 
-`valid` means a face is present. `features_valid` is stricter: the eye centres and mouth are present
-well enough to build the decal, and the output gate requires it. A head pose without eyes or mouth is
-still useful to the preview, but it must not put a face on screen.
+`valid` means a face is present. `features_valid` is stricter: the mouth and at least one eye are
+visible well enough to build the decal, and the output gate requires it. A profile view with the
+mouth and near eye stays live; the rig holds the hidden far eye. A head pose without a mouth, or
+without either eye, is still useful to the preview, but it must not put a face on screen.
 
 Properties the contract guarantees:
 
@@ -333,12 +334,13 @@ inside the original image, after the graph's detection/presence/tracking thresho
 face produces zero confidence, `valid = false`, zero landmarks and zero blendshapes. It is not a
 calibrated probability or the planned reprojection/pose-plausibility score.
 
-`features_valid` additionally requires both eye-corner pairs, both iris centres, mouth corners and
-lip centres to be finite, inside the source image and geometrically non-degenerate. Any available
-upstream visibility/presence flag below 0.5 also invalidates features. A present face can therefore
-have `valid = true` and `features_valid = false`. Face Mesh does not reliably supply per-feature
-occlusion probabilities; sunglasses/hand/profile rejection remains a real-corpus quality gate,
-not a capability implied by this geometric check. Output continues to require `features_valid`.
+`features_valid` requires the mouth corners and lip centres to be finite, inside the source image and
+geometrically non-degenerate, plus at least one eye's corners and iris. Visibility/presence is checked
+per feature: the mouth must be visible and at least one eye must be visible. A profile view that
+hides the far eye therefore remains valid; a covered mouth or both hidden eyes do not. A present face
+can have `valid = true` and `features_valid = false`. Face Mesh does not reliably supply per-feature
+occlusion probabilities; sunglasses/hand rejection remains a real-corpus quality gate. Output
+continues to require `features_valid`.
 
 ## Filtering and motion
 
@@ -426,7 +428,7 @@ and backend errors; the app output gate, recovery blending and UI diagnostics re
 |---|---|---|
 | No face in frame | Presence score below threshold | Tracker `valid = false`; rig bridges at most 150 ms from the last complete sample, then output blanks; UI shows a hint |
 | Face leaves and returns | Re-detection | T18 retains filter state and caps the reacquisition dt at 50 ms. A fixed 150 ms recovery blend remains later integration work (T26/T41); output is blank after the loss hold |
-| Missing eyes or mouth | Landmark subset incomplete | Tracker `features_valid = false`; rig bridges at most 150 ms, then its output validity clears. Sunglasses, a hand, or a profile view is the usual cause |
+| Missing mouth or both eyes | Landmark subset incomplete | Tracker `features_valid = false`; rig bridges at most 150 ms, then its output validity clears. A hand or sunglasses is the usual cause. A profile view with the mouth and near eye stays valid; the hidden far eye is held |
 | Tracking stalls | No result for > 150 ms | Mark invalid; output blanks; keep rendering the preview |
 | Tracker crashes | C-ABI call returns error | Disable tracking; output blanks (never a static face); surface a support code |
 | Camera format change | Frame dimensions change | Reconfigure input; do not assume a fixed input size |
@@ -470,7 +472,7 @@ statistics query, and ABI v1 has no distinct model-integrity error.
 | Contract | Realised behaviour | Evidence |
 |---|---|---|
 | `source_timestamp_ns` | Exactly the input frame's `timestamp_ns`; the public result is never restamped with inference-completion time. Duplicate/backwards inputs are counted and the internal graph millisecond is advanced by 1, while the public nanosecond value is preserved. | T09 contract suite, T11 real-backend tests, M0 timestamp pairing |
-| `features_valid` | Stricter than `valid`: both eye-corner pairs, both iris centres, mouth corners and lip centres must be finite, inside the source image and non-degenerate. A present face can be `valid = true` and `features_valid = false`; the output gate requires the latter. | `test_real_tracker.cpp`, T09 contract suite, T23 owns the gate |
+| `features_valid` | Stricter than `valid`: the mouth corners/lip centres and at least one eye's corners/iris must be finite, inside the source image and non-degenerate. Visibility is checked per feature, so a profile view with the mouth and near eye stays valid. A present face can be `valid = true` and `features_valid = false`; the output gate requires the latter. | `test_real_tracker.cpp`, T09 contract suite, T23 owns the gate |
 | Pose | Camera-space unit quaternion `[x, y, z, w]` and translation in metres, converted from the upstream metric transform. It is not camera-calibrated rig math; filtering and the homography are T18. | T11/T12, T14 repeatability, T18 filtering |
 | Landmarks | 478 normalised image coordinates plus relative depth; names resolve through the pinned T12 tables. | T12 asymmetric-marker gate |
 | Stats | `TrackerStats` is the C++/scripted instrumentation. The real DLL keeps private counters and a bounded 4096-sample reservoir, but ABI v1 has no query, so the app HUD's real statistics are T26 work. | `tracker_c_api.h`, T11 `avatar_tracker_bench` |

@@ -22,6 +22,12 @@ constexpr double kRansacThreshold = 0.008;
 constexpr core::TimestampNs kHoldNs = 150'000'000;
 constexpr double kPredictionSeconds = 0.050;
 constexpr std::size_t kMinimumInliers = tracking::kMinimumSamplingCorrespondences;
+// A neutral bootstrap frame is frontal and relaxed. A frame at yaw or with a
+// wide smile is buffered; the best of the first half-second is used if no
+// neutral frame arrives.
+constexpr double kNeutralBootstrapScore = 8.0;
+constexpr std::size_t kMaxBootstrapFrames = 12;
+constexpr core::TimestampNs kMaxBootstrapNs = 500'000'000;
 
 bool stable(LandmarkName name) {
     return name != LandmarkName::iris_center_l && name != LandmarkName::iris_center_r &&
@@ -305,9 +311,15 @@ std::optional<Vec2> centroid(const tracking::LandmarkMap& map, const tracking::L
         if (name == LandmarkName::count) {
             continue;
         }
-        // Irises are optional. Corners and both lip centres are required.
+        // The corners are the stable anchor. Irises and the two lip centres are
+        // expression points: include them when the backend provides them, but a
+        // profile view that hides one must not reject the whole frame.
         if (!map.usable(points, name)) {
-            if (name == LandmarkName::iris_center_l || name == LandmarkName::iris_center_r) {
+            const bool optional = name == LandmarkName::iris_center_l ||
+                                  name == LandmarkName::iris_center_r ||
+                                  name == LandmarkName::mouth_upper_center ||
+                                  name == LandmarkName::mouth_lower_center;
+            if (optional) {
                 continue;
             }
             return std::nullopt;
@@ -316,7 +328,83 @@ std::optional<Vec2> centroid(const tracking::LandmarkMap& map, const tracking::L
         sum += Vec2(point.x, point.y);
         ++count;
     }
+    if (count == 0) {
+        return std::nullopt;
+    }
     return Vec2(sum / static_cast<double>(count));
+}
+
+// Neutral rest position for a region: the eye-corner midpoint and the
+// mouth-corner midpoint. These do not move with gaze or with a smile, so the
+// first accepted frame cannot bake an expression into the rest anchor.
+std::optional<Vec2> stable_centroid(const tracking::LandmarkMap& map,
+                                    const tracking::LandmarkSet& points, int region) {
+    const std::array<std::array<LandmarkName, 2>, 3> names{{
+        {LandmarkName::eye_outer_l, LandmarkName::eye_inner_l},
+        {LandmarkName::eye_outer_r, LandmarkName::eye_inner_r},
+        {LandmarkName::mouth_corner_l, LandmarkName::mouth_corner_r},
+    }};
+    const auto& pair = names[static_cast<std::size_t>(region)];
+    if (!map.usable(points, pair[0]) || !map.usable(points, pair[1])) {
+        return std::nullopt;
+    }
+    const auto first = *map.point(points, pair[0]);
+    const auto second = *map.point(points, pair[1]);
+    return Vec2((first.x + second.x) * 0.5, (first.y + second.y) * 0.5);
+}
+
+// Mouth width / inter-ocular distance from the stable corners. A neutral mouth
+// is roughly 0.6-0.9; a smile is wider. Used only to choose a bootstrap frame.
+bool mouth_ratio(const tracking::LandmarkMap& map, const tracking::LandmarkSet& points,
+                 float aspect, double& ratio) {
+    if (!map.usable(points, LandmarkName::mouth_corner_r) ||
+        !map.usable(points, LandmarkName::mouth_corner_l) ||
+        !map.usable(points, LandmarkName::eye_outer_r) ||
+        !map.usable(points, LandmarkName::eye_inner_r) ||
+        !map.usable(points, LandmarkName::eye_outer_l) ||
+        !map.usable(points, LandmarkName::eye_inner_l)) {
+        return false;
+    }
+    const auto mr = *map.point(points, LandmarkName::mouth_corner_r);
+    const auto ml = *map.point(points, LandmarkName::mouth_corner_l);
+    const auto ero = *map.point(points, LandmarkName::eye_outer_r);
+    const auto eri = *map.point(points, LandmarkName::eye_inner_r);
+    const auto elo = *map.point(points, LandmarkName::eye_outer_l);
+    const auto eli = *map.point(points, LandmarkName::eye_inner_l);
+    const auto span = [aspect](const auto& a, const auto& b) {
+        return std::hypot(static_cast<double>(a.x - b.x) * aspect, static_cast<double>(a.y - b.y));
+    };
+    // Normalise by the inter-ocular distance (the canonical unit), not by the
+    // corner width: the synthetic face has a narrow eye fissure and a wide
+    // mouth, and would otherwise look like a permanent smile.
+    const double right_x = (static_cast<double>(ero.x) + eri.x) * 0.5;
+    const double right_y = (static_cast<double>(ero.y) + eri.y) * 0.5;
+    const double left_x = (static_cast<double>(elo.x) + eli.x) * 0.5;
+    const double left_y = (static_cast<double>(elo.y) + eli.y) * 0.5;
+    const double eyes = std::hypot((right_x - left_x) * aspect, right_y - left_y);
+    if (eyes < 1e-6) {
+        return false;
+    }
+    ratio = span(mr, ml) / eyes;
+    return true;
+}
+
+double bootstrap_score(const tracking::TrackingResult& result, const tracking::LandmarkMap& map,
+                       float aspect) {
+    const Quat q = quaternion(result.pose).normalized();
+    const Vec3 a = angles(q);
+    double score = std::abs(a.y()) + 0.5 * std::abs(a.z()) + 0.5 * std::abs(a.x());
+    double ratio = 0.0;
+    if (mouth_ratio(map, result.landmarks, aspect, ratio)) {
+        score += std::max(0.0, ratio - 0.95) * 60.0;
+    } else {
+        score += 15.0;
+    }
+    score -= std::clamp(static_cast<double>(result.confidence), 0.0, 1.0) * 3.0;
+    if (!result.features_valid) {
+        score += 5.0;
+    }
+    return score;
 }
 } // namespace
 
@@ -338,6 +426,13 @@ struct FaceRig::State {
     Mat3 h = Mat3::Identity(), h_velocity = Mat3::Zero();
     Quat rejected = Quat::Identity();
     int rejects = 0;
+    bool boot_pending = false;
+    std::size_t boot_count = 0;
+    core::TimestampNs boot_first_ns = 0;
+    tracking::TrackingResult boot_best{};
+    double boot_best_score = 1e30;
+    std::array<Vec2, 3> boot_rest{};
+    bool boot_rest_valid = false;
     std::array<Vec2, 3> rest{}, anchors{};
     float confidence = 0;
     std::size_t inlier_count = 0;
@@ -499,22 +594,52 @@ FaceRigOutput FaceRig::apply_result(const tracking::TrackingResult& result,
     }
     s.rejects = 0;
     if (s.profile.landmarks.empty()) {
+        // Do not let the first frame define canonical space if it is turned or
+        // smiling. Buffer the best of a short window; a neutral frame wins
+        // immediately, otherwise the least extreme frame is used after 500 ms.
+        const double score = bootstrap_score(result, s.map, s.aspect);
+        if (score < s.boot_best_score) {
+            s.boot_best = result;
+            s.boot_best_score = score;
+        }
+        if (!s.boot_pending) {
+            s.boot_pending = true;
+            s.boot_first_ns = now;
+        }
+        ++s.boot_count;
+        const bool elapsed = now > s.boot_first_ns && now - s.boot_first_ns >= kMaxBootstrapNs;
+        const bool enough = s.boot_count >= kMaxBootstrapFrames;
+        if (s.boot_best_score > kNeutralBootstrapScore && !elapsed && !enough) {
+            return sample_current(render_time_ns);
+        }
         const auto frame =
-            tracking::CanonicalFaceFrame::from_landmarks(result.landmarks, s.map, s.aspect);
+            tracking::CanonicalFaceFrame::from_landmarks(s.boot_best.landmarks, s.map, s.aspect);
         if (!frame) {
             return sample_current(render_time_ns);
         }
         tracking::ProfileLandmarks profile;
         for (std::size_t i = 0; i < tracking::kLandmarkNameCount; ++i) {
             const auto name = static_cast<LandmarkName>(i);
-            if (stable(name) && s.map.usable(result.landmarks, name)) {
-                const auto uv = frame->project(*s.map.point(result.landmarks, name));
+            if (stable(name) && s.map.usable(s.boot_best.landmarks, name)) {
+                const auto uv = frame->project(*s.map.point(s.boot_best.landmarks, name));
                 profile.landmarks.push_back({tracking::landmark_name(name), uv[0], uv[1]});
             }
         }
         if (profile.landmarks.size() < kMinimumInliers) {
             return sample_current(render_time_ns);
         }
+        for (int i = 0; i < 3; ++i) {
+            const auto point = stable_centroid(s.map, s.boot_best.landmarks, i);
+            if (point) {
+                const auto uv =
+                    frame->project(static_cast<float>(point->x()), static_cast<float>(point->y()));
+                s.boot_rest[static_cast<std::size_t>(i)] = Vec2(uv[0], uv[1]);
+            } else {
+                s.boot_rest[static_cast<std::size_t>(i)] = Vec2::Zero();
+            }
+        }
+        s.boot_rest_valid = true;
+        s.boot_pending = false;
         s.profile = std::move(profile);
     }
     const auto correspondences =
@@ -534,15 +659,30 @@ FaceRigOutput FaceRig::apply_result(const tracking::TrackingResult& result,
         return sample_current(render_time_ns);
     }
     std::array<Vec2, 3> anchors;
+    std::array<Vec2, 3> stable;
     const Mat3 inverse = h.inverse();
     for (int i = 0; i < 3; ++i) {
-        const auto point = centroid(s.map, result.landmarks, i);
-        if (!point) {
-            return sample_current(render_time_ns);
+        const auto stable_point = stable_centroid(s.map, result.landmarks, i);
+        if (stable_point) {
+            stable[static_cast<std::size_t>(i)] = project(inverse, *stable_point);
+            if (!stable[static_cast<std::size_t>(i)].allFinite()) {
+                stable[static_cast<std::size_t>(i)] = Vec2::Zero();
+            }
+        } else {
+            stable[static_cast<std::size_t>(i)] = Vec2::Zero();
         }
-        anchors[static_cast<std::size_t>(i)] = project(inverse, *point);
-        if (!anchors[static_cast<std::size_t>(i)].allFinite()) {
-            return sample_current(render_time_ns);
+        const auto point = centroid(s.map, result.landmarks, i);
+        const Vec2 fallback =
+            s.have_h ? s.anchors[static_cast<std::size_t>(i)] : stable[static_cast<std::size_t>(i)];
+        if (point) {
+            anchors[static_cast<std::size_t>(i)] = project(inverse, *point);
+            if (!anchors[static_cast<std::size_t>(i)].allFinite()) {
+                anchors[static_cast<std::size_t>(i)] = fallback;
+            }
+        } else {
+            // A profile view can hide one eye. Hold that region instead of
+            // rejecting the whole frame; the other regions keep tracking.
+            anchors[static_cast<std::size_t>(i)] = fallback;
         }
     }
     // Long gaps use the same bounded filter step as normal updates. Reacquisition
@@ -573,8 +713,15 @@ FaceRigOutput FaceRig::apply_result(const tracking::TrackingResult& result,
     if (s.have_h) {
         const double h_dt = std::max(1e-6, seconds(now, s.h_ns));
         s.h_velocity = (h - s.h) / h_dt;
+    } else if (s.boot_rest_valid) {
+        // Rest is the neutral bootstrap frame, not this (possibly turned)
+        // solve frame. The live anchor is still measured from this frame.
+        s.rest = s.boot_rest;
+        s.boot_rest_valid = false;
     } else {
-        s.rest = anchors;
+        // An explicit profile has no bootstrap frame; the first solve's stable
+        // corner midpoints are the neutral rest.
+        s.rest = stable;
     }
     for (std::size_t i = 0; i < 3; ++i) {
         if (!s.have_h) {

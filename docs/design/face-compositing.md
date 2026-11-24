@@ -90,9 +90,12 @@ sampling. They are complementary, and both are available from the same result.
 `native/rig/include/avatar/rig/face_rig.h` implements the frame and temporal math;
 [ADR-0028](adr/0028-facerig-estimation-and-temporal-contract.md) fixes the downstream contract.
 T12's `LandmarkMap`, `CanonicalFaceFrame` and `ProfileLandmarks` remain the source of
-names and neutral axes. An empty profile bootstraps from the first usable frame
-with camera aspect correction; an explicit profile uses its remaining named subset.
-No profile is silently replaced when too few correspondences remain.
+names and neutral axes. An empty profile bootstraps from the best of a short window:
+a frontal, relaxed frame is preferred; a turned or smiling first frame is buffered
+for up to 500 ms and the least extreme frame is used if no neutral frame arrives.
+The canonical frame uses the eye-corner midpoints, not the irises, so gaze does not
+move the face space. An explicit profile uses its remaining named subset. No profile
+is silently replaced when too few correspondences remain.
 
 The solve excludes iris and upper/lower lip centres. It uses double precision,
 Hartley normalisation (mean distance sqrt(2)), SVD DLT and up to three Gauss–Newton
@@ -126,18 +129,23 @@ edge of the patch and the illusion breaks.
 
 For each region (`eye_l`, `eye_r`, `mouth`):
 
-- a **centroid** is computed from that region's landmarks (eye corners + iris centre for eyes;
-  mouth corners + upper/lower lip centre for the mouth),
-- the centroid is converted into canonical space through `H⁻¹`,
+- a **live centroid** is computed from that region's landmarks (eye corners + iris centre when the
+  backend provides it; mouth corners + upper/lower lip centre when provided),
+- a **rest centroid** is the neutral bootstrap frame's stable corner midpoint (eye corners for the
+  eyes, mouth corners for the mouth),
+- the live centroid is converted into canonical space through `H⁻¹`,
 - the result is low-pass filtered with a slow time constant (~150 ms) and clamped to a small
   envelope around its rest position (±0.12 in canonical units).
 
-T18 computes each centroid in image space and applies H inverse. Missing irises
-fall back to the two eye corners; both mouth corners and both lip centres are
-required. The first accepted frame defines each rest centroid. Subsequent anchors
-use `alpha = 1-exp(-dt/0.150)` and a per-axis ±0.12 clamp around that rest centroid.
-This is runtime anchor tracking; avatar region shapes and the profile capture UX
-remain later tasks.
+T18 computes each live centroid in image space and applies H inverse. The eye
+corners and mouth corners are required; irises and lip centres are optional, so a
+profile view that hides one does not drop the whole frame. A region whose centroid
+is unavailable holds its previous anchor; the other regions keep tracking. The rest
+is the neutral bootstrap frame's stable corner midpoint, not the first accepted
+frame's expression, so a smile or a glance at startup cannot bake an offset into
+every later anchor. Subsequent anchors use `alpha = 1-exp(-dt/0.150)` and a
+per-axis ±0.12 clamp around rest. This is runtime anchor tracking; avatar region
+shapes and the profile capture UX remain later tasks.
 
 The slow filter is deliberate: it tracks gaze and lip shape without inheriting landmark jitter, and
 the clamp prevents a bad frame from throwing the patch across the face.
@@ -164,13 +172,17 @@ and lip motion. Separating the rects lets the operator pick the accurate camera 
 on the model without the two moving each other. The persisted calibration stores both sets; a
 version 1 file is read with source = target.
 
-The Setup window measures the source rects automatically from the dense landmarks: the centre is the
-region's rest centroid and the size is the contour width plus a margin, with the height taken from the
-target aspect so the patch is not stretched. The width is averaged over a settle window (smallest
-plausible width for the mouth, since a smile is much wider than a resting mouth) and then held. The
-source is therefore a *fixed sampling window*: expressions move inside it rather than resizing it,
-which is what makes the painted mouth open and smile. Manual edits replace the automatic values and
-turn the auto-fit off.
+The Setup window measures the source rects automatically from the dense landmarks.
+The eye centre is the midpoint of the outer and inner eye corners; the mouth centre is the midpoint
+of the mouth corners. Both are stable through a blink, a glance or a syllable, unlike the iris, the
+eyelid box or the lip centres. The eye width is the corner distance plus a margin. The mouth width is
+the corner distance capped by a face-proportion prior (1.30 x the outer nose width), because a smile
+can be half again as wide as a resting mouth. The height follows the target aspect so the patch is not
+stretched. A sample only counts while the face is frontal and relaxed; the Setup window takes the
+median of 24-45 such samples over about 1.5 s and then holds the result. The source is therefore a
+*fixed sampling window*: expressions move inside it rather than resizing it, which is what makes the
+painted mouth open and smile. Manual edits replace the automatic values and turn the auto-fit off.
+**Best defaults** restores the canonical windows and the model-aware target placement.
 
 ---
 
@@ -607,8 +619,8 @@ The output stream has exactly two visible states ([ADR-0010](adr/0010-output-is-
 
 | State | Frame | When |
 |---|---|---|
-| **Avatar** | The rendered model with the decal | Tracking is valid, and both eyes and the mouth are present |
-| **Blank** | Transparent for OBS/Spout; the configured background colour for opaque outputs | No face, missing eyes or mouth, or tracking lost beyond the hold window |
+| **Avatar** | The rendered model with the decal | Tracking is valid; the mouth and at least one eye are visible |
+| **Blank** | Transparent for OBS/Spout; the configured background colour for opaque outputs | No face, missing mouth or both eyes, or tracking lost beyond the hold window |
 
 There is no passthrough, no last-frame freeze, and no fallback to the camera. A held frame only
 bridges a dropped frame or a short missing-feature interval (including a single blink),

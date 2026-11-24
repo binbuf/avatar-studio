@@ -210,7 +210,7 @@ Status LiveSession::status() const noexcept {
             status.blocks_output = true;
             status.code = DiagnosticCode::trk_008;
             status.severity = Severity::warning;
-            status.sentence = "Can't see your eyes and mouth";
+            status.sentence = "Can't see your mouth or both eyes";
             status.action = "Remove sunglasses or a hand, and face the camera.";
             return status;
         case FaceState::degraded:

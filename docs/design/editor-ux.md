@@ -244,7 +244,7 @@ The vertical slice ships the honest surface, not the full editor shell (T33) or 
   `avatar::live::LiveSession`; the HUD updates at 4 Hz, not per frame.
 - **Status banner:** one sentence plus one action, with the support code. The four T25 states are
   camera lost (`CAP-001`, "Camera disconnected"), face not visible (`TRK-001`, "Can't see your face"),
-  eyes or mouth hidden (`TRK-008`, "Can't see your eyes and mouth"), and tracking degraded (`TRK-004`,
+  mouth or both eyes hidden (`TRK-008`, "Can't see your mouth or both eyes"), and tracking degraded (`TRK-004`,
   "Face tracking is struggling"). The banner never hides the face; it sits over the preview.
 - **Panic:** the button and Ctrl/Cmd+Shift+H blank the output immediately through
   `OutputManager::set_panic`, clear the hold, and show "Output is hidden" plus the restore action in
@@ -296,7 +296,7 @@ Every one of these has designed copy, an icon, and a recovery action:
 | Camera busy | "Another app is using this camera" | List likely apps, Retry |
 | Camera lost mid-stream | "Camera disconnected" | Auto-retry; output blanks |
 | Face not visible | "Can't see your face" | Hint about lighting/position; output blanks |
-| Eyes or mouth hidden | "Can't see your eyes and mouth" | Output is blank; remove sunglasses, face the camera |
+| Mouth or both eyes hidden | "Can't see your mouth or both eyes" | Output is blank; remove sunglasses, face the camera |
 | Tracking degraded | "Face tracking is struggling" | Suggest lower resolution or brighter light |
 | GPU unsupported | "This graphics card isn't supported" | Explain Forward+/Vulkan/Metal requirement |
 | Renderer is Compatibility | "OpenGL renderer is not supported" | Explain and offer to switch |
@@ -418,16 +418,33 @@ sampled. Selecting a cutout in any pane selects the same region everywhere. Re-a
 draw mode is a no-op, so the selection signal cannot cancel an in-progress drag.
 
 **Automatic camera cutouts.** With **Auto-fit from tracker contours** on (the default), the source
-rects are measured from the dense tracker landmarks instead of being authored by hand. The centre is
-the rig's rest centroid for that region (the neutral position, not the instantaneous gaze/lip point,
-because the decal adds the live anchor itself); the size is the eye/mouth contour width in canonical
-space with a small margin, and the height follows the *target* aspect so the sampled patch maps onto
-the model without anisotropic stretch. The width is settled over about 1.5 s and then held: eyes
-average the corner distance, the mouth takes the smallest plausible width so a smile during settling
-does not inflate the window, and a fixed window is what lets the smile and gaze move *inside* the
-cutout instead of resizing it. Moving or scaling a camera/mapping cutout by hand turns the auto-fit
-off, so the operator's placement is never overwritten; switching it back on re-measures. The model
-placement is never auto-fitted.
+rects are measured from the dense tracker landmarks instead of being authored by hand. The eye
+centre is the midpoint of the outer and inner eye corners; the mouth centre is the midpoint of the
+mouth corners. Both are stable through a blink, a glance or a syllable, unlike the iris, the eyelid
+box or the lip centres. The eye width is the corner distance plus a small margin. The mouth width is
+the corner distance capped by a face-proportion prior (1.30 x the outer nose width): a smile can be
+half again as wide as a resting mouth, so the raw corner distance would swallow the cheeks. The
+height follows the *target* aspect so the sampled patch maps onto the model without anisotropic
+stretch.
+
+A sample only counts while the face is frontal and relaxed (about 20 deg yaw, 15 deg pitch, 20 deg
+roll, and a mouth width that is not a wide smile). The Setup window keeps the best 24-45 samples over
+about 1.5 s and applies their median; a turned head or a smile is shown as **Auto-fit waiting** and
+does not define the neutral window. The result is then held. A fixed window is what lets the smile
+and gaze move *inside* the cutout instead of resizing it. Moving, drawing or scaling a
+camera/mapping cutout by hand turns the auto-fit off, so the operator's placement is never
+overwritten; switching it back on, or pressing **Best defaults**, re-measures. The model placement is
+never auto-fitted.
+
+**Best defaults and Revert.** **Best defaults** restores the model-aware provisional face placement
+(face scale 26% of the model height, eye line 30% down the model, mouth below it, a low head cut so
+the test avocado turns rigidly) and the canonical camera sampling windows, re-arms the auto-fit, and
+does not save. **Revert** restores the last applied/loaded mapping and discards unsaved edits. The
+operator can override any value afterwards; Apply is what saves.
+
+The camera pane's diagnostic box is measured from the stable face outline (forehead, chin, temples,
+jaw, cheeks, eye corners, mouth corners), smoothed over time, and widened by 1/cos(yaw) so a turned
+head stays inside it. It is a face box, not a calibrated head matte.
 
 **Eye lock.** **Lock eyes (mirror + equal size)** applies to the model placement. Dragging one eye
 mirrors the partner about canonical `u = 0` (the midline through the face origin), and drawing or
@@ -445,8 +462,8 @@ resize the camera, mapping and model panes without leaving the window. The defau
 1920x1080 logical (about 1280x720 physical on a 150% display); the window is resizable and the
 panes stay proportional at every size.
 
-The bottom strip has a fixed action row (Apply to model, Reset, Snapshot, Load still, Use camera,
-Back to Live) and a scrollable fine-tune area for the eye L/R and mouth centres/sizes, face
+The bottom strip has a fixed action row (Apply to model, Best defaults, Revert, Snapshot, Load still,
+Use camera, Back to Live) and a scrollable fine-tune area for the eye L/R and mouth centres/sizes, face
 scale/origin, head cut/falloff and the capture/tracker selectors. `Apply to model` writes
 `user://live_calibration.json`; `Reset` restores the provisional AABB mapping without saving.
 Capture-mode and tracker-input selectors restart the native pipeline with the requested values.

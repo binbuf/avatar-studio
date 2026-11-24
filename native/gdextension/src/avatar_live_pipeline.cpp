@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <godot_cpp/classes/image.hpp>
@@ -388,6 +389,7 @@ void AvatarLivePipeline::shutdown() {
     preview_pinned_ = false;
     landmarks_ = godot::PackedVector2Array();
     face_box_ = godot::Rect2();
+    face_box_initialized_ = false;
     landmark_count_ = 0;
     published_timestamp_ = 0;
     publish_count_ = 0;
@@ -605,7 +607,7 @@ godot::Dictionary AvatarLivePipeline::tick() {
     out["solve_failed"] = tick.output.solve_failed;
 
     if (tick.consumed) {
-        update_landmark_cache();
+        update_landmark_cache(tick.output.head_from_camera);
     }
     out["landmark_count"] = static_cast<int64_t>(landmark_count_);
     out["landmark_timestamp_ns"] = static_cast<int64_t>(pipeline_->output().source_timestamp_ns);
@@ -670,7 +672,7 @@ godot::Dictionary AvatarLivePipeline::tick() {
     return out;
 }
 
-void AvatarLivePipeline::update_landmark_cache() {
+void AvatarLivePipeline::update_landmark_cache(const std::array<float, 16>& head_from_camera) {
     const auto& landmarks = pipeline_->last_landmarks();
     const std::size_t count =
         std::min<std::size_t>(landmarks.count, avatar::tracking::LandmarkSet::kCapacity);
@@ -678,22 +680,100 @@ void AvatarLivePipeline::update_landmark_cache() {
     landmarks_ = godot::PackedVector2Array();
     if (count == 0) {
         face_box_ = godot::Rect2();
+        face_box_initialized_ = false;
         return;
     }
     landmarks_.resize(static_cast<int64_t>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& point = landmarks.points[i];
+        landmarks_[static_cast<int64_t>(i)] = godot::Vector2(point.x, point.y);
+    }
+    // A face box from the stable outline, not every landmark: the full set
+    // includes the eyes and lips, whose motion would pump the box every frame.
+    // The scripted/synthetic tracker uses the compact anatomical order instead
+    // of the 478-point MediaPipe indices, so use that order for small sets.
+    constexpr std::array<std::size_t, 12> kMediaPipeOutline = {10, 152, 127, 356, 234, 454,
+                                                               50, 280, 33,  263, 61,  291};
+    constexpr std::array<std::size_t, 14> kCompactOutline = {0,  1,  2,  3,  10, 11, 14,
+                                                             15, 16, 17, 18, 19, 20, 21};
+    const std::size_t* outline = kMediaPipeOutline.data();
+    std::size_t outline_count = kMediaPipeOutline.size();
+    if (count < 478) {
+        outline = kCompactOutline.data();
+        outline_count = kCompactOutline.size();
+    }
     float min_x = 1.0F;
     float min_y = 1.0F;
     float max_x = 0.0F;
     float max_y = 0.0F;
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto& point = landmarks.points[i];
-        landmarks_[static_cast<int64_t>(i)] = godot::Vector2(point.x, point.y);
+    bool any = false;
+    for (std::size_t i = 0; i < outline_count; ++i) {
+        const std::size_t index = outline[i];
+        if (index >= count) {
+            continue;
+        }
+        const auto& point = landmarks.points[index];
+        if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+            continue;
+        }
         min_x = std::min(min_x, point.x);
         min_y = std::min(min_y, point.y);
         max_x = std::max(max_x, point.x);
         max_y = std::max(max_y, point.y);
+        any = true;
     }
-    face_box_ = godot::Rect2(min_x, min_y, max_x - min_x, max_y - min_y);
+    if (!any && count > 0) {
+        // A backend with an unknown compact order: fall back to every point.
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto& point = landmarks.points[index];
+            if (!std::isfinite(point.x) || !std::isfinite(point.y)) {
+                continue;
+            }
+            min_x = std::min(min_x, point.x);
+            min_y = std::min(min_y, point.y);
+            max_x = std::max(max_x, point.x);
+            max_y = std::max(max_y, point.y);
+            any = true;
+        }
+    }
+    if (!any || max_x <= min_x || max_y <= min_y) {
+        face_box_ = godot::Rect2();
+        face_box_initialized_ = false;
+        return;
+    }
+    const float margin = std::max(max_x - min_x, max_y - min_y) * 0.04F;
+    min_x -= margin;
+    min_y -= margin;
+    max_x += margin;
+    max_y += margin;
+    // A profile view foreshortens the visible outline. Widen the box by
+    // 1/cos(yaw) so it still covers the head, without letting a near-profile
+    // solve explode it. `head_from_camera` is the inverse pose, so its (0,2)
+    // term is -sin(yaw).
+    const float yaw = std::asin(std::clamp(-head_from_camera[2], -1.0F, 1.0F));
+    const float expansion = std::clamp(1.0F / std::max(std::cos(yaw), 0.55F), 1.0F, 1.8F);
+    const float centre_x = (min_x + max_x) * 0.5F;
+    const float width = (max_x - min_x) * expansion;
+    const godot::Rect2 target(godot::Vector2(centre_x - width * 0.5F, min_y),
+                              godot::Vector2(width, max_y - min_y));
+    if (!face_box_initialized_) {
+        face_box_ = target;
+        face_box_initialized_ = true;
+        return;
+    }
+    const godot::Vector2 old_centre(face_box_.position.x + face_box_.size.x * 0.5F,
+                                    face_box_.position.y + face_box_.size.y * 0.5F);
+    const godot::Vector2 new_centre(target.position.x + target.size.x * 0.5F,
+                                    target.position.y + target.size.y * 0.5F);
+    const bool jumped = old_centre.distance_to(new_centre) > 0.18F;
+    const bool resized =
+        target.size.x > face_box_.size.x * 1.6F || target.size.x < face_box_.size.x / 1.6F;
+    if (jumped || resized) {
+        face_box_ = target;
+        return;
+    }
+    face_box_ = godot::Rect2(face_box_.position.lerp(target.position, 0.35F),
+                             face_box_.size.lerp(target.size, 0.35F));
 }
 
 godot::Dictionary AvatarLivePipeline::get_state() const {

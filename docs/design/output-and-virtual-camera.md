@@ -82,7 +82,7 @@ blank. An invalid result never refreshes the hold. The gate changes no pose and 
 is no decay to neutral and no stored last-frame freeze. The transport is never shut down while
 blank; it stays initialized and enumerated.
 
-Transitions emit `TRK-002` (face lost), `TRK-008` (eyes/mouth missing) and `OUT-007` (gate blank)
+Transitions emit `TRK-002` (face lost), `TRK-008` (mouth or both eyes missing) and `OUT-007` (gate blank)
 **once**, with a `cause` field (`face_lost`, `missing_features`, `no_frame`). A cause change is a
 new transition; repeated frames with the same cause do not repeat the code. Resuming the avatar
 does not emit a blank diagnostic.

@@ -159,9 +159,9 @@ func save_calibration() -> Dictionary:
 	return Calibration.save(calibration, calibration_path)
 
 
-## Restores the AABB-derived provisional mapping and applies it live. It does
-## not write the file; the operator presses Apply to persist the reset.
-func reset_calibration() -> Dictionary:
+## Restores the model-aware best-effort mapping and applies it live. It does not
+## write the file; the operator presses Apply to persist the reset.
+func reset_to_best_defaults() -> Dictionary:
 	if model == null or not is_instance_valid(model):
 		return {"ok": false, "error": "no avatar model", "values": {}}
 	var aabb: AABB = model.call("get_model_aabb")
@@ -169,6 +169,11 @@ func reset_calibration() -> Dictionary:
 	var applied := apply_calibration(values, true)
 	return {"ok": bool(applied.get("ok", false)), "error": String(applied.get("error", "")),
 			"values": calibration.duplicate(true)}
+
+
+## Backwards-compatible name for the Setup reset hook and older tests.
+func reset_calibration() -> Dictionary:
+	return reset_to_best_defaults()
 
 
 ## Re-reads the persisted mapping and rebuilds the decal. The test uses this to
@@ -427,6 +432,20 @@ func get_calibration() -> Dictionary:
 
 func get_region_rest() -> Array:
 	return region_rest.duplicate()
+
+
+## (roll, yaw, pitch) in degrees from the last FaceRig pose. The state stores
+## `head_from_camera` (the inverse pose); its transpose is camera_from_head, so
+## the rotation terms are read directly from the row-major inverse matrix.
+func get_head_angles() -> Vector3:
+	var head: PackedFloat32Array = last_state.get("head_from_camera",
+			PackedFloat32Array())
+	if head.size() != 16:
+		return Vector3.ZERO
+	var roll := rad_to_deg(atan2(head[1], head[0]))
+	var yaw := rad_to_deg(asin(clampf(-head[2], -1.0, 1.0)))
+	var pitch := rad_to_deg(atan2(head[6], head[10]))
+	return Vector3(roll, yaw, pitch)
 
 
 ## Dense tracker landmarks in normalised image coordinates, cached by the

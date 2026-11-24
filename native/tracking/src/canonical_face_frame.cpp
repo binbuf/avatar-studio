@@ -25,6 +25,19 @@ namespace {
     return std::nullopt;
 }
 
+// The canonical frame is defined by the eye *corners*, not the irises: the
+// irises move with gaze, so an off-centre glance would shift the whole face
+// space. The corners are the stable anatomical eye line.
+[[nodiscard]] std::optional<std::array<float, 2>> eye_corner_centre(const LandmarkSet& landmarks,
+                                                                    const LandmarkMap& map,
+                                                                    LandmarkName outer,
+                                                                    LandmarkName inner) noexcept {
+    if (!map.usable(landmarks, outer) || !map.usable(landmarks, inner)) {
+        return std::nullopt;
+    }
+    return average(*map.point(landmarks, outer), *map.point(landmarks, inner));
+}
+
 } // namespace
 
 std::optional<EyeCentres> eye_centres(const LandmarkSet& landmarks,
@@ -53,13 +66,26 @@ std::optional<CanonicalFaceFrame> CanonicalFaceFrame::from_landmarks(const Landm
     if (!std::isfinite(aspect) || aspect <= 0.0f) {
         return std::nullopt;
     }
-    const std::optional<EyeCentres> centres = eye_centres(landmarks, map);
-    if (!centres.has_value()) {
-        return std::nullopt;
+    std::optional<std::array<float, 2>> right_corner =
+        eye_corner_centre(landmarks, map, LandmarkName::eye_outer_r, LandmarkName::eye_inner_r);
+    std::optional<std::array<float, 2>> left_corner =
+        eye_corner_centre(landmarks, map, LandmarkName::eye_outer_l, LandmarkName::eye_inner_l);
+    std::array<float, 2> right_raw{};
+    std::array<float, 2> left_raw{};
+    if (right_corner.has_value() && left_corner.has_value()) {
+        right_raw = *right_corner;
+        left_raw = *left_corner;
+    } else {
+        const std::optional<EyeCentres> centres = eye_centres(landmarks, map);
+        if (!centres.has_value()) {
+            return std::nullopt;
+        }
+        right_raw = centres->right;
+        left_raw = centres->left;
     }
 
-    const std::array<float, 2> right{centres->right[0] * aspect, centres->right[1]};
-    const std::array<float, 2> left{centres->left[0] * aspect, centres->left[1]};
+    const std::array<float, 2> right{right_raw[0] * aspect, right_raw[1]};
+    const std::array<float, 2> left{left_raw[0] * aspect, left_raw[1]};
     const float dx = right[0] - left[0];
     const float dy = right[1] - left[1];
     const float interocular = std::hypot(dx, dy);

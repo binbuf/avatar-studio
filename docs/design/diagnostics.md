@@ -107,7 +107,7 @@ diagnostic condition.
 | `TRK-005` | Warning | Duplicate or non-monotonic timestamp | Increment by 1 ms; log once; reset graph on reconnect |
 | `TRK-006` | Error | Model file missing or hash mismatch | Refuse to start tracking; name the file and expected hash |
 | `TRK-007` | Fatal | Backend initialization failed | Report; disable tracking; output blanks |
-| `TRK-008` | Warning | Eyes or mouth not both tracked | Output blanks; prompt to uncover the face or face the camera |
+| `TRK-008` | Warning | Mouth or both eyes not tracked | Output blanks; prompt to uncover the face or face the camera |
 | `TRK-009` | Warning | Software matte unavailable | Region mask only; suggest a green screen |
 
 ## RIG — Face frame and calibration

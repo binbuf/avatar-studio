@@ -25,9 +25,13 @@ const MUTED := Color(0.62, 0.70, 0.82, 1.0)
 const OK_COLOUR := Color(0.55, 1.0, 0.65, 1.0)
 const WARN_COLOUR := Color(1.0, 0.78, 0.30, 1.0)
 const REGION_IDS := ["eye_l", "eye_r", "mouth"]
-## Overlay ticks (~30 Hz) the automatic cutout fit averages before it holds the
-## result. Long enough to average landmark noise, short enough to feel instant.
+## Overlay ticks (~30 Hz) of frontal, relaxed samples before the automatic fit
+## holds its result. Long enough to reject a blink or a smile, short enough to
+## feel instant. The fit starts applying after FIT_MIN_SAMPLES and keeps
+## refining until it settles.
+const FIT_MIN_SAMPLES := 24
 const FIT_SETTLE_TICKS := 45
+const FIT_MAX_SAMPLES := 60
 ## Overlay ticks without a live solve before a settled fit is allowed to refit.
 ## A new subject or a re-plugged camera should not inherit the old cutouts.
 const FIT_LOST_TICKS := 90
@@ -72,6 +76,7 @@ var preview_check: CheckButton = null
 var auto_fit_check: CheckButton = null
 var lock_eyes_check: CheckButton = null
 var file_dialog: FileDialog = null
+var camera_fit_label: Label = null
 var sliders: Dictionary = {}
 var draw_buttons: Dictionary = {}
 var selected_region := "eye_l"
@@ -80,14 +85,18 @@ var selected_region := "eye_l"
 ## tracker contours, and keep the two eyes mirrored with one size/shape.
 var auto_fit_sources := true
 var lock_eyes := false
-var _fit_state: Dictionary = {}
 var _fit_applied: Dictionary = {}
-var _fit_widths: Dictionary = {}
-var _fit_ticks := 0
+var _fit_samples: Dictionary = {}
+var _fit_sample_count := 0
 var _fit_locked := false
 var _fit_lost := 0
+var _fit_quality: Dictionary = {}
+var _measured_face_box := Rect2()
+var _face_box_smoothed := Rect2()
+var _face_box_initialized := false
 
 var base: Dictionary = {}
+var saved_base: Dictionary = {}
 var working: Dictionary = {}
 var params: Dictionary = {}
 var base_face_scale := 1.0
@@ -121,6 +130,7 @@ func configure(hud_node: CanvasLayer, controller_node, runtime_node: Node,
 	_build_file_dialog()
 	if controller != null:
 		base = controller.get_calibration()
+		saved_base = base.duplicate(true)
 	_reset_params_from_base()
 	set_process(false)
 
@@ -132,6 +142,7 @@ func open() -> void:
 	if controller != null:
 		controller.set_preview_enabled(true)
 		base = controller.get_calibration()
+		saved_base = base.duplicate(true)
 		# Keep the launch source: the human review opens the real camera, while
 		# an unattended session launched with --live-source still keeps the file.
 		var config: Dictionary = controller.get_config()
@@ -266,16 +277,38 @@ func _refresh_overlays() -> void:
 		rest = _held_rest.duplicate(true)
 		anchors = _held_anchors.duplicate(true)
 		mapping_mode = "held"
+
+	# Measure the face from the dense landmarks whenever there is a usable
+	# mapping. This supplies the diagnostic head box and the automatic camera
+	# cutouts; it never changes the calibration unless the sample is frontal,
+	# relaxed and the fit has settled.
+	var measured: Dictionary = {}
+	var angles: Vector3 = controller.get_head_angles()
+	if homography.size() == 9 and homography != _identity_homography:
+		measured = SourceFit.measure(controller.get_landmarks(), homography,
+				target_regions, angles)
+	var measured_box: Rect2 = measured.get("face_box", Rect2()) if not measured.is_empty() \
+			else Rect2()
+	if measured_box.size.x > 0.0:
+		_measured_face_box = measured_box
+		_fit_quality = measured.get("quality", {})
+		_smooth_face_box(measured_box)
 	else:
+		_fit_quality = {}
+		var native_box: Rect2 = controller.get_face_box()
+		if native_box.size.x > 0.0:
+			_measured_face_box = native_box
+			_smooth_face_box(native_box)
+	var display_box := _face_box_smoothed if _face_box_initialized else _measured_face_box
+
+	if mapping_mode == "none" and display_box.size.x > 0.0:
 		# Development stills and the first frames can have a tracked face but no
 		# rig solve yet. A face-box stand-in keeps the setup UI usable; the pane
 		# labels it and draws the cutouts dashed so it is never mistaken for a
 		# calibrated mapping.
-		var fallback := _face_box_homography(controller.get_face_box())
+		var fallback := SourceFit.face_box_homography(display_box)
 		if fallback.size() == 9:
 			homography = fallback
-			# No rig anchor without a solve; place the authored centres on the
-			# face box. The tracker centroids are still drawn as anchor marks.
 			anchors = []
 			for index in range(REGION_IDS.size()):
 				anchors.append(Vector2.ZERO)
@@ -285,7 +318,7 @@ func _refresh_overlays() -> void:
 	# live. A manual camera edit turns this off, so the two never fight.
 	if auto_fit_sources and mapping_mode == "live":
 		_fit_lost = 0
-		_auto_fit_sources(homography, target_regions)
+		_auto_fit_sources(measured, target_regions)
 		source_regions = controller.get_calibration().get("source_regions", source_regions)
 	elif not auto_fit_sources:
 		_reset_fit()
@@ -295,11 +328,12 @@ func _refresh_overlays() -> void:
 			# A long loss means a new subject or a reconnected camera: settle the
 			# cutouts again rather than keeping the previous person's face.
 			_reset_fit()
+	_update_fit_label(mapping_mode)
 	var effective_source := _effective_regions(source_regions, anchors)
 	var effective_target := _effective_regions(target_regions, anchors)
 	if camera_view != null:
 		camera_view.update_slot(controller.get_preview_slot())
-		camera_view.set_overlay(controller.get_landmarks(), controller.get_face_box(),
+		camera_view.set_overlay(controller.get_landmarks(), display_box,
 				homography, centroids, effective_source, selected_region, mapping_mode)
 	var display_state := state.duplicate(true)
 	display_state["canonical_to_image"] = homography
@@ -314,62 +348,135 @@ func _refresh_overlays() -> void:
 	_update_mapping_text(display_state)
 
 
+## Smooths the diagnostic face/head box. A large jump is a new subject or a
+## reconnected camera, not tracking noise, so it resets instead of blending.
+func _smooth_face_box(box: Rect2) -> void:
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return
+	if not _face_box_initialized:
+		_face_box_smoothed = box
+		_face_box_initialized = true
+		return
+	var jumped := _face_box_smoothed.get_center().distance_to(box.get_center()) > 0.18
+	var resized := box.size.x > _face_box_smoothed.size.x * 1.6 \
+			or box.size.x < _face_box_smoothed.size.x / 1.6
+	if jumped or resized:
+		_face_box_smoothed = box
+		return
+	_face_box_smoothed = Rect2(
+			_face_box_smoothed.position.lerp(box.position, 0.35),
+			_face_box_smoothed.size.lerp(box.size, 0.35))
+
+
+func _update_fit_label(mapping_mode: String) -> void:
+	if camera_fit_label == null:
+		return
+	if not auto_fit_sources:
+		camera_fit_label.text = "Auto-fit off: camera cutouts are manual."
+		camera_fit_label.add_theme_color_override("font_color", MUTED)
+		return
+	if _fit_locked:
+		camera_fit_label.text = "Auto-fit settled: eyes %.2f / %.2f, mouth %.2f." % [
+				float(_fit_quality.get("eye_width_l", 0.0)),
+				float(_fit_quality.get("eye_width_r", 0.0)),
+				float(_fit_quality.get("mouth_width", 0.0))]
+		camera_fit_label.add_theme_color_override("font_color", OK_COLOUR)
+		return
+	if mapping_mode != "live":
+		camera_fit_label.text = "Auto-fit waiting for a live face mapping."
+		camera_fit_label.add_theme_color_override("font_color", MUTED)
+		return
+	if not _fit_quality.is_empty() and not SourceFit.neutral(_fit_quality):
+		camera_fit_label.text = "Auto-fit waiting: face the camera with a relaxed mouth (%.0f deg yaw)." % [
+				float(_fit_quality.get("yaw_deg", 0.0))]
+		camera_fit_label.add_theme_color_override("font_color", WARN_COLOUR)
+		return
+	camera_fit_label.text = "Auto-fit measuring: %d/%d frontal samples." % [
+			_fit_sample_count, FIT_MIN_SAMPLES]
+	camera_fit_label.add_theme_color_override("font_color", MUTED)
+
+
 ## Fits the camera-side cutouts to the tracked eye/mouth contours and applies the
-## smoothed result live. Only the source rects change; the model placement is
+## settled result live. Only the source rects change; the model placement is
 ## untouched, so the operator's target placement is never overwritten.
 ##
-## The centre comes from the rig's *rest* centroids, not the instantaneous
-## contour centre: the decal adds the live anchor to the authored rect, so using
-## the moving centroid here would count the gaze/lip offset twice. The size is
-## the mean contour width over the settle window, then frozen. A fixed window is
-## what makes the decal expressive: the smile and gaze move inside the patch
-## instead of the patch resizing around them.
-func _auto_fit_sources(homography: PackedFloat32Array, targets: Array) -> void:
+## A sample only counts while the face is frontal and relaxed. A smile or a
+## turned head would otherwise define the neutral window for the rest of the
+## session. The window is a median over those samples, not a per-frame follow:
+## the smile and gaze move inside the patch instead of resizing it.
+func _auto_fit_sources(measured: Dictionary, targets: Array) -> void:
 	if controller == null or base.is_empty() or _fit_locked:
 		return
-	var current: Array = controller.get_calibration().get("source_regions", [])
-	var fitted := SourceFit.fit(controller.get_landmarks(), homography, targets)
-	if fitted.is_empty():
+	if measured.is_empty() or not bool(measured.get("ok", false)):
 		return
-	var rest: Array = controller.last_state.get("region_rest", [])
-	for entry in fitted:
-		var id := String(entry.get("id", ""))
-		var index := REGION_IDS.find(id)
-		if index >= 0 and index < rest.size():
-			entry["center"] = Vector2(rest[index])
-		var widths: Array = _fit_widths.get(id, [])
-		widths.append(float(entry.get("contour_width", 0.1)))
-		_fit_widths[id] = widths
-		var settled := SourceFit.settled_width(id, widths)
-		if settled > 0.0:
-			var width := clampf(settled * SourceFit.FEATURE_MARGIN, SourceFit.MIN_WIDTH,
-					SourceFit.MAX_WIDTH)
-			var scale := width / maxf(float(entry.size.x), 0.0001)
-			entry["size"] = Vector2(entry.size) * scale
-	# ~150 ms at 30 Hz. Landmarks jitter; a cutout that tracks every pixel is
-	# unusable for placing the decal.
-	SourceFit.smooth(_fit_state, fitted, 0.25)
-	_fit_ticks += 1
-	if not SourceFit.differs(_fit_state, _fit_applied):
-		if _fit_ticks >= FIT_SETTLE_TICKS:
-			_fit_locked = true
+	var quality: Dictionary = measured.get("quality", {})
+	_fit_quality = quality
+	if not SourceFit.neutral(quality):
 		return
-	for entry in SourceFit.regions_from_state(_fit_state, current):
+	var regions: Array = measured.get("regions", [])
+	if regions.size() != REGION_IDS.size():
+		return
+	for entry in regions:
 		var id := String(entry.get("id", ""))
-		var centre: Vector2 = entry.get("center", Vector2.ZERO)
-		var size: Vector2 = entry.get("size", Vector2.ZERO)
-		params["src_center_%s_x" % id] = centre.x
-		params["src_center_%s_y" % id] = centre.y
-		params["src_size_%s_x" % id] = maxf(size.x, 0.02)
-		params["src_size_%s_y" % id] = maxf(size.y, 0.02)
-	_sync_sliders()
-	working = _rebuild_values()
-	var result: Dictionary = controller.apply_calibration(working, false)
-	if bool(result.get("ok", false)):
-		_fit_applied = _fit_state.duplicate(true)
-	if _fit_ticks >= FIT_SETTLE_TICKS:
+		var width := float(Vector2(entry.get("size", Vector2.ZERO)).x)
+		if id == "" or width <= 0.0:
+			return
+		var samples: Dictionary = _fit_samples.get(id, {"centers": [], "widths": []})
+		var centres: Array = samples.get("centers", [])
+		var widths: Array = samples.get("widths", [])
+		centres.append(Vector2(entry.get("center", Vector2.ZERO)))
+		widths.append(width)
+		if centres.size() > FIT_MAX_SAMPLES:
+			centres.pop_front()
+			widths.pop_front()
+		_fit_samples[id] = {"centers": centres, "widths": widths}
+	_fit_sample_count += 1
+	if _fit_sample_count < FIT_MIN_SAMPLES:
+		return
+	var settled := SourceFit.settle(_fit_samples)
+	if settled.size() != REGION_IDS.size():
+		return
+	var next: Array = []
+	for id in REGION_IDS:
+		if not settled.has(id):
+			return
+		var target := _find_region(targets, id)
+		var width := float(settled[id].get("width", 0.0))
+		if width <= 0.0:
+			return
+		var aspect := 1.5
+		if not target.is_empty():
+			var target_size: Vector2 = target.get("size", Vector2.ZERO)
+			if target_size.x > 0.0 and target_size.y > 0.0:
+				aspect = target_size.x / target_size.y
+		next.append({
+			"id": id,
+			"center": Vector2(settled[id].get("center", Vector2.ZERO)),
+			"size": Vector2(width, width / aspect),
+			"rotation_deg": float(target.get("rotation_deg", 0.0)) if not target.is_empty() else 0.0,
+			"shape": String(target.get("shape", "ellipse")) if not target.is_empty() else "ellipse",
+		})
+	var compare := {}
+	for entry in next:
+		compare[String(entry.id)] = {
+			"center": Vector2(entry.center),
+			"size": Vector2(entry.size),
+		}
+	if SourceFit.differs(compare, _fit_applied):
+		for entry in next:
+			var id := String(entry.id)
+			params["src_center_%s_x" % id] = float(entry.center.x)
+			params["src_center_%s_y" % id] = float(entry.center.y)
+			params["src_size_%s_x" % id] = maxf(float(entry.size.x), 0.02)
+			params["src_size_%s_y" % id] = maxf(float(entry.size.y), 0.02)
+		_sync_sliders()
+		working = _rebuild_values()
+		var result: Dictionary = controller.apply_calibration(working, false)
+		if bool(result.get("ok", false)):
+			_fit_applied = compare.duplicate(true)
+	if _fit_sample_count >= FIT_SETTLE_TICKS:
 		_fit_locked = true
-		_set_action("Auto-fit settled: camera cutouts hold their tracked position and size")
+		_set_action("Auto-fit settled: camera cutouts hold their measured position and size")
 
 
 ## Applies the live FaceRig anchor delta to a copy of the authored regions.
@@ -399,17 +506,11 @@ func _region_anchors(state: Dictionary) -> Array:
 	return out
 
 
-## Stand-in canonical -> image homography from the tracker face box. Canonical
-## (0,0) maps to the box centre, +u to image right and +v to image up. Used only
-## when the rig has no solve yet, so the setup UI stays usable on a still or the
-## first frames; the camera pane labels and dashes the cutouts in that state.
-static func _face_box_homography(box: Rect2) -> PackedFloat32Array:
-	if box.size.x <= 0.001 or box.size.y <= 0.001:
-		return PackedFloat32Array()
-	var cx := box.position.x + box.size.x * 0.5
-	var cy := box.position.y + box.size.y * 0.5
-	return PackedFloat32Array([box.size.x * 0.5, 0.0, cx, 0.0, -box.size.y * 0.5, cy,
-			0.0, 0.0, 1.0])
+func _find_region(entries: Array, id: String) -> Dictionary:
+	for entry in entries:
+		if entry is Dictionary and str(entry.get("id", "")) == id:
+			return entry.duplicate(true)
+	return {}
 
 
 func _get_avatar_camera() -> Camera3D:
@@ -644,6 +745,10 @@ func _build_panes(parent: Control) -> void:
 	camera_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var camera_footer: VBoxContainer = camera_pane.get_meta("footer")
 	camera_footer.add_child(camera_note)
+	camera_fit_label = _label("Auto-fit: waiting for a frontal face.", 10, MUTED)
+	camera_fit_label.name = "AutoFitStatus"
+	camera_fit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	camera_footer.add_child(camera_fit_label)
 
 	# Mapping pane: the canonical-face values the decal actually uses.
 	split_inner = HSplitContainer.new()
@@ -773,9 +878,12 @@ func _build_controls(parent: Control) -> void:
 	var apply_button := _button("Apply to model", _on_apply_pressed)
 	apply_button.name = "ApplyToModel"
 	actions.add_child(apply_button)
-	var reset_button := _button("Reset", _on_reset_pressed)
-	reset_button.name = "ResetCalibration"
-	actions.add_child(reset_button)
+	var best_button := _button("Best defaults", _on_best_defaults_pressed)
+	best_button.name = "BestDefaults"
+	actions.add_child(best_button)
+	var revert_button := _button("Revert", _on_revert_pressed)
+	revert_button.name = "RevertCalibration"
+	actions.add_child(revert_button)
 	var snapshot_button := _button("Snapshot", _on_snapshot_pressed)
 	snapshot_button.name = "Snapshot"
 	actions.add_child(snapshot_button)
@@ -1102,12 +1210,12 @@ func _set_auto_fit(enabled: bool, persist := true) -> void:
 
 ## Forgets the settled fit so the next live tick re-measures the subject.
 func _reset_fit() -> void:
-	_fit_state.clear()
 	_fit_applied.clear()
-	_fit_widths.clear()
-	_fit_ticks = 0
+	_fit_samples.clear()
+	_fit_sample_count = 0
 	_fit_locked = false
 	_fit_lost = 0
+	_fit_quality = {}
 
 
 func _set_lock_eyes(enabled: bool, persist := true) -> void:
@@ -1370,6 +1478,7 @@ func _on_apply_pressed() -> void:
 		action_status.add_theme_color_override("font_color", WARN_COLOUR)
 		return
 	base = controller.get_calibration()
+	saved_base = base.duplicate(true)
 	_reset_params_from_base()
 	_reset_fit()
 	action_status.text = "Applied to model and saved to %s" % String(saved.get("path", ""))
@@ -1377,20 +1486,47 @@ func _on_apply_pressed() -> void:
 	_refresh_overlays()
 
 
-func _on_reset_pressed() -> void:
+## Restores the model-aware best-effort face placement and camera windows, and
+## re-arms the automatic fit. The operator can still override any value; Apply
+## is what saves the result.
+func _on_best_defaults_pressed() -> void:
 	if controller == null:
 		return
-	var reset: Dictionary = controller.reset_calibration()
+	var reset: Dictionary = controller.reset_to_best_defaults()
 	if not bool(reset.get("ok", false)):
-		last_error = String(reset.get("error", "reset failed"))
-		action_status.text = "Reset failed: " + last_error
+		last_error = String(reset.get("error", "best defaults failed"))
+		action_status.text = "Best defaults failed: " + last_error
 		action_status.add_theme_color_override("font_color", WARN_COLOUR)
 		return
 	base = controller.get_calibration()
 	_reset_params_from_base()
 	_reset_fit()
-	action_status.text = "Reset to provisional defaults (press Apply to save)"
-	action_status.add_theme_color_override("font_color", WARN_COLOUR)
+	_set_auto_fit(true)
+	action_status.text = "Best defaults restored (not saved). Auto-fit will refine the camera cutouts."
+	action_status.add_theme_color_override("font_color", OK_COLOUR)
+	_refresh_overlays()
+
+
+func _on_reset_pressed() -> void:
+	_on_best_defaults_pressed()
+
+
+## Restores the last applied/loaded mapping, discarding unsaved edits and the
+## current automatic fit.
+func _on_revert_pressed() -> void:
+	if controller == null or saved_base.is_empty():
+		return
+	var result: Dictionary = controller.apply_calibration(saved_base, true)
+	if not bool(result.get("ok", false)):
+		last_error = String(result.get("error", "revert failed"))
+		action_status.text = "Revert failed: " + last_error
+		action_status.add_theme_color_override("font_color", WARN_COLOUR)
+		return
+	base = saved_base.duplicate(true)
+	_reset_params_from_base()
+	_reset_fit()
+	action_status.text = "Reverted to the last applied mapping"
+	action_status.add_theme_color_override("font_color", MUTED)
 	_refresh_overlays()
 
 
@@ -1664,6 +1800,16 @@ func get_lock_eyes() -> bool:
 ## Test hook: the last smoothed camera cutout fit (id -> {center, size}).
 func get_auto_fit_state() -> Dictionary:
 	return _fit_applied.duplicate(true)
+
+
+## Test hook: the last measured eye/mouth widths and head angles.
+func get_auto_fit_quality() -> Dictionary:
+	return _fit_quality.duplicate(true)
+
+
+## Test hook: the smoothed diagnostic face/head box in image coordinates.
+func get_measured_face_box() -> Rect2:
+	return _face_box_smoothed if _face_box_initialized else _measured_face_box
 
 
 func set_face_scale(multiplier: float) -> void:

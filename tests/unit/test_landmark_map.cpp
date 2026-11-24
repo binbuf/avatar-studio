@@ -263,6 +263,23 @@ TEST_CASE(canonical_axes_point_to_subject_right_and_forehead) {
     CHECK(chin_uv[1] < -0.9f);
 }
 
+TEST_CASE(canonical_frame_uses_eye_corners_not_gaze) {
+    const LandmarkMap map = LandmarkMap::mediapipe();
+    const LandmarkSet set = synthetic_landmarks(map, false);
+    const auto frame = CanonicalFaceFrame::from_landmarks(set, map, kAspect);
+    CHECK(frame.has_value());
+    LandmarkSet gaze = set;
+    gaze.points[*map.resolve(LandmarkName::iris_center_r)].x += 0.04f;
+    gaze.points[*map.resolve(LandmarkName::iris_center_l)].x -= 0.04f;
+    const auto shifted = CanonicalFaceFrame::from_landmarks(gaze, map, kAspect);
+    CHECK(shifted.has_value());
+    CHECK(std::abs(frame->eye_midpoint[0] - shifted->eye_midpoint[0]) < 1e-6f);
+    CHECK(std::abs(frame->eye_midpoint[1] - shifted->eye_midpoint[1]) < 1e-6f);
+    const auto right_outer = frame->project(*map.point(set, LandmarkName::eye_outer_r));
+    const auto right_inner = frame->project(*map.point(set, LandmarkName::eye_inner_r));
+    CHECK(std::abs((right_outer[0] + right_inner[0]) * 0.5 - 0.5) < 1e-5);
+}
+
 TEST_CASE(profile_correspondences_require_eight_inliers) {
     const LandmarkMap map = LandmarkMap::mediapipe();
     const LandmarkSet set = synthetic_landmarks(map, false);

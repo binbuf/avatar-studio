@@ -45,6 +45,7 @@ tell the difference between "we chose this" and "this happened".
 | [0038](0038-setup-freeze-and-still-source.md) | Setup diagnostic freeze and still-image source | Accepted |
 | [0039](0039-independent-source-and-target-regions.md) | Independent camera source and model target regions | Accepted |
 | [0040](0040-automatic-camera-cutout-fit-and-eye-lock.md) | Automatic camera cutouts and the eye symmetry lock | Accepted |
+| [0041](0041-robust-neutral-measurement-and-yaw-features.md) | Robust neutral measurement and yaw-tolerant feature validity | Accepted |
 
 Status values: **Proposed** (agreed, not yet validated by implementation), **Accepted** (validated
 and in force), **Superseded by ADR-XXXX** (kept for history), **Rejected**.

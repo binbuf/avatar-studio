@@ -113,6 +113,47 @@ TEST_CASE(rig_bootstraps_canonical_axes_and_filters_region_centroids) {
     CHECK(std::abs(clamped.regions[1].u - first.regions[1].u - 0.12) < 1e-5);
 }
 
+TEST_CASE(rig_bootstrap_prefers_a_neutral_frame_over_a_turned_first_frame) {
+    test::RigFixture f;
+    rig::FaceRig rig;
+    const auto turned = rig.update(f.result(kStart, 30), kStart);
+    CHECK(!turned.features_valid);
+    const auto neutral_result = f.result(kStart + kStep);
+    const auto neutral = rig.update(neutral_result, neutral_result.source_timestamp_ns);
+    CHECK(neutral.features_valid);
+    CHECK(!neutral.solve_failed);
+    const auto projected = test::rig_project(neutral.canonical_to_image, 0.5, 0);
+    const auto outer = neutral_result.landmarks.points[*f.map.resolve("eye_outer_r")];
+    const auto inner = neutral_result.landmarks.points[*f.map.resolve("eye_inner_r")];
+    const double mid_x = (static_cast<double>(outer.x) + inner.x) * 0.5;
+    const double mid_y = (static_cast<double>(outer.y) + inner.y) * 0.5;
+    CHECK(std::abs(projected[0] - mid_x) < 1e-6);
+    CHECK(std::abs(projected[1] - mid_y) < 1e-6);
+}
+
+TEST_CASE(rig_profile_view_holds_a_hidden_eye_without_dropping_the_frame) {
+    test::RigFixture f;
+    rig::FaceRig rig;
+    rig.configure(f.profile);
+    auto r = f.result();
+    const auto first = rig.update(r, kStart);
+    CHECK(first.features_valid);
+    // Hide the subject's right eye (viewer's left) and move the left eye. The
+    // solve must continue from the visible subset; the hidden region holds.
+    for (const char* name : {"eye_outer_r", "eye_inner_r", "iris_center_r"}) {
+        r.landmarks.points[*f.map.resolve(name)] = {0.0f, 0.0f, 0.0f};
+    }
+    r.landmarks.points[*f.map.resolve("eye_outer_l")].x -= 0.03f;
+    r.landmarks.points[*f.map.resolve("eye_inner_l")].x -= 0.03f;
+    r.source_timestamp_ns += kStep;
+    const auto out = rig.update(r, r.source_timestamp_ns);
+    CHECK(out.features_valid);
+    CHECK(!out.solve_failed);
+    CHECK(std::abs(out.regions[1].u - first.regions[1].u) < 1e-5f);
+    CHECK(std::abs(out.regions[1].v - first.regions[1].v) < 1e-5f);
+    CHECK(std::abs(out.regions[0].u - first.regions[0].u) > 1e-5f);
+}
+
 TEST_CASE(rig_one_euro_reduces_rest_jitter_and_translation_noise) {
     test::RigFixture f;
     rig::FaceRig rig;

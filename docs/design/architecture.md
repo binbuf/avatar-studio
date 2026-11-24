@@ -248,7 +248,7 @@ Detail: [`camera-capture.md`](camera-capture.md).
 struct TrackingResult {
     uint64_t   source_timestamp_ns;  // timestamp of the frame that produced this
     bool       valid;
-    bool       features_valid;       // eyes and mouth present; gates the output
+    bool       features_valid;       // mouth + at least one eye visible; gates the output
     float      confidence;
     HeadPose   pose;                 // rotation quaternion + translation, camera space
     std::array<Landmark, 478> landmarks;  // normalised image coords + relative depth
@@ -280,8 +280,12 @@ Detail: [`tracking.md`](tracking.md).
 
 Implemented by `avatar::rig::FaceRig` in `native/rig/include/avatar/rig/face_rig.h`.
 Pure math, no I/O, no GPU. Consumes `TrackingResult`, a named `ProfileLandmarks`
-subset and the render timestamp. An empty profile bootstraps canonical neutral.
-Eigen is private to `native/rig/src`; all public matrices are row-major float arrays.
+subset and the render timestamp. An empty profile bootstraps from the best of a
+short neutral window (up to 12 frames / 500 ms); the canonical frame uses the
+eye-corner midpoints, and the rest centroids use the stable corner midpoints, so
+gaze and a smile cannot define neutral. A profile view holds a hidden region's
+anchor instead of rejecting the frame. Eigen is private to `native/rig/src`; all
+public matrices are row-major float arrays.
 
 `FaceRigOutput` contains `source_timestamp_ns`, `head_from_camera` (4x4 inverse of
 filtered/predicted camera-from-head pose, metres), `canonical_to_image` (3x3 sampling
@@ -543,7 +547,7 @@ evidence. GPU frame timing and photon-to-display remain T46/T50 work. See
 | Camera unplugged | Capture thread error + device list change | Output blanks; preview shows "camera lost"; auto-reconnect on device return |
 | Camera busy (another app) | Open failure | Clear message naming the likely owner; retry button |
 | Face lost | Confidence below threshold beyond the 150 ms hold | Output blanks; preview shows the state. No drift to neutral, no frozen face (`TRK-002`) |
-| Eyes or mouth missing | `features_valid` false | Output blanks; the gate requires both eyes and the mouth (`TRK-008`) |
+| Mouth or both eyes missing | `features_valid` false | Output blanks; a profile view with the mouth and one eye stays live (`TRK-008`) |
 | Software matte unavailable | Segmentation load failure | Region mask only; log once (`TRK-009`) |
 | Head region missing | Validation / calibration | Derive a default and warn; editing continues (`RIG-006`, `AVT-117`) |
 | Tracking slower than camera | Queue depth | Drop frames before inference; never accumulate |

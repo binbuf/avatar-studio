@@ -529,6 +529,7 @@ authoritative status is the record itself, and `check-design-links` keeps the tw
 | [ADR-0038](adr/0038-setup-freeze-and-still-source.md) | Setup diagnostic freeze and still-image source | T25c | Accepted |
 | [ADR-0039](adr/0039-independent-source-and-target-regions.md) | Independent camera source and model target regions | T25c, T34 | Accepted |
 | [ADR-0040](adr/0040-automatic-camera-cutout-fit-and-eye-lock.md) | Automatic camera cutouts and the eye symmetry lock | T25c, T34 | Accepted |
+| [ADR-0041](adr/0041-robust-neutral-measurement-and-yaw-features.md) | Robust neutral measurement and yaw-tolerant feature validity | T25c, T34 | Accepted |
 
 ---
 
@@ -593,12 +594,23 @@ converts directly to canonical coordinates, and the model pane unprojects pointe
 same face plane the decal shader uses.
 
 The camera-side cutouts are measured automatically from the dense tracker landmarks by
-`source_region_autofit.gd`: the centre is the region's rest centroid and the size is the eye/mouth
-contour width plus a margin, with the height taken from the target aspect and the width settled over
-about 1.5 s before it is held. A manual camera edit turns the auto-fit off. The model pane can mirror
-the two eyes and share one size (**Lock eyes**). Both toggles are editor preferences in
-`user://setup_prefs.json`, not calibration. [ADR-0039](adr/0039-independent-source-and-target-regions.md)
-and [ADR-0040](adr/0040-automatic-camera-cutout-fit-and-eye-lock.md) record the decisions.
+`source_region_autofit.gd`: the eye centre is the outer/inner corner midpoint, the mouth centre is
+the mouth-corner midpoint, the eye width is the corner distance plus margin, and the mouth width is
+the corner distance capped by a nose-width proportion. The height follows the target aspect. Samples
+are only accepted while the face is frontal and relaxed; the median of 24-45 samples is held after
+about 1.5 s. The diagnostic face box is measured from the stable outline, widened by `1/cos(yaw)` and
+smoothed. A manual camera edit turns the auto-fit off. **Best defaults** restores the model-aware
+target placement and the canonical camera windows and re-arms the auto-fit; **Revert** restores the
+last applied mapping. The model pane can mirror the two eyes and share one size (**Lock eyes**). Both
+toggles are editor preferences in `user://setup_prefs.json`, not calibration.
+[ADR-0039](adr/0039-independent-source-and-target-regions.md),
+[ADR-0040](adr/0040-automatic-camera-cutout-fit-and-eye-lock.md) and
+[ADR-0041](adr/0041-robust-neutral-measurement-and-yaw-features.md) record the decisions.
+
+The native FaceRig bootstraps canonical space from the best of a short neutral window, uses the
+eye-corner midpoints for the canonical frame, and uses stable corner midpoints for the rest
+centroids. `features_valid` requires the mouth and at least one visible eye; a profile view keeps the
+hidden eye's anchor instead of dropping the frame.
 
 The development sources are `native/capture/src/still_image_source.cpp` and the freeze path in
 `native/live/src/live_pipeline.cpp` plus `native/gdextension/src/avatar_live_pipeline.cpp`

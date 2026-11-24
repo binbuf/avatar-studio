@@ -1070,11 +1070,16 @@ in two headless modes plus one rendered mode:
   cutout, moving a camera/mapping cutout must leave the model placement and the model cutout alone
   (and vice versa), both rect sets persist and reload, eye/mouth edit, Apply/persist/reload,
   background toggle, feature-loss hold, capture/tracker selectors, Snapshot freeze/unfreeze and the
-  OBS blank. The automatic camera fit is checked against fabricated 478-point landmarks (centre,
-  target aspect, contour width, fallback on missing landmarks or a singular homography, and the
-  settled-width policy); a still-source run with the real tracker also asserts the live fit applies
-  to all three cutouts. The eye lock is checked through the model drag, draw and resize paths, and
-  unlocking is checked to leave the partner alone.
+  OBS blank. The automatic camera fit is checked against fabricated 478-point landmarks (eye-corner
+  centre, target aspect, corner width, the nose-width mouth cap, the neutral gate, median settle,
+  fallback on missing landmarks or a singular homography, and the yaw-widened face box); a
+  still-source run with the real tracker also asserts the live fit applies to all three cutouts,
+  reports head angles, and caps the mouth window. **Best defaults** is checked for the model-aware
+  eye line, mouth line, camera window and re-armed auto-fit. The eye lock is checked through the
+  model drag, draw and resize paths, and unlocking is checked to leave the partner alone.
+- native: the rig prefers a neutral bootstrap frame over a turned first frame, holds a hidden eye
+  in a profile view without dropping the frame, and the canonical frame is gaze-independent
+  (eye-corner midpoints). Feature validity requires the mouth and one eye, not both eyes.
 - still source (`--live-source still --still tests/fixtures/images/still_setup.png`) + scripted
   tracker: the same contract with no camera or person, plus the `still (file)` label and path.
 - rendered (`--render`): panes inside the window at 100% and 200% UI scale, opaque background, and

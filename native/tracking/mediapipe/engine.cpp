@@ -139,7 +139,6 @@ avatar_tracker_result MediaPipeEngine::infer(const PreparedFrame& input, int64_t
         throw std::runtime_error("unexpected face landmark topology");
     }
     size_t inside = 0;
-    bool visible_features = true;
     for (size_t i = 0; i < 478; ++i) {
         const auto& p = faces[0].landmarks[i];
         if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
@@ -148,16 +147,24 @@ avatar_tracker_result MediaPipeEngine::infer(const PreparedFrame& input, int64_t
         result.landmarks[i] = input.box.unproject(p.x, p.y, p.z);
         const auto& original = result.landmarks[i];
         inside += original.x >= 0 && original.x <= 1 && original.y >= 0 && original.y <= 1 ? 1 : 0;
-        if ((p.visibility && *p.visibility < 0.5f) || (p.presence && *p.presence < 0.5f)) {
-            visible_features = false;
-        }
     }
     result.valid = 1;
     result.landmark_count = 478;
     // Tasks C++ does not publish face-presence logits. This is an explicit geometric
     // trust proxy after MediaPipe's three 0.5 thresholds, not an invented raw score.
     result.confidence = static_cast<float>(inside) / 478;
-    result.features_valid = visible_features && features_usable(result) ? 1 : 0;
+    // Visibility is per feature, not "every one of the 478 points is visible".
+    // At a profile view the far-side eye and cheek points drop below 0.5; the
+    // mouth and near eye are still good, and the rig can solve from them.
+    const auto visible = [&](size_t index) {
+        const auto& p = faces[0].landmarks[index];
+        return (!p.visibility || *p.visibility >= 0.5f) && (!p.presence || *p.presence >= 0.5f);
+    };
+    const bool eye_r_visible = visible(33) && visible(133) && visible(468);
+    const bool eye_l_visible = visible(263) && visible(362) && visible(473);
+    const bool mouth_visible = visible(61) && visible(291) && visible(13) && visible(14);
+    result.features_valid =
+        features_usable(result) && mouth_visible && (eye_r_visible || eye_l_visible) ? 1 : 0;
     const auto& transforms = detected->facial_transformation_matrixes;
     if (!transforms || transforms->size() != 1 || (*transforms)[0].rows() != 4 ||
         (*transforms)[0].cols() != 4) {

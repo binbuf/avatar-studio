@@ -137,18 +137,21 @@ bool features_usable(const avatar_tracker_result& r) {
     if (!r.valid || r.landmark_count != 478 || r.confidence < 0.5f) {
         return false;
     }
-    // Both eye corners, both iris centres, and the mouth contour must be usable.
-    for (const size_t index : {33u, 133u, 263u, 362u, 468u, 473u, 61u, 291u, 13u, 14u}) {
+    const auto inside = [&](size_t index) {
         const auto& p = r.landmarks[index];
-        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || p.x <= 0 ||
-            p.x >= 1 || p.y <= 0 || p.y >= 1) {
-            return false;
-        }
-    }
+        return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) && p.x > 0 &&
+               p.x < 1 && p.y > 0 && p.y < 1;
+    };
     const auto distance = [&](size_t a, size_t b) {
         return std::hypot(r.landmarks[a].x - r.landmarks[b].x, r.landmarks[a].y - r.landmarks[b].y);
     };
-    return distance(33, 133) > 0.003f && distance(263, 362) > 0.003f && distance(61, 291) > 0.005f;
+    const bool mouth =
+        inside(61) && inside(291) && inside(13) && inside(14) && distance(61, 291) > 0.005f;
+    // A profile view hides the far eye. Keep the mouth and either eye; the rig
+    // can solve from the visible subset and the decal keeps both eyes painted.
+    const bool eye_r = inside(33) && inside(133) && inside(468) && distance(33, 133) > 0.003f;
+    const bool eye_l = inside(263) && inside(362) && inside(473) && distance(263, 362) > 0.003f;
+    return mouth && (eye_r || eye_l);
 }
 
 int64_t next_timestamp_ms(uint64_t source_ns, int64_t previous_ms) {

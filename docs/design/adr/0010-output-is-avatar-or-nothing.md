@@ -24,6 +24,9 @@ face. A matte is needed even though the rest of the frame is synthetic.
 **The output has exactly two states: the rendered avatar, or a blank frame.**
 
 - `Avatar` when tracking is valid and both eyes and the mouth are present.
+  [ADR-0041](0041-robust-neutral-measurement-and-yaw-features.md) refines the feature clause to
+  "the mouth and at least one visible eye", so a profile view stays live while a covered mouth or
+  both hidden eyes still blanks.
 - `Blank` otherwise. Blank means transparent for OBS/Spout and the configured background colour for
   opaque outputs.
 - The last pose is held for at most 150 ms to bridge a dropped frame or a blink. Beyond that the

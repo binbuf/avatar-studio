@@ -18,6 +18,7 @@
 #include <godot_cpp/variant/rect2.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -88,7 +89,7 @@ private:
     static avatar::live::CameraState map_camera(avatar::capture::CameraState state);
     void update_process_sample();
     void release_selection();
-    void update_landmark_cache();
+    void update_landmark_cache(const std::array<float, 16>& head_from_camera);
 
     avatar::core::SteadyTimeSource time_{};
     avatar::core::FrameClock clock_{time_};
@@ -121,6 +122,7 @@ private:
     // T25c diagnostic overlay data, rebuilt when a tracker result is consumed.
     godot::PackedVector2Array landmarks_{};
     godot::Rect2 face_box_{};
+    bool face_box_initialized_ = false;
     std::uint32_t landmark_count_ = 0;
 
     godot::String source_kind_{"camera"};

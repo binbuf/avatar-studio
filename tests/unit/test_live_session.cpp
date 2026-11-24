@@ -89,7 +89,7 @@ TEST_CASE(live_status_prefers_panic_then_camera_then_face_then_output) {
     session.set_face(FaceState::features_hidden, 0.7F);
     status = session.status();
     CHECK(status.code == DiagnosticCode::trk_008);
-    CHECK_EQ(status.sentence, std::string_view("Can't see your eyes and mouth"));
+    CHECK_EQ(status.sentence, std::string_view("Can't see your mouth or both eyes"));
     CHECK(status.action.find("sunglasses") != std::string_view::npos);
     CHECK(status.blocks_output);
 
@@ -185,7 +185,7 @@ TEST_CASE(live_hud_text_carries_every_required_number_and_state) {
     session.set_face(FaceState::features_hidden, 0.7F);
     const std::string degraded = session.hud_text(2'000'000'000);
     CHECK(degraded.find("TRK-008") != std::string::npos);
-    CHECK(degraded.find("Can't see your eyes and mouth") != std::string::npos);
+    CHECK(degraded.find("Can't see your mouth or both eyes") != std::string::npos);
     CHECK(degraded.find("-> Remove sunglasses") != std::string::npos);
 }
 

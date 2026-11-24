@@ -138,7 +138,7 @@ try {
     $states = @{
         camera_lost = @('CAP-001', 'Camera disconnected', 'Reconnect')
         face_not_visible = @('TRK-001', "Can't see your face", 'lighting')
-        features_hidden = @('TRK-008', "Can't see your eyes and mouth", 'sunglasses')
+        features_hidden = @('TRK-008', "Can't see your mouth or both eyes", 'sunglasses')
         degraded = @('TRK-004', 'Face tracking is struggling', 'resolution')
         tracker_unavailable = @('TRK-007', "Face tracking isn't running", 'tracker')
     }

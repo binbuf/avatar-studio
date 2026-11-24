@@ -550,12 +550,23 @@ func _check_edit_and_apply() -> void:
 			and absf(float(restarted_region.center.x) - -0.78) < 0.02,
 			"the applied mapping survives a reload")
 
-	# Reset restores the provisional AABB mapping and does not save by itself.
+	# Best defaults restores the model-aware mapping, re-arms the automatic fit,
+	# and does not save by itself.
 	setup.call("reset_calibration")
 	var reset: Dictionary = setup.call("get_calibration")
 	var reset_region: Dictionary = Calibration.region(reset, "eye_l")
+	var reset_mouth: Dictionary = Calibration.region(reset, "mouth")
+	var reset_source: Dictionary = Calibration.source_region(reset, "eye_l")
 	check(not reset_region.is_empty() and absf(float(reset_region.center.x) - -0.5) < 0.02,
-			"Reset restores the provisional eye L centre")
+			"Best defaults restores the eye L centre")
+	check(not reset_region.is_empty() and absf(float(reset_region.center.y)) < 0.02,
+			"Best defaults puts the eye line on the canonical origin")
+	check(not reset_mouth.is_empty() and absf(float(reset_mouth.center.y) - -0.58) < 0.02,
+			"Best defaults places the model mouth below the eye line")
+	check(not reset_source.is_empty() and absf(float(reset_source.size.x) - 0.44) < 0.02,
+			"Best defaults gives the camera a stable eye sampling window")
+	check(bool(setup.call("get_auto_fit")),
+			"Best defaults re-arms the automatic camera fit")
 	result["calibration"] = {
 		"before": _vector_text(before_center),
 		"after": _vector_text(after_center),
@@ -815,38 +826,75 @@ func _check_auto_fit_and_eye_lock() -> void:
 	_fill_contour(points, SourceFit.EYE_L_CONTOUR, Vector2(0.5, 0.25),
 			Vector2(0.30, 0.12), h)
 	_fill_contour(points, SourceFit.MOUTH_CONTOUR, Vector2(0.0, -0.22),
-			Vector2(0.50, 0.20), h)
+			Vector2(1.18, 0.20), h)
+	# A 0.70-wide nose: the mouth prior caps a wide smile instead of sampling
+	# the cheeks. The synthetic test face uses a tiny nose, so this is the only
+	# place the proportion path is exercised.
+	points[129] = _apply_homography(h, Vector2(0.35, -0.27))
+	points[358] = _apply_homography(h, Vector2(-0.35, -0.27))
 	var landmarks := PackedVector2Array(points)
 
 	var values: Dictionary = setup.call("get_calibration")
 	var targets: Array = values.get("regions", [])
-	var fitted: Array = SourceFit.fit(landmarks, h, targets)
+	var measured: Dictionary = SourceFit.measure(landmarks, h, targets)
+	check(bool(measured.get("ok", false)), "auto-fit measures a complete face")
+	var fitted: Array = measured.get("regions", [])
 	check(fitted.size() == 3, "auto-fit returns one camera cutout per region")
 	var eye_r: Dictionary = _entry(fitted, "eye_r")
 	var mouth: Dictionary = _entry(fitted, "mouth")
 	var target_eye: Dictionary = _entry(targets, "eye_r")
 	check(not eye_r.is_empty()
 			and Vector2(eye_r.center).distance_to(Vector2(-0.5, 0.25)) < 0.01,
-			"auto-fit centres the eye on the tracked contour")
+			"auto-fit centres the eye on the tracked corners")
 	if not eye_r.is_empty() and not target_eye.is_empty():
 		var aspect := float(target_eye.size.x) / float(target_eye.size.y)
 		check(absf(float(eye_r.size.x) / float(eye_r.size.y) - aspect) < 0.02,
 				"auto-fit matches the painted aspect so the patch is not stretched")
-		check(absf(float(eye_r.size.x) - 0.30 * 1.12) < 0.02,
-				"auto-fit sizes the eye from the tracked contour width")
+		check(absf(float(eye_r.size.x) - 0.30 * SourceFit.EYE_MARGIN) < 0.02,
+				"auto-fit sizes the eye from the tracked corner width")
 	check(not mouth.is_empty() and Vector2(mouth.center).y < 0.0,
 			"auto-fit places the mouth below the eyes")
+	var quality: Dictionary = measured.get("quality", {})
+	check(absf(float(quality.get("nose_width", 0.0)) - 0.70) < 0.02,
+			"auto-fit measures the nose proportion")
+	check(not mouth.is_empty() and float(mouth.size.x) < 1.05,
+			"the mouth prior caps a wide smile instead of sampling the cheeks")
+	check(not mouth.is_empty() and float(mouth.size.x) < 1.18,
+			"the capped mouth window is narrower than the raw smile")
 	var fallback: Array = SourceFit.fit(PackedVector2Array(), h, targets)
 	check(fallback.is_empty(), "auto-fit declines without dense landmarks")
 	var degenerate: Array = SourceFit.fit(landmarks,
 			PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0, 0]), targets)
 	check(degenerate.is_empty(), "a singular homography declines instead of failing")
-	check(absf(SourceFit.settled_width("eye_r", [0.40, 0.50]) - 0.45) < 0.001,
-			"the eye window averages the contour width")
-	check(absf(SourceFit.settled_width("mouth", [0.55, 1.18]) - 0.55) < 0.001,
-			"the mouth window ignores a smile when a resting width is seen")
-	check(absf(SourceFit.settled_width("mouth", [0.02, 0.60]) - 0.60) < 0.001,
-			"a glitch sample below the floor is ignored")
+	var settled: Dictionary = SourceFit.settle({
+		"eye_r": {"centers": [Vector2(-0.5, 0.25), Vector2(-0.5, 0.25),
+				Vector2(-0.5, 0.25)], "widths": [0.40, 0.50, 0.45]},
+		"mouth": {"centers": [Vector2(0.0, -0.22), Vector2(0.0, -0.22)],
+				"widths": [0.55, 1.18]},
+	})
+	check(absf(float(settled.get("eye_r", {}).get("width", 0.0)) - 0.45) < 0.001,
+			"the settled eye width is the median")
+	check(absf(float(settled.get("mouth", {}).get("width", 0.0)) - 0.865) < 0.001,
+			"the settled mouth width is the median")
+	var box_points: Array = []
+	box_points.resize(478)
+	for index in range(box_points.size()):
+		box_points[index] = Vector2(0.5, 0.5)
+	for entry in [[10, 0.50, 0.30], [152, 0.50, 0.70], [127, 0.30, 0.50],
+			[356, 0.70, 0.50], [234, 0.31, 0.60], [454, 0.69, 0.60],
+			[50, 0.35, 0.55], [280, 0.65, 0.55], [33, 0.38, 0.45],
+			[263, 0.62, 0.45], [61, 0.40, 0.58], [291, 0.60, 0.58]]:
+		box_points[int(entry[0])] = Vector2(float(entry[1]), float(entry[2]))
+	var frontal_box := SourceFit.face_box(PackedVector2Array(box_points), 0.0)
+	var turned_box := SourceFit.face_box(PackedVector2Array(box_points), 40.0)
+	check(frontal_box.size.x > 0.4, "the face box covers the landmark outline")
+	check(turned_box.size.x > frontal_box.size.x * 1.2,
+			"the face box widens when the head turns")
+	var fallback_h := SourceFit.face_box_homography(Rect2(0.2, 0.2, 0.4, 0.5))
+	check(absf(fallback_h[0] - 0.4 / 2.09) < 0.001
+			and absf(fallback_h[2] - 0.4) < 0.001
+			and absf(fallback_h[5] - 0.36) < 0.001,
+			"the face-box fallback puts the eye line at 32% down the box")
 
 	# A manual camera edit is the operator's decision: it turns the auto-fit off
 	# so the next tick cannot overwrite it.
@@ -856,10 +904,18 @@ func _check_auto_fit_and_eye_lock() -> void:
 	# cutouts, not just pass the pure-function check above.
 	if controller.get_landmarks().size() >= 468 \
 			and bool(controller.last_state.get("features_valid", false)):
-		for _i in range(16):
+		for _i in range(90):
 			await process_frame
 		var live_state: Dictionary = setup.call("get_auto_fit_state")
 		check(live_state.size() == 3, "the live auto-fit applies to all three cutouts")
+		var live_quality: Dictionary = setup.call("get_auto_fit_quality")
+		check(live_quality.has("yaw_deg") and live_quality.has("mouth_width"),
+				"the live auto-fit reports head angles and measured widths")
+		check(float(live_quality.get("mouth_width", 2.0)) <= 1.05,
+				"the live mouth window is capped by the face proportion")
+		var live_box: Rect2 = setup.call("get_measured_face_box")
+		check(live_box.size.x > 0.0 and live_box.size.y > 0.0,
+				"the live measurement supplies a face box")
 		var fit_text: Array = []
 		for fit_id in ["eye_l", "eye_r", "mouth"]:
 			var fit_entry: Dictionary = live_state.get(fit_id, {})

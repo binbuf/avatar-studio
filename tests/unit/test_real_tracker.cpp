@@ -257,7 +257,7 @@ TEST_CASE(real_tracker_letterbox_edge_padding_inverse_mapping_and_colour) {
     CHECK(rgb.rgb[3] == 255 && rgb.rgb[4] == 255 && rgb.rgb[5] == 255);
 }
 
-TEST_CASE(real_tracker_features_valid_requires_both_eyes_irises_and_mouth) {
+TEST_CASE(real_tracker_features_valid_requires_mouth_and_one_visible_eye) {
     using avatar::tracker_backend::features_usable;
     avatar_tracker_result result{};
     result.valid = 1;
@@ -270,10 +270,19 @@ TEST_CASE(real_tracker_features_valid_requires_both_eyes_irises_and_mouth) {
     result.landmarks[263].x = 0.7f;
     result.landmarks[61].x = 0.4f;
     CHECK(features_usable(result));
+    // The mouth is mandatory: a covered mouth blanks the output.
     result.landmarks[13] = {};
     CHECK(!features_usable(result));
     result.landmarks[13] = {0.5f, 0.5f, 0};
+    // A profile view may hide the far eye; the near eye and mouth are enough.
     result.landmarks[468].x = NAN;
+    CHECK(features_usable(result));
+    // Both eyes hidden is not enough.
+    result.landmarks[263].x = NAN;
+    CHECK(!features_usable(result));
+    result.landmarks[263].x = 0.7f;
+    // A mouth whose corners collapse is not a mouth.
+    result.landmarks[61].x = 0.5f;
     CHECK(!features_usable(result));
     result.valid = 0;
     CHECK(!features_usable(result));
