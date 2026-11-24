@@ -910,6 +910,19 @@ func _check_auto_fit_and_eye_lock() -> void:
 		check(not decal_right.is_empty()
 				and absf(float(decal_right.center.x) + float(left.center.x)) < 0.02,
 				"the decal receives the mirrored eye placement")
+		var right_screen: Variant = model_view.call("screen_from_canonical",
+				Vector2(right.center))
+		if right_screen != null:
+			var draw_box := Rect2(Vector2(right_screen) - Vector2(18, 12), Vector2(36, 24))
+			var drawn_pair: Dictionary = setup.call("draw_region_on_model", "eye_r", draw_box)
+			check(bool(drawn_pair.get("ok", false)), "a locked eye draw applies")
+			var drawn_l: Dictionary = Calibration.region(
+					setup.call("get_calibration"), "eye_l")
+			var drawn_r: Dictionary = Calibration.region(
+					setup.call("get_calibration"), "eye_r")
+			check(absf(float(drawn_l.center.x) + float(drawn_r.center.x)) < 0.02
+					and Vector2(drawn_l.size).distance_to(Vector2(drawn_r.size)) < 0.02,
+					"drawing one locked eye mirrors the partner")
 
 	# Unlocking restores independent edits.
 	setup.call("set_lock_eyes", false)
